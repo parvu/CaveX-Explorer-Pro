@@ -992,13 +992,21 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
 
           // DETACHABLE FLYING DRONE TAKES OFF / ASCENDS!
           if (droneGroupRef.current && spotGroupRef.current) {
-            // Spot stays at ground/platform altitude level (1.35m or 16.75m balcony)
-            const spotGroundY = rPos.y >= 15.0 ? 16.75 : 1.35;
-            const localSpotOffset = -(rPos.y - spotGroundY);
-            spotGroupRef.current.position.y = localSpotOffset;
+            // Spot carrier base companion computer rests grounded at Air Pocket Base Station (X=13.0, Y=0, Z=1.35m)
+            // Three.js coordinates: rPos.x = ROS X, rPos.y = ROS Z altitude, rPos.z = ROS Y lateral
+            const targetSpotWorldX = 13.0;
+            const targetSpotWorldY = 1.35;
+            const targetSpotWorldZ = 0.0;
 
-            // Detachable Drone lifts off from Spot's back docking cradle
-            droneGroupRef.current.position.set(-0.1, 0.35 + Math.sin(elapsedTime * 3) * 0.08, 0);
+            spotGroupRef.current.position.set(
+              targetSpotWorldX - rPos.x,
+              targetSpotWorldY - rPos.y,
+              targetSpotWorldZ - rPos.z
+            );
+            spotGroupRef.current.rotation.set(0, 0, 0);
+
+            // Detachable Drone hovers relative to flying target coordinates
+            droneGroupRef.current.position.set(0, Math.sin(elapsedTime * 3) * 0.05, 0);
             droneGroupRef.current.rotation.z = Math.sin(elapsedTime * 2) * 0.04;
           }
 

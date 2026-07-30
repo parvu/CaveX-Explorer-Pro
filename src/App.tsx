@@ -63,7 +63,7 @@ export default function App() {
 
   // Robot State
   const [robotState, setRobotState] = useState<RobotState>({
-    position: { x: -15, y: 0, z: 1.35 },
+    position: { x: -17.5, y: 0, z: 1.35 },
     orientation: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
     mode: "WALKING",
@@ -95,7 +95,7 @@ export default function App() {
     sonarEchoStrength: 88,
     imuAccel: { x: 0, y: 0, z: 9.81 },
     imuGyro: { x: 0, y: 0, z: 0 },
-    slamPose: { x: -15, y: 0, z: 1.35 },
+    slamPose: { x: -17.5, y: 0, z: 1.35 },
     slamConfidence: 96,
   });
 
@@ -106,12 +106,12 @@ export default function App() {
     waypoints: [
       {
         id: "wp1",
-        name: "Dry Cave Patrol Origin",
+        name: "Dry Cave Entrance Start",
         targetMode: "WALKING",
-        position: { x: -15, y: 0, z: 1.35 },
+        position: { x: -17.5, y: 0, z: 1.35 },
         section: "DRY_CAVE",
         completed: true,
-        description: "Rugged stalagmite quadruped ground start (-15m)",
+        description: "Starting position at the beginning of the dry zone corridor (-17.5m)",
       },
       {
         id: "wp2",
