@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { RobotState, LocomotionMode, EnvironmentSection, SensorData, CameraMode } from "../types";
+import { getMinGroundHeight } from "../App";
 import { Camera, Eye, Layers, Maximize2, RotateCcw, Zap, Compass, Navigation, Video, Circle, Sun, ShieldCheck, ShieldAlert, Folder, Download } from "lucide-react";
 
 interface GazeboSimViewportProps {
@@ -306,8 +307,8 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       caveGroup.add(cone);
     }
 
-    // SECTION 2: FLOODED WATER SECTION (x: -5 to 12, z=0 surface, seabed at z=-3.5)
-    // Water Surface Plane (z = 0)
+    // SECTION 2: FLOODED WATER SECTION (x: -5 to 12, z=0.6 water surface matching dry section end, seabed at z=-2.9)
+    // Water Surface Plane (z = 0.6m matching dry section ground level)
     const waterGeo = new THREE.PlaneGeometry(17, 12, 32, 24);
     const waterMat = new THREE.MeshPhysicalMaterial({
       color: 0x0066aa,
@@ -320,16 +321,16 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     });
     const waterMesh = new THREE.Mesh(waterGeo, waterMat);
     waterMesh.rotation.x = -Math.PI / 2;
-    waterMesh.position.set(3.5, 0, 0); // z = 0 water plane
+    waterMesh.position.set(3.5, 0.6, 0); // z = 0.6 water plane matching dry section end
     waterMeshRef.current = waterMesh;
     caveGroup.add(waterMesh);
 
-    // Underwater Seabed Floor (z = -3.5)
+    // Underwater Seabed Floor (z = -2.9)
     const seabedGeo = new THREE.PlaneGeometry(17, 12, 20, 15);
     const seabedMat = new THREE.MeshStandardMaterial({ color: 0x121c24, roughness: 0.9 });
     const seabedMesh = new THREE.Mesh(seabedGeo, seabedMat);
     seabedMesh.rotation.x = -Math.PI / 2;
-    seabedMesh.position.set(3.5, -3.5, 0);
+    seabedMesh.position.set(3.5, -2.9, 0);
     caveGroup.add(seabedMesh);
 
     // Submerged rock formations
@@ -337,27 +338,144 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     for (let i = 0; i < 8; i++) {
       const rockGeo = new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.7);
       const rock = new THREE.Mesh(rockGeo, rockMat);
-      rock.position.set(-3 + Math.random() * 13, -2.8, -4 + Math.random() * 8);
+      rock.position.set(-3 + Math.random() * 13, -2.2, -4 + Math.random() * 8);
       caveGroup.add(rock);
     }
 
-    // SECTION 3: AIR POCKET CAVE (x: 12 to 24, z = 0 to 6)
-    // Elevated Dry Ledge
-    const ledgeGeo = new THREE.BoxGeometry(7, 2.5, 10);
+    // SECTION 3: AIR POCKET CAVE & ENLARGED SHADED VERTICAL SHAFT (x: 12 to 24)
+    // Elevated Dry Balcony Platform Summit inside shaft (Platform surface at Z=12.2m)
+    const ledgeGeo = new THREE.BoxGeometry(4.2, 0.4, 4.5);
     const ledgeMat = new THREE.MeshStandardMaterial({ color: 0x362d26, roughness: 0.85 });
     const ledge = new THREE.Mesh(ledgeGeo, ledgeMat);
-    ledge.position.set(18.5, 1.25, 0);
+    ledge.position.set(19.2, 12.0, 0);
     ledge.receiveShadow = true;
     caveGroup.add(ledge);
 
-    // Cave Walls & Cavern Ceiling
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x1c1a17, roughness: 0.95, side: THREE.DoubleSide });
+    // Landing target pad on top of the high balcony platform
+    const padGeo = new THREE.RingGeometry(0.4, 1.2, 24);
+    const padMat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide });
+    const padMesh = new THREE.Mesh(padGeo, padMat);
+    padMesh.rotation.x = -Math.PI / 2;
+    padMesh.position.set(19.2, 12.21, 0);
+    caveGroup.add(padMesh);
 
-    // Cavern Ceiling with stalactites hanging
-    const ceilingGeo = new THREE.PlaneGeometry(45, 14, 20, 10);
+    // Support pillars for high balcony platform
+    const pillarGeo = new THREE.CylinderGeometry(0.18, 0.25, 11.8, 8);
+    const pillar1 = new THREE.Mesh(pillarGeo, ledgeMat);
+    pillar1.position.set(21.0, 5.9, 1.8);
+    caveGroup.add(pillar1);
+    const pillar2 = new THREE.Mesh(pillarGeo, ledgeMat);
+    pillar2.position.set(21.0, 5.9, -1.8);
+    caveGroup.add(pillar2);
+
+    // Dedicated Enlarged Shaded Vertical Ascent Shaft Chimney (Radius 5.2m, Height 20.0m)
+    // Smooth shaded surface material with transparency = 0.7 (NO wireframe)
+    const shaftGeo = new THREE.CylinderGeometry(5.2, 5.2, 20.0, 32, 20, true, Math.PI * 0.25, Math.PI * 1.5);
+    const shaftMat = new THREE.MeshPhysicalMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.7, // Transparency set to 0.7 as requested
+      roughness: 0.2,
+      metalness: 0.15,
+      transmission: 0.65,
+      ior: 1.2,
+      flatShading: false, // Smooth shaded cylinder surface
+      side: THREE.DoubleSide,
+    });
+    const shaftMesh = new THREE.Mesh(shaftGeo, shaftMat);
+    shaftMesh.position.set(18.5, 10.2, 0);
+    caveGroup.add(shaftMesh);
+
+    // Solid Shaded Structural Bezel Collar Rings for Vertical Shaft (Shaded, non-wireframe accents)
+    [0.2, 20.2].forEach((collarY) => {
+      const collarGeo = new THREE.TorusGeometry(5.22, 0.08, 12, 36);
+      const collarMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.5 });
+      const collar = new THREE.Mesh(collarGeo, collarMat);
+      collar.rotation.x = Math.PI / 2;
+      collar.position.set(18.5, collarY, 0);
+      caveGroup.add(collar);
+    });
+
+    // Shaft Entrance Portal Archway (Spacious entry portal for drone at base)
+    const portalArchGeo = new THREE.TorusGeometry(5.25, 0.12, 12, 32, Math.PI);
+    const portalArchMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 });
+    const portalArch = new THREE.Mesh(portalArchGeo, portalArchMat);
+    portalArch.rotation.y = Math.PI / 2;
+    portalArch.position.set(13.3, 3.5, 0);
+    caveGroup.add(portalArch);
+
+    // Glowing Guidance Rings Inside Vertical Shaft (Spanning up to 19.0m altitude)
+    [3.2, 6.5, 9.8, 13.0, 16.5, 19.0].forEach((ringY, idx) => {
+      const ringGeo = new THREE.TorusGeometry(5.15, 0.05, 8, 36);
+      const ringMat = new THREE.MeshBasicMaterial({ color: idx === 5 ? 0x10b981 : 0x06b6d4, transparent: true, opacity: 0.75 });
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.rotation.x = Math.PI / 2;
+      ringMesh.position.set(18.5, ringY, 0);
+      caveGroup.add(ringMesh);
+    });
+
+    // =========================================================================
+    // COMPACT OBSTACLES INSIDE VERTICAL SHAFT (Easily navigable flight channel)
+    // =========================================================================
+    const obsMat = new THREE.MeshStandardMaterial({ color: 0x4a3f35, roughness: 0.9 });
+    const obsHazardMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b }); // Amber hazard beacon
+
+    // Obstacle 1: Compact Lower Shaft Spire (North Wall at Y = 5.5m)
+    const obs1Geo = new THREE.ConeGeometry(0.45, 1.2, 8);
+    const obs1 = new THREE.Mesh(obs1Geo, obsMat);
+    obs1.rotation.z = -Math.PI / 3;
+    obs1.position.set(16.5, 5.5, -4.2);
+    caveGroup.add(obs1);
+
+    const obs1Light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), obsHazardMat);
+    obs1Light.position.set(16.8, 5.5, -3.5);
+    caveGroup.add(obs1Light);
+
+    // Obstacle 2: Compact Mid-Shaft Rock Outcrop (South Wall at Y = 9.2m)
+    const obs2Geo = new THREE.BoxGeometry(0.8, 0.4, 0.8);
+    const obs2 = new THREE.Mesh(obs2Geo, obsMat);
+    obs2.position.set(20.2, 9.2, 4.2);
+    caveGroup.add(obs2);
+
+    const obs2Light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+    obs2Light.position.set(19.6, 9.2, 3.5);
+    caveGroup.add(obs2Light);
+
+    // Obstacle 3: Compact Upper Shaft Stalactite (North Wall at Y = 14.5m)
+    const obs3Geo = new THREE.ConeGeometry(0.45, 1.2, 8);
+    const obs3 = new THREE.Mesh(obs3Geo, obsMat);
+    obs3.rotation.x = Math.PI;
+    obs3.position.set(17.2, 14.5, -4.2);
+    caveGroup.add(obs3);
+
+    const obs3Light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), obsHazardMat);
+    obs3Light.position.set(17.2, 13.8, -3.5);
+    caveGroup.add(obs3Light);
+
+    // Obstacle 4: Compact Upper Shaft Rock Shelf (South Wall at Y = 16.8m)
+    const obs4Geo = new THREE.BoxGeometry(0.7, 0.3, 0.7);
+    const obs4 = new THREE.Mesh(obs4Geo, obsMat);
+    obs4.position.set(19.8, 16.8, 4.2);
+    caveGroup.add(obs4);
+
+    const obs4Light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), obsHazardMat);
+    obs4Light.position.set(19.3, 16.8, 3.5);
+    caveGroup.add(obs4Light);
+
+    // Cave Walls & High Cavern Ceiling (Semi-transparent for interior visibility)
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x1c1a17,
+      roughness: 0.95,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.45,
+    });
+
+    // Expanded High Cavern Ceiling (Height extended up to 21.5m over 20m vertical shaft)
+    const ceilingGeo = new THREE.PlaneGeometry(45, 16, 20, 10);
     const ceiling = new THREE.Mesh(ceilingGeo, wallMat);
     ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set(0, 5.5, 0);
+    ceiling.position.set(0, 21.5, 0);
     caveGroup.add(ceiling);
 
     // Stalactites hanging down
@@ -366,14 +484,14 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       const coneGeo = new THREE.ConeGeometry(0.25, len, 6);
       const stalactite = new THREE.Mesh(coneGeo, stalagmiteMat);
       stalactite.rotation.x = Math.PI;
-      stalactite.position.set(-20 + Math.random() * 40, 5.5 - len / 2, -5 + Math.random() * 10);
+      stalactite.position.set(-20 + Math.random() * 35, 8.5 - len / 2, -5 + Math.random() * 10);
       caveGroup.add(stalactite);
     }
 
-    // Back Cave Wall
-    const backWallGeo = new THREE.PlaneGeometry(45, 9);
+    // Back Cave Wall (Expanded height)
+    const backWallGeo = new THREE.PlaneGeometry(45, 17);
     const backWall = new THREE.Mesh(backWallGeo, wallMat);
-    backWall.position.set(0, 1, -6);
+    backWall.position.set(0, 5, -6);
     caveGroup.add(backWall);
 
     scene.add(caveGroup);
@@ -667,8 +785,10 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
           pontoonsRef.current.forEach((p) => {
             p.position.y = -0.15;
           });
-          // Bobbing Water Surface Motion
-          rPos.y = -0.05 + Math.sin(elapsedTime * 2) * 0.04;
+          // Bobbing Water Surface Motion (only when in flooded water section)
+          if (rPos.x >= -5 && rPos.x <= 12) {
+            rPos.y = -0.05 + Math.sin(elapsedTime * 2) * 0.04;
+          }
         } else if (currentMode === "FLYING") {
           // Fold Legs into Compact Skids
           legsRef.current.forEach((leg) => {
@@ -683,6 +803,12 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
           propellersRef.current.forEach((pr) => {
             pr.rotation.y += 0.8;
           });
+        }
+
+        // Strict Anti-penetration ground floor collision guard
+        const minH = getMinGroundHeight(rPos.x, rPos.z, currentMode);
+        if (rPos.y < minH) {
+          rPos.y = minH;
         }
 
         // Spotlight Headlight Toggle & FPV Exposure Boost
@@ -790,17 +916,24 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     };
   }, [hasWebGLError]);
 
-  // Sync robotState position change with 3D scene
+  // Sync robotState position change with 3D scene & anti-clipping collision floor check
   useEffect(() => {
     if (robotGroupRef.current) {
-      robotGroupRef.current.position.set(robotState.position.x, robotState.position.y, robotState.position.z);
+      const rx = robotState.position.x;
+      const ry = robotState.position.y;
+      const minHeight = getMinGroundHeight(rx, ry, robotState.mode);
+      const rz = Math.max(robotState.position.z, minHeight);
+
+      // Map ROS 2 coordinates (X: forward along cave, Y: lateral width, Z: altitude height)
+      // to Three.js coordinates (X: rx, Y: rz, Z: ry)
+      robotGroupRef.current.position.set(rx, rz, ry);
       robotGroupRef.current.rotation.set(
         (robotState.orientation.x * Math.PI) / 180,
         (robotState.orientation.y * Math.PI) / 180,
         (robotState.orientation.z * Math.PI) / 180
       );
     }
-  }, [robotState.position, robotState.orientation]);
+  }, [robotState.position, robotState.orientation, robotState.mode]);
 
   // Determine current section label
   const getCurrentSectionName = (x: number): string => {

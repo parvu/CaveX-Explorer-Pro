@@ -1,5 +1,6 @@
 import React from "react";
 import { RobotState, LocomotionMode, MissionStatus, Waypoint, SensorData } from "../types";
+import { getMinGroundHeight, getAutoSectionMode } from "../App";
 import { Play, Pause, RotateCcw, ArrowRight, CheckCircle2, Navigation, Compass, Shield, Zap, Footprints, Flame } from "lucide-react";
 
 interface MultiModalNavPlannerProps {
@@ -26,17 +27,22 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
     let buoyancy = 0;
 
     if (newMode === "WALKING") {
-      newZ = 0.6; // Dry land height
+      newZ = 1.35; // Dry land quadruped origin height
       newPropellerRpm = 0;
       buoyancy = 0;
     } else if (newMode === "SAILING") {
-      newZ = -0.05; // Water surface height
+      newZ = 0.55; // Water surface height (matching raised lake z=0.6m)
       newPropellerRpm = 300;
-      buoyancy = 41.2; // Buoyancy balances robot weight
+      buoyancy = 41.2; // Hydrodynamic buoyancy
     } else if (newMode === "FLYING") {
-      newZ = 1.8; // Elevated aerial altitude
-      newPropellerRpm = 4200; // High RPM for flight
+      newZ = 2.0; // Quadrotor flight altitude
+      newPropellerRpm = 4200; // High RPM for VTOL thrusters
       buoyancy = 0;
+    }
+
+    const minFloorZ = getMinGroundHeight(robotState.position.x, robotState.position.y, newMode);
+    if (newZ < minFloorZ) {
+      newZ = minFloorZ;
     }
 
     setRobotState((prev) => ({
@@ -102,26 +108,27 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
       const ny = Math.max(-5, Math.min(5, prev.position.y + dy));
       let nz = prev.position.z + dz;
 
-      // Auto detect mode switch based on environment x and z bounds
-      let detectedMode: LocomotionMode = prev.mode;
+      // Auto detect mode switch based on environment x, y, and altitude bounds
+      const detectedMode = getAutoSectionMode(nx, ny, nz, prev.mode);
 
-      if (nx >= -5 && nx <= 12 && nz <= 0.2) {
-        // Flooded water section
-        detectedMode = "SAILING";
-        nz = Math.min(0, nz);
-      } else if (nx > 12 && nz > 0.8) {
-        // Air pocket shaft
-        detectedMode = "FLYING";
-      } else if (nx < -5 || (nx > 12 && nz <= 0.8)) {
-        // Dry ground
-        detectedMode = "WALKING";
-        nz = 0.6;
+      const minFloorZ = getMinGroundHeight(nx, ny, detectedMode);
+      if (nz < minFloorZ) {
+        nz = minFloorZ;
+      }
+
+      // Vertical shaft altitude gain inside tube up to 19.5m
+      if (nx >= 13 && detectedMode === "FLYING") {
+        nz = Math.min(19.5, nz);
       }
 
       return {
         ...prev,
         position: { x: nx, y: ny, z: nz },
         mode: detectedMode,
+        propellerRpm: detectedMode === "FLYING" ? 4200 : detectedMode === "SAILING" ? 300 : 0,
+        buoyancyForce: detectedMode === "SAILING" ? 41.2 : 0,
+        waterSubmerged: detectedMode === "SAILING",
+        inAirPocket: detectedMode === "FLYING",
       };
     });
   };

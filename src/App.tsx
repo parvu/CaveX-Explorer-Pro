@@ -8,6 +8,52 @@ import { KinematicChainEditor } from "./components/KinematicChainEditor";
 import { ROS2WorkspaceExplorer } from "./components/ROS2WorkspaceExplorer";
 import { AICopilotModal } from "./components/AICopilotModal";
 
+// Ground Collision Floor Height Calculator & Safety Clearance
+export const getMinGroundHeight = (x: number, y: number, mode: LocomotionMode, currentZ?: number): number => {
+  if (x < -5) {
+    // Section 1: Dry Cave Corridor (Rock surface ~0.4m-0.6m; quadruped origin Z = 1.35m)
+    if (mode === "WALKING") return 1.35;
+    if (mode === "SAILING") return 0.85;
+    return 1.35; // Flight clearance over rocks
+  } else if (x <= 12) {
+    // Section 2: Flooded Cave (Raised water surface at 0.6m matching dry section end, seabed at -2.9m)
+    if (mode === "SAILING") return 0.55;  // Floating on raised water surface at 0.6m
+    if (mode === "WALKING") return -2.15; // Quadruped walking on underwater seabed (-2.9m + 0.75m leg = -2.15m)
+    return 1.40;                          // Quadrotor flight clearance above raised water surface
+  } else {
+    // Section 3: Air Pocket & Vertical Ascent Shaft (x > 12)
+    // Extended 20m shaft chimney allows flight up to z = 19.5m
+    if (mode === "WALKING") {
+      // Upper balcony platform is at X >= 17, top surface Z = 12.2m -> quadruped Z = 12.95m
+      if (x >= 17 && (currentZ === undefined || currentZ > 6.0)) {
+        return 12.95;
+      }
+      return 1.35;   // Base ground clearance
+    }
+    if (mode === "SAILING") return 0.55;
+    return 1.0;      // Flight clearance in open vertical shaft
+  }
+};
+
+// Helper for dynamic environment mode detection
+export const getAutoSectionMode = (x: number, y: number, z: number, currentMode: LocomotionMode): LocomotionMode => {
+  if (x < -5) {
+    // Section 1: Dry Cave -> WALKING default
+    return currentMode === "FLYING" && z > 2.0 ? "FLYING" : "WALKING";
+  } else if (x <= 12) {
+    // Section 2: Flooded Water Channel -> SAILING default (Raised water surface z = 0.6m)
+    if (z < -1.0) return "WALKING"; // Underwater seabed walk
+    if (z > 1.8) return "FLYING";   // Aerial flight above water surface
+    return "SAILING";               // Water surface hydrofoil sailing
+  } else {
+    // Section 3: Air Pocket & Vertical Shaft -> FLYING default for VTOL ascent up to 20m shaft ceiling
+    if (x >= 17 && z >= 11.5 && currentMode === "WALKING") {
+      return "WALKING"; // Standing & walking on top of upper balcony platform
+    }
+    return "FLYING"; // Ascending vertical tube chimney
+  }
+};
+
 export default function App() {
   const [activeView, setActiveView] = useState<"simulation" | "workspace" | "urdf">("simulation");
   const [activeCameraMode, setActiveCameraMode] = useState<CameraMode>("orbit");
@@ -26,7 +72,7 @@ export default function App() {
 
   // Robot State
   const [robotState, setRobotState] = useState<RobotState>({
-    position: { x: -15, y: 0, z: 0.6 },
+    position: { x: -15, y: 0, z: 1.35 },
     orientation: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
     mode: "WALKING",
@@ -53,7 +99,7 @@ export default function App() {
     sonarEchoStrength: 88,
     imuAccel: { x: 0, y: 0, z: 9.81 },
     imuGyro: { x: 0, y: 0, z: 0 },
-    slamPose: { x: -15, y: 0, z: 0.6 },
+    slamPose: { x: -15, y: 0, z: 1.35 },
     slamConfidence: 96,
   });
 
@@ -66,37 +112,82 @@ export default function App() {
         id: "wp1",
         name: "Dry Cave Entry Corridor",
         targetMode: "WALKING",
-        position: { x: -15, y: 0, z: 0.6 },
+        position: { x: -15, y: 0, z: 1.35 },
         section: "DRY_CAVE",
         completed: true,
-        description: "Rugged stalagmite terrain inspection",
+        description: "Rugged stalagmite quadruped terrain walk",
       },
       {
         id: "wp2",
-        name: "Flooded Cave Channel",
+        name: "Flooded Water Edge Transition",
         targetMode: "SAILING",
-        position: { x: 2, y: 0, z: -0.05 },
+        position: { x: -4, y: 0, z: 0.55 },
         section: "FLOODED_WATER",
         completed: false,
-        description: "Hydrofoil water surface navigation (z=0)",
+        description: "Hydrofoil launch matching dry section water edge (z=0.6m)",
       },
       {
         id: "wp3",
-        name: "Air Pocket Vertical Shaft",
-        targetMode: "FLYING",
-        position: { x: 16, y: 0, z: 2.2 },
-        section: "AIR_POCKET",
+        name: "Raised Water Surface Navigation",
+        targetMode: "SAILING",
+        position: { x: 6, y: 0, z: 0.55 },
+        section: "FLOODED_WATER",
         completed: false,
-        description: "Quadrotor vertical VTOL ascent",
+        description: "Hydrofoil surface sailing across raised cave lake (z=0.6m)",
       },
       {
         id: "wp4",
-        name: "Elevated Cavern Ledge",
-        targetMode: "WALKING",
-        position: { x: 18.5, y: 0, z: 2.5 },
+        name: "Vertical Shaft Base Portal Entrance",
+        targetMode: "FLYING",
+        position: { x: 13.8, y: 0, z: 2.2 },
         section: "AIR_POCKET",
         completed: false,
-        description: "High altitude ledge sample collection",
+        description: "VTOL transition into wide open shaft portal base",
+      },
+      {
+        id: "wp5",
+        name: "Lower Shaft Clearance (Compact Spire 1)",
+        targetMode: "FLYING",
+        position: { x: 17.5, y: 1.0, z: 6.0 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Evading lower compact rock spire with wide clearance",
+      },
+      {
+        id: "wp6",
+        name: "Mid-Shaft Chimney Ascent (Compact Arch 2)",
+        targetMode: "FLYING",
+        position: { x: 18.5, y: -1.0, z: 10.0 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Navigating open central channel past mid obstacle (z=10.0m)",
+      },
+      {
+        id: "wp7",
+        name: "Upper Shaft Clearance (Compact Stalactite 3)",
+        targetMode: "FLYING",
+        position: { x: 17.8, y: 0.8, z: 14.5 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Clearing upper compact stalactite overhang (z=14.5m)",
+      },
+      {
+        id: "wp8",
+        name: "20m Vertical Shaft High Apex Altitude",
+        targetMode: "FLYING",
+        position: { x: 18.5, y: 0, z: 18.0 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "High altitude exploration inside 20m shaded vertical shaft (z=18.0m)",
+      },
+      {
+        id: "wp9",
+        name: "Upper Balcony Platform Summit Landing",
+        targetMode: "WALKING",
+        position: { x: 19.2, y: 0, z: 12.95 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Landing and walking on upper balcony platform inside shaft (z=12.95m)",
       },
     ],
     autoTransitions: true,
@@ -140,14 +231,20 @@ export default function App() {
           } else if (newY < -2.3) {
             newY += 0.15; // Auto evasion nudge right
             setEvasionAlert({ active: true, obstacle: "Left Cave Wall Proximity (0.7m)" });
-          } else if (prev.mode === "FLYING" && newZ > 4.5) {
-            newZ -= 0.15; // Auto evasion nudge down
-            setEvasionAlert({ active: true, obstacle: "Shaft Ceiling Obstacle (0.8m)" });
+          } else if (prev.mode === "FLYING" && prev.position.x < 12 && newZ > 4.5) {
+            newZ -= 0.15; // Auto evasion nudge down in low ceiling cave
+            setEvasionAlert({ active: true, obstacle: "Cave Ceiling Obstacle (0.8m)" });
           } else {
             setEvasionAlert({ active: false, obstacle: "" });
           }
         } else {
           setEvasionAlert({ active: false, obstacle: "" });
+        }
+
+        // Ground Collision Anti-penetration floor check
+        const minZFloor = getMinGroundHeight(prev.position.x, newY, prev.mode, newZ);
+        if (newZ < minZFloor) {
+          newZ = minZFloor;
         }
 
         return {
@@ -183,22 +280,27 @@ export default function App() {
                 ],
               }));
 
-              let newZ = nextWp.position?.z ?? 0.6;
+              let newZ = nextWp.position?.z ?? 1.35;
               let rpm = prev.propellerRpm;
               let buoyancy = prev.buoyancyForce;
 
               if (nextWp.targetMode === "WALKING") {
-                newZ = 0.6;
+                newZ = nextWp.position?.z ?? 1.35;
                 rpm = 0;
                 buoyancy = 0;
               } else if (nextWp.targetMode === "SAILING") {
-                newZ = -0.05;
+                newZ = 0.55;
                 rpm = 300;
                 buoyancy = 41.2;
               } else if (nextWp.targetMode === "FLYING") {
-                newZ = 2.0;
+                newZ = nextWp.position?.z ?? 2.0;
                 rpm = 4200;
                 buoyancy = 0;
+              }
+
+              const safeMinZ = getMinGroundHeight(nextWp.position.x, nextWp.position.y, nextWp.targetMode, newZ);
+              if (newZ < safeMinZ) {
+                newZ = safeMinZ;
               }
 
               return {
@@ -212,15 +314,29 @@ export default function App() {
               };
             }
 
-            const step = 0.12;
+            const step = 0.15;
             const safeDist = dist > 0 ? dist : 1;
+            const nextX = prev.position.x + (dx / safeDist) * step;
+            const nextY = prev.position.y + (dy / safeDist) * step;
+            let nextZ = prev.position.z + (dz / safeDist) * step;
+
+            const dynamicMode = getAutoSectionMode(nextX, nextY, nextZ, prev.mode);
+            const floorZ = getMinGroundHeight(nextX, nextY, dynamicMode);
+            if (nextZ < floorZ) {
+              nextZ = floorZ;
+            }
+
             return {
               ...prev,
+              mode: dynamicMode,
               position: {
-                x: prev.position.x + (dx / safeDist) * step,
-                y: prev.position.y + (dy / safeDist) * step,
-                z: prev.position.z + (dz / safeDist) * step,
+                x: nextX,
+                y: nextY,
+                z: nextZ,
               },
+              propellerRpm: dynamicMode === "FLYING" ? 4200 : dynamicMode === "SAILING" ? 300 : 0,
+              waterSubmerged: dynamicMode === "SAILING",
+              inAirPocket: dynamicMode === "FLYING",
             };
           });
         }
