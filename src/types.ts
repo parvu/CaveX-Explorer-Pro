@@ -43,9 +43,14 @@ export interface SensorData {
   cameraActive: boolean;
   cameraResolution: string;
   featurePointsCount: number;
+  wifiStreamingActive: boolean;
+  wifiSignalDbm: number;
+  wifiBitrateMbps: number;
+  wifiLatencyMs: number;
   lidarRanges: number[]; // 360 degree range readings
   lidarMinDist: number;
   lidarMaxDist: number;
+  sonarActive: boolean;
   sonarDepth: number; // Distance to submerged seabed
   sonarEchoStrength: number;
   imuAccel: Vector3D;

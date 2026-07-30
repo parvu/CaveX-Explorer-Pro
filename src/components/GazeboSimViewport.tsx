@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { RobotState, LocomotionMode, EnvironmentSection, SensorData, CameraMode } from "../types";
 import { getMinGroundHeight } from "../App";
-import { Camera, Eye, Layers, Maximize2, RotateCcw, Zap, Compass, Navigation, Video, Circle, Sun, ShieldCheck, ShieldAlert, Folder, Download } from "lucide-react";
+import { Camera, Eye, Layers, Maximize2, RotateCcw, Zap, Compass, Navigation, Video, Circle, Sun, ShieldCheck, ShieldAlert, Folder, Download, Radio } from "lucide-react";
 
 interface GazeboSimViewportProps {
   robotState: RobotState;
@@ -46,6 +46,8 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
 
   // 3D Objects references
   const robotGroupRef = useRef<THREE.Group | null>(null);
+  const spotGroupRef = useRef<THREE.Group | null>(null);
+  const droneGroupRef = useRef<THREE.Group | null>(null);
   const legsRef = useRef<THREE.Group[]>([]);
   const pontoonsRef = useRef<THREE.Group[]>([]);
   const propellersRef = useRef<THREE.Mesh[]>([]);
@@ -343,31 +345,6 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     }
 
     // SECTION 3: AIR POCKET CAVE & ENLARGED SHADED VERTICAL SHAFT (x: 12 to 24)
-    // Elevated Dry Balcony Platform Summit inside shaft (Platform surface at Z=16.0m, body height at Z=16.75m)
-    const ledgeGeo = new THREE.BoxGeometry(4.2, 0.4, 4.5);
-    const ledgeMat = new THREE.MeshStandardMaterial({ color: 0x362d26, roughness: 0.85 });
-    const ledge = new THREE.Mesh(ledgeGeo, ledgeMat);
-    ledge.position.set(19.2, 15.8, 0);
-    ledge.receiveShadow = true;
-    caveGroup.add(ledge);
-
-    // Landing target pad on top of the 16m high balcony platform
-    const padGeo = new THREE.RingGeometry(0.4, 1.2, 24);
-    const padMat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide });
-    const padMesh = new THREE.Mesh(padGeo, padMat);
-    padMesh.rotation.x = -Math.PI / 2;
-    padMesh.position.set(19.2, 16.01, 0);
-    caveGroup.add(padMesh);
-
-    // Support pillars for 16m high balcony platform
-    const pillarGeo = new THREE.CylinderGeometry(0.18, 0.25, 15.6, 8);
-    const pillar1 = new THREE.Mesh(pillarGeo, ledgeMat);
-    pillar1.position.set(21.0, 7.8, 1.8);
-    caveGroup.add(pillar1);
-    const pillar2 = new THREE.Mesh(pillarGeo, ledgeMat);
-    pillar2.position.set(21.0, 7.8, -1.8);
-    caveGroup.add(pillar2);
-
     // Dedicated Enlarged Shaded Vertical Ascent Shaft Chimney (Radius 5.2m, Height 25.0m)
     // Smooth shaded surface material with transparency = 0.7 (NO wireframe)
     const shaftGeo = new THREE.CylinderGeometry(5.2, 5.2, 25.0, 32, 25, true, Math.PI * 0.25, Math.PI * 1.5);
@@ -497,146 +474,316 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     scene.add(caveGroup);
 
     // ==========================================
-    // 6. HYBRID TRI-MODAL DRONE ROBOT MODEL
+    // 6. BOSTON DYNAMICS SPOT QUADRUPED & DETACHABLE FLYING DRONE
     // ==========================================
     const robotGroup = new THREE.Group();
     robotGroupRef.current = robotGroup;
 
-    // Body Hull (Carbon fiber composite)
-    const hullMat = new THREE.MeshStandardMaterial({ color: 0x22262d, roughness: 0.4, metalness: 0.8 });
-    const bodyGeo = new THREE.BoxGeometry(1.2, 0.35, 0.8);
-    const bodyMesh = new THREE.Mesh(bodyGeo, hullMat);
-    bodyMesh.castShadow = true;
-    robotGroup.add(bodyMesh);
+    // --- A. BOSTON DYNAMICS "SPOT" QUADRUPED CHASSIS ---
+    const spotGroup = new THREE.Group();
+    spotGroupRef.current = spotGroup;
+    robotGroup.add(spotGroup);
 
-    // Glowing LED Ring
-    const ringGeo = new THREE.TorusGeometry(0.3, 0.03, 8, 24);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
-    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-    ringMesh.rotation.x = Math.PI / 2;
-    ringMesh.position.set(0, 0.18, 0);
-    robotGroup.add(ringMesh);
-
-    // Spotlight Headlight (High Intensity for Cave Exploration & FPV)
-    const spotlight = new THREE.SpotLight(0xffffff, 8.0, 30, Math.PI / 4, 0.3, 1);
-    spotlight.position.set(0.6, 0, 0);
-    spotlight.target.position.set(3, 0, 0);
-    spotlightRef.current = spotlight;
-    robotGroup.add(spotlight);
-    robotGroup.add(spotlight.target);
-
-    // 3D Anti-Collision Shield Wireframe Sphere
-    const shieldGeo = new THREE.SphereGeometry(1.6, 18, 18);
-    const shieldMat = new THREE.MeshBasicMaterial({
-      color: 0x10b981,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.18,
+    // Spot Colors & Materials
+    const spotYellowMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15, // Spot Vibrant Yellow
+      metalness: 0.25,
+      roughness: 0.35,
     });
-    const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
-    shieldMeshRef.current = shieldMesh;
-    robotGroup.add(shieldMesh);
+    const spotDarkMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b, // Dark Carbon Frame
+      metalness: 0.8,
+      roughness: 0.4,
+    });
+    const spotHeadMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a, // Front Sensor Head Matte Black
+      metalness: 0.9,
+      roughness: 0.3,
+    });
+    const jointMat = new THREE.MeshStandardMaterial({
+      color: 0xf97316, // Orange/Amber Joint Accents
+      metalness: 0.6,
+      roughness: 0.4,
+    });
 
-    // --- Kinematic Chain 1: Quadruped Legs ---
+    // Spot Main Body Top Shell (Yellow Protective Fairing)
+    const spotTopGeo = new THREE.BoxGeometry(1.15, 0.22, 0.48);
+    const spotTopMesh = new THREE.Mesh(spotTopGeo, spotYellowMat);
+    spotTopMesh.position.set(0, 0.08, 0);
+    spotTopMesh.castShadow = true;
+    spotGroup.add(spotTopMesh);
+
+    // Spot Lower Frame Chassis (Dark Slate Carbon)
+    const spotBottomGeo = new THREE.BoxGeometry(1.18, 0.20, 0.46);
+    const spotBottomMesh = new THREE.Mesh(spotBottomGeo, spotDarkMat);
+    spotBottomMesh.position.set(0, -0.06, 0);
+    spotBottomMesh.castShadow = true;
+    spotGroup.add(spotBottomMesh);
+
+    // Spot Side Accent Plates (Yellow side panels)
+    [-0.245, 0.245].forEach((zSide) => {
+      const sidePlateGeo = new THREE.BoxGeometry(0.8, 0.14, 0.02);
+      const sidePlate = new THREE.Mesh(sidePlateGeo, spotYellowMat);
+      sidePlate.position.set(0, 0.02, zSide);
+      spotGroup.add(sidePlate);
+    });
+
+    // Spot Front Sensor Head Module (Stereo Camera & Depth Sensor Face)
+    const spotHeadGeo = new THREE.BoxGeometry(0.22, 0.24, 0.40);
+    const spotHeadMesh = new THREE.Mesh(spotHeadGeo, spotHeadMat);
+    spotHeadMesh.position.set(0.58, 0.02, 0);
+    spotGroup.add(spotHeadMesh);
+
+    // Front Stereo Camera Lenses
+    [-0.12, 0.12].forEach((zCam) => {
+      const lensGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.02, 16);
+      const lensMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, metalness: 0.9 });
+      const lens = new THREE.Mesh(lensGeo, lensMat);
+      lens.rotation.z = Math.PI / 2;
+      lens.position.set(0.69, 0.04, zCam);
+      spotGroup.add(lens);
+    });
+
+    // Spot Top Carry Handles / Roll Rails
+    [-0.21, 0.21].forEach((zRail) => {
+      const railGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.9, 8);
+      const railMesh = new THREE.Mesh(railGeo, spotYellowMat);
+      railMesh.rotation.z = Math.PI / 2;
+      railMesh.position.set(-0.05, 0.20, zRail);
+      spotGroup.add(railMesh);
+    });
+
+    // Spot Top Drone Docking Bay Cradle
+    const dockPlateGeo = new THREE.BoxGeometry(0.52, 0.04, 0.42);
+    const dockPlateMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.8 });
+    const dockPlate = new THREE.Mesh(dockPlateGeo, dockPlateMat);
+    dockPlate.position.set(-0.1, 0.19, 0);
+    spotGroup.add(dockPlate);
+
+    // Docking Guide Latch Pins & Status LEDs
+    [
+      { x: 0.12, z: 0.16 },
+      { x: 0.12, z: -0.16 },
+      { x: -0.32, z: 0.16 },
+      { x: -0.32, z: -0.16 },
+    ].forEach((pinPos) => {
+      const pinMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.06, 12), jointMat);
+      pinMesh.position.set(pinPos.x, 0.22, pinPos.z);
+      spotGroup.add(pinMesh);
+    });
+
+    // Docking Bay Latch Status Light Bar
+    const latchLightGeo = new THREE.BoxGeometry(0.2, 0.02, 0.04);
+    const latchLightMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+    const latchLight = new THREE.Mesh(latchLightGeo, latchLightMat);
+    latchLight.position.set(-0.1, 0.22, 0);
+    spotGroup.add(latchLight);
+
+    // --- Spot Articulated Quadruped Legs (FL, FR, BL, BR) ---
     const legs: THREE.Group[] = [];
     const legPositions = [
-      { x: 0.5, z: 0.45, name: "FL" },
-      { x: 0.5, z: -0.45, name: "FR" },
-      { x: -0.5, z: 0.45, name: "BL" },
-      { x: -0.5, z: -0.45, name: "BR" },
+      { x: 0.48, z: 0.32, name: "FL" },
+      { x: 0.48, z: -0.32, name: "FR" },
+      { x: -0.48, z: 0.32, name: "BL" },
+      { x: -0.48, z: -0.32, name: "BR" },
     ];
-
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x333b47, metalness: 0.7, roughness: 0.5 });
-    const jointMat = new THREE.MeshStandardMaterial({ color: 0xff8800 });
 
     legPositions.forEach((pos) => {
       const legGroup = new THREE.Group();
-      legGroup.position.set(pos.x, -0.1, pos.z);
+      legGroup.position.set(pos.x, -0.05, pos.z);
 
-      // Hip Joint
-      const hipMesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 12), jointMat);
+      // 1. Hip Knuckle Module
+      const hipMesh = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 12), spotDarkMat);
       legGroup.add(hipMesh);
 
-      // Thigh Link
-      const thighMesh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.1), legMat);
-      thighMesh.position.set(0, -0.2, 0);
-      legGroup.add(thighMesh);
+      const hipCap = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 12), spotYellowMat);
+      hipCap.rotation.x = Math.PI / 2;
+      hipCap.position.set(0, 0, pos.z > 0 ? 0.05 : -0.05);
+      legGroup.add(hipCap);
 
-      // Shank / Foot Link
-      const shankMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.45), legMat);
-      shankMesh.position.set(0, -0.55, 0);
-      legGroup.add(shankMesh);
+      // 2. Thigh / Upper Leg Link (Angled Carbon Arm + Yellow Armor Plate)
+      const thighGroup = new THREE.Group();
+      thighGroup.position.set(0, 0, 0);
 
-      robotGroup.add(legGroup);
+      const thighMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.42, 0.08), spotDarkMat);
+      thighMesh.position.set(0, -0.21, 0);
+      thighMesh.castShadow = true;
+      thighGroup.add(thighMesh);
+
+      // Spot Yellow Upper Leg Armor Shield
+      const armorMesh = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.36, 0.02), spotYellowMat);
+      armorMesh.position.set(0, -0.20, pos.z > 0 ? 0.045 : -0.045);
+      thighGroup.add(armorMesh);
+
+      // Knee Joint Pivot
+      const kneeMesh = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), jointMat);
+      kneeMesh.position.set(0, -0.42, 0);
+      thighGroup.add(kneeMesh);
+
+      // 3. Shank / Lower Leg Link (Tapered Carbon Shaft)
+      const shankMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.48, 12), spotDarkMat);
+      shankMesh.position.set(0, -0.66, 0);
+      shankMesh.rotation.z = -0.12; // Realistic Spot backward knee bend
+      thighGroup.add(shankMesh);
+
+      // Foot Pad (Soft Rubber Dome)
+      const footMesh = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), spotHeadMat);
+      footMesh.position.set(-0.05, -0.90, 0);
+      thighGroup.add(footMesh);
+
+      legGroup.add(thighGroup);
+      spotGroup.add(legGroup);
       legs.push(legGroup);
     });
     legsRef.current = legs;
 
-    // --- Kinematic Chain 2: Hydrofoil Pontoons (Sailing Mode) ---
+    // --- Spot Hydrofoil Pontoons (Sailing Mode) ---
     const pontoons: THREE.Group[] = [];
-    const pontoonMat = new THREE.MeshStandardMaterial({ color: 0xeeb012, roughness: 0.3, metalness: 0.5 });
-
-    [-0.55, 0.55].forEach((zPos) => {
+    [-0.52, 0.52].forEach((zPos) => {
       const pGroup = new THREE.Group();
-      pGroup.position.set(0, -0.1, zPos);
+      pGroup.position.set(0, -0.05, zPos);
 
-      const pontoonMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.3, 16), pontoonMat);
+      // Yellow + Dark Hydrodynamic Float Hull
+      const pontoonMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 1.35, 16), spotYellowMat);
       pontoonMesh.rotation.z = Math.PI / 2;
+
+      // Dark Hydrodynamic Nose Cones
+      const noseGeo = new THREE.ConeGeometry(0.11, 0.3, 16);
+      const noseFront = new THREE.Mesh(noseGeo, spotDarkMat);
+      noseFront.rotation.z = -Math.PI / 2;
+      noseFront.position.set(0.825, 0, 0);
+      pGroup.add(noseFront);
+
+      const noseBack = new THREE.Mesh(noseGeo, spotDarkMat);
+      noseBack.rotation.z = Math.PI / 2;
+      noseBack.position.set(-0.825, 0, 0);
+      pGroup.add(noseBack);
+
       pGroup.add(pontoonMesh);
 
-      robotGroup.add(pGroup);
+      // Deployment Link Arm
+      const armGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.35, 8);
+      const armMesh = new THREE.Mesh(armGeo, spotDarkMat);
+      armMesh.position.set(0, 0.18, 0);
+      pGroup.add(armMesh);
+
+      spotGroup.add(pGroup);
       pontoons.push(pGroup);
     });
     pontoonsRef.current = pontoons;
 
-    // --- Kinematic Chain 3: Quadrotor Propellers (Flying Mode) ---
+    // --- B. DETACHABLE AERIAL FLYING DRONE ---
+    const droneGroup = new THREE.Group();
+    droneGroupRef.current = droneGroup;
+
+    // Drone Avionics Hub Core (Dark Graphite + Yellow Trim)
+    const droneCoreGeo = new THREE.CylinderGeometry(0.22, 0.24, 0.12, 16);
+    const droneCoreMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.9 });
+    const droneCore = new THREE.Mesh(droneCoreGeo, droneCoreMat);
+    droneGroup.add(droneCore);
+
+    // Drone Top Shell Fairing (Spot Yellow Accent)
+    const droneCapGeo = new THREE.CylinderGeometry(0.14, 0.20, 0.06, 16);
+    const droneCap = new THREE.Mesh(droneCapGeo, spotYellowMat);
+    droneCap.position.y = 0.08;
+    droneGroup.add(droneCap);
+
+    // Glowing LED Ring around Drone Core
+    const droneRingGeo = new THREE.TorusGeometry(0.23, 0.018, 8, 24);
+    const droneRingMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+    const droneRing = new THREE.Mesh(droneRingGeo, droneRingMat);
+    droneRing.rotation.x = Math.PI / 2;
+    droneGroup.add(droneRing);
+
+    // Front HD FPV Camera Gimbal
+    const gimbalGeo = new THREE.SphereGeometry(0.075, 12, 12);
+    const gimbalMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.2 });
+    const gimbal = new THREE.Mesh(gimbalGeo, gimbalMat);
+    gimbal.position.set(0.24, 0, 0);
+    droneGroup.add(gimbal);
+
+    // FPV Optical Camera Glass Lens
+    const fpvLensGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.02, 16);
+    const fpvLensMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.9 });
+    const fpvLens = new THREE.Mesh(fpvLensGeo, fpvLensMat);
+    fpvLens.rotation.z = Math.PI / 2;
+    fpvLens.position.set(0.31, 0, 0);
+    droneGroup.add(fpvLens);
+
+    // 4 Carbon Rotor Arms + Shrouded Ducted Propeller Guards
     const props: THREE.Mesh[] = [];
-    const propMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.75 });
+    const propMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.8 });
+    const armPositions = [
+      { x: 0.38, z: 0.38 },
+      { x: 0.38, z: -0.38 },
+      { x: -0.38, z: 0.38 },
+      { x: -0.38, z: -0.38 },
+    ];
 
-    [
-      { x: 0.6, z: 0.55 },
-      { x: 0.6, z: -0.55 },
-      { x: -0.6, z: 0.55 },
-      { x: -0.6, z: -0.55 },
-    ].forEach((pPos) => {
-      const armMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3), legMat);
-      armMesh.position.set(pPos.x, 0.1, pPos.z);
-      robotGroup.add(armMesh);
+    armPositions.forEach((pPos) => {
+      // Diagonal Carbon Arm
+      const armGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.52, 8);
+      const armMesh = new THREE.Mesh(armGeo, spotDarkMat);
+      armMesh.rotation.x = Math.PI / 2;
+      armMesh.rotation.z = Math.atan2(pPos.z, pPos.x);
+      armMesh.position.set(pPos.x / 2, 0, pPos.z / 2);
+      droneGroup.add(armMesh);
 
-      const propDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.01, 16), propMat);
-      propDisc.position.set(pPos.x, 0.25, pPos.z);
-      robotGroup.add(propDisc);
+      // Ducted Propeller Guard Shroud (Ring around prop)
+      const shroudGeo = new THREE.TorusGeometry(0.22, 0.018, 12, 24);
+      const shroudMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.4 });
+      const shroud = new THREE.Mesh(shroudGeo, shroudMat);
+      shroud.rotation.x = Math.PI / 2;
+      shroud.position.set(pPos.x, 0.02, pPos.z);
+      droneGroup.add(shroud);
+
+      // Spinning Propeller Disc
+      const propDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.20, 0.008, 16), propMat);
+      propDisc.position.set(pPos.x, 0.03, pPos.z);
+      droneGroup.add(propDisc);
       props.push(propDisc);
     });
     propellersRef.current = props;
 
-    // --- Sensor Suite 3D Models ---
+    // Underside Docking Latch Pins (Fit onto Spot's back)
+    [
+      { x: 0.12, z: 0.16 },
+      { x: 0.12, z: -0.16 },
+      { x: -0.32, z: 0.16 },
+      { x: -0.32, z: -0.16 },
+    ].forEach((pinPos) => {
+      const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.05, 8), spotDarkMat);
+      pin.position.set(pinPos.x, -0.08, pinPos.z);
+      droneGroup.add(pin);
+    });
+
+    // Attach Sensor Suite onto Detachable Drone
     // LiDAR Dome
     const lidarGroup = new THREE.Group();
-    lidarGroup.position.set(0, 0.25, 0);
+    lidarGroup.position.set(0, 0.13, 0);
     const lidarBase = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.1, 0.1, 0.1, 16),
-      new THREE.MeshStandardMaterial({ color: 0x111111 })
+      new THREE.CylinderGeometry(0.08, 0.08, 0.06, 16),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a })
     );
     const lidarDome = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.09, 0.09, 0.08, 16),
-      new THREE.MeshStandardMaterial({ color: 0x0088ff, roughness: 0.2 })
+      new THREE.CylinderGeometry(0.07, 0.07, 0.06, 16),
+      new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2 })
     );
-    lidarDome.position.y = 0.08;
+    lidarDome.position.y = 0.06;
     lidarGroup.add(lidarBase);
     lidarGroup.add(lidarDome);
-    robotGroup.add(lidarGroup);
+    droneGroup.add(lidarGroup);
     lidarMeshRef.current = lidarGroup;
 
-    // Laser Ray Visualizer Lines (360 degree scan beam rays)
+    // Laser Ray Visualizer Lines
     const rayCount = 36;
     const linePositions = new Float32Array(rayCount * 6);
     const rayGeo = new THREE.BufferGeometry();
     rayGeo.setAttribute("position", new THREE.BufferAttribute(linePositions, 3));
     const rayMat = new THREE.LineBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.6 });
     const laserRays = new THREE.LineSegments(rayGeo, rayMat);
-    laserRays.position.set(0, 0.33, 0);
-    robotGroup.add(laserRays);
+    laserRays.position.set(0, 0.20, 0);
+    droneGroup.add(laserRays);
     laserRaysRef.current = laserRays;
 
     // Underwater Sonar Acoustic Pulse Rings
@@ -649,9 +796,33 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     });
     const sonarMesh = new THREE.Mesh(sonarGeo, sonarMat);
     sonarMesh.rotation.x = Math.PI / 2;
-    sonarMesh.position.set(0.3, -0.2, 0);
-    robotGroup.add(sonarMesh);
+    sonarMesh.position.set(0.3, -0.1, 0);
+    droneGroup.add(sonarMesh);
     sonarPulseMeshRef.current = sonarMesh;
+
+    // Spotlight Headlight on Drone Nose
+    const spotlight = new THREE.SpotLight(0xffffff, 8.0, 30, Math.PI / 4, 0.3, 1);
+    spotlight.position.set(0.3, 0, 0);
+    spotlight.target.position.set(3, 0, 0);
+    spotlightRef.current = spotlight;
+    droneGroup.add(spotlight);
+    droneGroup.add(spotlight.target);
+
+    // Initial Docked Position on top of Spot's back
+    droneGroup.position.set(-0.1, 0.28, 0);
+    robotGroup.add(droneGroup);
+
+    // 3D Anti-Collision Shield Wireframe Sphere
+    const shieldGeo = new THREE.SphereGeometry(1.6, 18, 18);
+    const shieldMat = new THREE.MeshBasicMaterial({
+      color: 0x10b981,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.18,
+    });
+    const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+    shieldMeshRef.current = shieldMesh;
+    robotGroup.add(shieldMesh);
 
     // Initial position on dry cave ground
     robotGroup.position.set(-15, 0.6, 0);
@@ -757,51 +928,83 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
           sonarPulseMeshRef.current.visible = false;
         }
 
-        // Mode Specific Kinematic Adaptations & Visual Effects
+        // Mode Specific Kinematic Adaptations & Detachable Drone VTOL Separation
         const currentMode = robotStateRef.current.mode;
         if (currentMode === "WALKING") {
-          // Quadruped Leg Walking Gait Motion
+          // Spot Quadruped Trotting Gait Motion
           const gaitSpeed = 8;
           legsRef.current.forEach((leg, idx) => {
             const offset = idx % 2 === 0 ? 0 : Math.PI;
             leg.rotation.z = Math.sin(elapsedTime * gaitSpeed + offset) * 0.35;
-            leg.position.y = -0.1 + Math.max(0, Math.sin(elapsedTime * gaitSpeed + offset) * 0.08);
+            leg.position.y = -0.05 + Math.max(0, Math.sin(elapsedTime * gaitSpeed + offset) * 0.08);
           });
           // Retract Pontoons
           pontoonsRef.current.forEach((p) => {
             p.position.y = 0.1;
           });
+          // Drone Docked on Spot's Back Cradle
+          if (droneGroupRef.current) {
+            droneGroupRef.current.position.set(-0.1, 0.28, 0);
+            droneGroupRef.current.rotation.set(0, 0, 0);
+          }
+          if (spotGroupRef.current) {
+            spotGroupRef.current.position.set(0, 0, 0);
+          }
           // Idle Propellers
           propellersRef.current.forEach((pr) => {
-            pr.rotation.y = 0;
+            pr.rotation.y += 0.02;
           });
         } else if (currentMode === "SAILING") {
-          // Lock Legs into Floating Stance
+          // Spot Lock Legs into Floating Hydrofoil Stance
           legsRef.current.forEach((leg) => {
-            leg.rotation.z = -0.6;
-            leg.position.y = 0.1;
+            leg.rotation.z = -0.5;
+            leg.position.y = 0.05;
           });
-          // Lower Pontoons to Waterline
+          // Lower Hydrofoil Pontoons to Waterline
           pontoonsRef.current.forEach((p) => {
-            p.position.y = -0.15;
+            p.position.y = -0.18;
+          });
+          // Drone Docked on Spot's Back Cradle
+          if (droneGroupRef.current) {
+            droneGroupRef.current.position.set(-0.1, 0.28, 0);
+            droneGroupRef.current.rotation.set(0, 0, 0);
+          }
+          if (spotGroupRef.current) {
+            spotGroupRef.current.position.set(0, 0, 0);
+          }
+          // Slow Propeller Rotation
+          propellersRef.current.forEach((pr) => {
+            pr.rotation.y += 0.05;
           });
           // Bobbing Water Surface Motion (only when in flooded water section)
           if (rPos.x >= -5 && rPos.x <= 12) {
             rPos.y = -0.05 + Math.sin(elapsedTime * 2) * 0.04;
           }
         } else if (currentMode === "FLYING") {
-          // Fold Legs into Compact Skids
+          // Spot Quadruped Stays Grounded / Parked in Stable Stance
           legsRef.current.forEach((leg) => {
-            leg.rotation.z = -1.2;
-            leg.position.y = 0.12;
+            leg.rotation.z = 0;
+            leg.position.y = -0.05;
           });
-          // Retract Pontoons
           pontoonsRef.current.forEach((p) => {
             p.position.y = 0.1;
           });
-          // High RPM Spinning Propellers
+
+          // DETACHABLE FLYING DRONE TAKES OFF / ASCENDS!
+          if (droneGroupRef.current && spotGroupRef.current) {
+            // Spot stays at ground/platform altitude level (1.35m or 16.75m balcony)
+            const spotGroundY = rPos.y >= 15.0 ? 16.75 : 1.35;
+            const localSpotOffset = -(rPos.y - spotGroundY);
+            spotGroupRef.current.position.y = localSpotOffset;
+
+            // Detachable Drone lifts off from Spot's back docking cradle
+            droneGroupRef.current.position.set(-0.1, 0.35 + Math.sin(elapsedTime * 3) * 0.08, 0);
+            droneGroupRef.current.rotation.z = Math.sin(elapsedTime * 2) * 0.04;
+          }
+
+          // High RPM Spinning Propellers for VTOL Flight
           propellersRef.current.forEach((pr) => {
-            pr.rotation.y += 0.8;
+            pr.rotation.y += 0.85;
           });
         }
 
@@ -946,12 +1149,22 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     <div className="relative w-full h-full min-h-[420px] bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col">
       {/* Viewport Top Control Overlay */}
       <div className="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-lg border border-slate-700/60 text-xs font-mono text-slate-200">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 text-sky-400 font-semibold border border-slate-700">
             <Compass className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: "8s" }} />
             Gazebo Harmonic
           </span>
-          <span className="text-slate-400 font-mono hidden sm:inline">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 font-semibold border border-amber-500/30 text-[11px]">
+            Spot Chassis
+          </span>
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-semibold border text-[11px] ${
+            robotState.mode === "FLYING"
+              ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40 animate-pulse"
+              : "bg-sky-500/15 text-sky-300 border-sky-500/40"
+          }`}>
+            Drone: {robotState.mode === "FLYING" ? "AIRBORNE DETACHED" : "DOCKED ON BACK"}
+          </span>
+          <span className="text-slate-400 font-mono hidden lg:inline">
             Zone: <strong className="text-emerald-400">{getCurrentSectionName(robotState.position.x)}</strong>
           </span>
         </div>
@@ -1028,12 +1241,45 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
             id="toggle-lidar-beams"
             onClick={() => setShowLaserBeams(!showLaserBeams)}
             className={`px-2 py-1 rounded text-xs transition ${
-              showLaserBeams ? "bg-emerald-600/80 text-white" : "bg-slate-800 text-slate-400"
+              showLaserBeams ? "bg-emerald-600/80 text-white font-semibold" : "bg-slate-800 text-slate-400"
             }`}
             title="Toggle 3D LiDAR Laser Scan Beams"
           >
             LiDAR Rays
           </button>
+
+          {/* Underwater Sonar Toggle Button */}
+          <button
+            id="toggle-sonar-pulse"
+            onClick={() => {
+              const nextVal = !showSonarPulse;
+              setShowSonarPulse(nextVal);
+              setSensorData((prev) => ({ ...prev, sonarActive: nextVal }));
+            }}
+            className={`px-2 py-1 rounded text-xs transition flex items-center gap-1 ${
+              showSonarPulse
+                ? "bg-rose-600/90 text-white font-bold shadow-[0_0_8px_rgba(244,63,94,0.4)]"
+                : "bg-slate-800 text-slate-400 border border-slate-700"
+            }`}
+            title="Toggle Underwater Bathymetric Sonar Scanning Pulse"
+          >
+            <Radio className="w-3 h-3 text-rose-300 animate-pulse" />
+            <span>Sonar:</span> {showSonarPulse ? "ON" : "OFF"}
+          </button>
+
+          {/* WiFi Video Stream Status Badge */}
+          <div
+            className={`px-2 py-1 rounded text-xs transition flex items-center gap-1 border ${
+              sensorData.wifiStreamingActive
+                ? "bg-sky-500/15 text-sky-300 border-sky-500/40"
+                : "bg-slate-800 text-slate-400 border-slate-700"
+            }`}
+            title="5.8GHz High-Bandwidth Wi-Fi Video Stream from Flying Drone to Base Companion Computer"
+          >
+            <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+            <span className="hidden sm:inline font-mono font-semibold">WiFi Stream:</span>
+            <span className="text-emerald-400 font-mono font-bold">1080p 60fps</span>
+          </div>
 
           <button
             id="toggle-headlight"

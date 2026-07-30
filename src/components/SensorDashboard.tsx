@@ -17,18 +17,25 @@ import {
   Circle,
   Sun,
   Maximize2,
+  Wifi,
+  Rss,
+  Server,
 } from "lucide-react";
 
 interface SensorDashboardProps {
   robotState: RobotState;
   sensorData: SensorData;
   onSetBattery?: (val: number) => void;
+  onToggleSonar?: () => void;
+  onToggleWifi?: () => void;
 }
 
 export const SensorDashboard: React.FC<SensorDashboardProps> = ({
   robotState,
   sensorData,
   onSetBattery,
+  onToggleSonar,
+  onToggleWifi,
 }) => {
   const lidarCanvasRef = useRef<HTMLCanvasElement>(null);
   const cameraCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -274,13 +281,17 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
 
           <div className="relative w-full aspect-video rounded overflow-hidden border border-slate-800 bg-black">
             <canvas ref={cameraCanvasRef} width={320} height={180} className="w-full h-full object-cover" />
-            <div className="absolute top-2 left-2 flex items-center gap-1">
+            <div className="absolute top-2 left-2 flex flex-wrap items-center gap-1">
               <span className="bg-slate-900/80 backdrop-blur text-sky-300 border border-slate-700 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold">
                 FPV ISO: 3200
               </span>
               <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold">
                 +{brightnessLevel === "ultra" ? "3.0" : brightnessLevel === "high" ? "1.5" : "0.0"} EV
               </span>
+            </div>
+            <div className="absolute top-2 right-2 flex items-center gap-1 bg-sky-950/80 backdrop-blur text-sky-300 border border-sky-500/40 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold">
+              <Wifi className="w-3 h-3 text-sky-400 animate-pulse" />
+              <span>WiFi Stream: {sensorData.wifiBitrateMbps.toFixed(1)} Mbps</span>
             </div>
             {robotState.headlightOn && (
               <span className="absolute bottom-2 right-2 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold">
@@ -338,12 +349,12 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
         </div>
 
         {/* Sensor 3: Underwater Sonar Acoustic Bathymetry */}
-        <div className="bg-slate-950 rounded-lg p-2.5 border border-slate-800 flex flex-col gap-2">
+        <div className="bg-slate-950 rounded-lg p-2.5 border border-slate-800 flex flex-col justify-between gap-2">
           <div className="flex items-center justify-between text-xs font-mono text-slate-400">
             <span className="flex items-center gap-1.5 text-rose-300 font-semibold">
               <Waves className="w-3.5 h-3.5 text-rose-400" /> Underwater Sonar Depth
             </span>
-            <span className="text-slate-500">Topic: /sonar/echo</span>
+            <span className="text-slate-500 text-[10px]">Topic: /sonar/echo</span>
           </div>
 
           <div className="w-full aspect-video rounded border border-slate-800 bg-slate-950 p-2.5 flex flex-col justify-between font-mono text-xs">
@@ -368,8 +379,25 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
 
             <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
               <span>Waterline Surface: <strong className="text-cyan-400">z = 0.0m</strong></span>
-              <span>Submersion: <strong className={robotState.waterSubmerged ? "text-cyan-400" : "text-slate-500"}>{robotState.waterSubmerged ? "ACTIVE" : "NONE"}</strong></span>
+              <span>Sonar Status: <strong className={sensorData.sonarActive ? "text-emerald-400" : "text-slate-500"}>{sensorData.sonarActive ? "ACTIVE (PINGING)" : "OFF"}</strong></span>
             </div>
+          </div>
+
+          {/* Underwater Sonar Interactive Button */}
+          <div className="pt-1 border-t border-slate-800/80 font-mono text-[10px]">
+            <button
+              id="btn-toggle-sonar-dashboard"
+              onClick={onToggleSonar}
+              className={`w-full py-1 px-2 rounded font-bold transition flex items-center justify-center gap-1.5 ${
+                sensorData.sonarActive
+                  ? "bg-rose-600 hover:bg-rose-500 text-white shadow-[0_0_10px_rgba(244,63,94,0.4)]"
+                  : "bg-slate-900 hover:bg-slate-800 text-rose-300 border border-rose-500/30"
+              }`}
+              title="Toggle Underwater Bathymetric Acoustic Sonar Pulse"
+            >
+              <Radio className="w-3.5 h-3.5 text-rose-300 animate-pulse" />
+              {sensorData.sonarActive ? "Disable Underwater Sonar" : "Enable Underwater Sonar"}
+            </button>
           </div>
         </div>
 

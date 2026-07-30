@@ -23,13 +23,7 @@ export const getMinGroundHeight = (x: number, y: number, mode: LocomotionMode, c
   } else {
     // Section 3: Air Pocket & Vertical Ascent Shaft (x > 12)
     // Extended 25m shaft chimney allows flight up to z = 24.0m
-    if (mode === "WALKING") {
-      // 16m high balcony platform top surface is at Z = 16.0m -> quadruped body Z = 16.75m
-      if (x >= 17 && (currentZ === undefined || currentZ > 10.0)) {
-        return 16.75;
-      }
-      return 1.35;   // Base ground clearance
-    }
+    if (mode === "WALKING") return 1.35;   // Base ground clearance for Spot companion computer base
     if (mode === "SAILING") return 0.55;
     return 1.0;      // Flight clearance in open vertical shaft
   }
@@ -47,10 +41,7 @@ export const getAutoSectionMode = (x: number, y: number, z: number, currentMode:
     return "SAILING";               // Water surface hydrofoil sailing
   } else {
     // Section 3: Air Pocket & Vertical Shaft -> FLYING default for VTOL ascent up to 25m shaft ceiling
-    if (x >= 17 && z >= 15.0 && currentMode === "WALKING") {
-      return "WALKING"; // Standing & walking on top of 16m balcony platform
-    }
-    return "FLYING"; // Ascending vertical tube chimney
+    return "FLYING"; // Ascending vertical tube chimney for full 3D mapping
   }
 };
 
@@ -92,9 +83,14 @@ export default function App() {
     cameraActive: true,
     cameraResolution: "1280x720",
     featurePointsCount: 42,
+    wifiStreamingActive: true,
+    wifiSignalDbm: -42,
+    wifiBitrateMbps: 48.5,
+    wifiLatencyMs: 12,
     lidarRanges: Array.from({ length: 36 }, () => 3 + Math.random() * 2.5),
     lidarMinDist: 0.2,
     lidarMaxDist: 12.0,
+    sonarActive: true,
     sonarDepth: 3.5,
     sonarEchoStrength: 88,
     imuAccel: { x: 0, y: 0, z: 9.81 },
@@ -151,16 +147,16 @@ export default function App() {
         position: { x: 0, y: -0.4, z: 0.55 },
         section: "FLOODED_WATER",
         completed: false,
-        description: "Surface sailing on raised flooded channel (z=0.6m)",
+        description: "Surface sailing on raised flooded channel with underwater sonar active",
       },
       {
         id: "wp6",
-        name: "Submerged Rock Passage Center",
+        name: "Submerged Rock Passage Bathymetry",
         targetMode: "SAILING",
         position: { x: 4, y: 0.3, z: 0.55 },
         section: "FLOODED_WATER",
         completed: false,
-        description: "Hydrofoil surface navigation over submerged rock formations",
+        description: "Hydrofoil surface navigation over seabed with active sonar profiling",
       },
       {
         id: "wp7",
@@ -173,93 +169,111 @@ export default function App() {
       },
       {
         id: "wp8",
-        name: "Air Pocket Beach Transition",
+        name: "Air Pocket Beach / Spot Base Station",
         targetMode: "SAILING",
         position: { x: 11, y: 0, z: 0.8 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Entering air pocket cave zone at base of vertical shaft",
+        description: "Spot quadruped base companion computer parks at base of vertical shaft",
       },
       {
         id: "wp9",
-        name: "Shaft Base Portal Approach",
+        name: "Shaft VTOL Takeoff & WiFi Streaming Sync",
         targetMode: "FLYING",
-        position: { x: 13.2, y: 0, z: 2.0 },
+        position: { x: 13.0, y: 0, z: 2.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "VTOL transition into wide open 10.4m diameter shaft portal",
+        description: "Detachable flying drone detaches; 5.8GHz WiFi video stream syncs with Spot base",
       },
       {
         id: "wp10",
-        name: "VTOL Takeoff & Shaft Tube Entry",
+        name: "Lower Shaft Helical Mapping (West Sweep)",
         targetMode: "FLYING",
-        position: { x: 15.5, y: 0, z: 3.8 },
+        position: { x: 17.2, y: 1.5, z: 5.5 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Ascending into vertical tube chimney (z=3.8m)",
+        description: "Ascending into lower shaft tube with 3D point cloud generation (z=5.5m)",
       },
       {
         id: "wp11",
-        name: "Lower Shaft Spire Evasion (North)",
+        name: "Lower Shaft Helical Mapping (East Sweep)",
         targetMode: "FLYING",
-        position: { x: 17.5, y: 0.8, z: 6.2 },
+        position: { x: 18.8, y: -1.5, z: 8.5 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Bypassing compact lower rock spire with safe clearance (z=6.2m)",
+        description: "3D LiDAR mapping of mid-shaft rock features and obstruction bypass (z=8.5m)",
       },
       {
         id: "wp12",
-        name: "Mid-Shaft Arch Pass (South)",
+        name: "Mid-Shaft Chimney SLAM Scan & WiFi Sync",
         targetMode: "FLYING",
-        position: { x: 18.8, y: -0.8, z: 9.8 },
+        position: { x: 18.0, y: 0.8, z: 12.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Navigating open central flight channel past mid arch (z=9.8m)",
+        description: "Streaming 1080p video & feature points to Spot base companion computer (z=12.0m)",
       },
       {
         id: "wp13",
-        name: "Upper Shaft Stalactite Clearance",
+        name: "Upper Shaft Helical Sweep (South Wall)",
         targetMode: "FLYING",
-        position: { x: 17.6, y: 0.6, z: 13.5 },
+        position: { x: 18.8, y: -1.2, z: 15.5 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Smooth evasion of upper compact stalactite overhang (z=13.5m)",
+        description: "3D mapping of upper shaft stalactite formations (z=15.5m)",
       },
       {
         id: "wp14",
-        name: "Upper Shaft Rock Shelf Bypass",
+        name: "Upper Shaft Helical Sweep (North Wall)",
         targetMode: "FLYING",
-        position: { x: 18.8, y: -0.5, z: 16.5 },
+        position: { x: 17.5, y: 1.2, z: 19.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Ascending past upper rock shelf obstacle (z=16.5m)",
+        description: "High altitude vertical flight mapping up the tube (z=19.0m)",
       },
       {
         id: "wp15",
-        name: "Shaft High Ceiling Apex Sweep",
+        name: "Shaft Apex Ceiling Dome 3D Mapping",
         targetMode: "FLYING",
-        position: { x: 18.5, y: 0, z: 21.0 },
+        position: { x: 18.5, y: 0, z: 23.5 },
         section: "AIR_POCKET",
         completed: false,
-        description: "High altitude exploration near 25m shaft ceiling (z=21.0m)",
+        description: "Full 3D mapping of 25m shaft ceiling dome apex (z=23.5m)",
       },
       {
         id: "wp16",
-        name: "16m Balcony Landing Descent Approach",
+        name: "Shaft Apex 360 Spin & WiFi Telemetry Flush",
         targetMode: "FLYING",
-        position: { x: 18.8, y: 0, z: 17.5 },
+        position: { x: 18.5, y: 0, z: 22.5 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Aligning VTOL descent vector over 16m high balcony platform",
+        description: "360-degree panorama SLAM sync to Spot companion base computer",
       },
       {
         id: "wp17",
-        name: "16m Balcony Touchdown & Leg Lock",
-        targetMode: "WALKING",
-        position: { x: 19.2, y: 0, z: 16.75 },
+        name: "Shaft Return Descending Mapping Sweep",
+        targetMode: "FLYING",
+        position: { x: 17.8, y: -0.6, z: 14.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Landing and walking on 16m high balcony summit platform (z=16.75m)",
+        description: "Descending flight verifying shaft point cloud map continuity",
+      },
+      {
+        id: "wp18",
+        name: "Shaft Lower Portal Docking Alignment",
+        targetMode: "FLYING",
+        position: { x: 15.0, y: 0, z: 4.5 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Aligning VTOL descent vector with Spot base station docking bay",
+      },
+      {
+        id: "wp19",
+        name: "Spot Back Cradle Docking Touchdown",
+        targetMode: "FLYING",
+        position: { x: 13.0, y: 0, z: 1.5 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Precision landing and docking onto Spot companion base cradle",
       },
     ],
     autoTransitions: true,
@@ -500,6 +514,17 @@ export default function App() {
               robotState={robotState}
               sensorData={sensorData}
               onSetBattery={(val) => setRobotState((prev) => ({ ...prev, battery: val }))}
+              onToggleSonar={() => {
+                const nextVal = !showSonarPulse;
+                setShowSonarPulse(nextVal);
+                setSensorData((prev) => ({ ...prev, sonarActive: nextVal }));
+              }}
+              onToggleWifi={() => {
+                setSensorData((prev) => ({
+                  ...prev,
+                  wifiStreamingActive: !prev.wifiStreamingActive,
+                }));
+              }}
             />
           </>
         )}

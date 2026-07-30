@@ -116,9 +116,9 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
         nz = minFloorZ;
       }
 
-      // Vertical shaft altitude gain inside tube up to 19.5m
+      // Vertical shaft altitude gain inside tube up to 24.0m ceiling
       if (nx >= 13 && detectedMode === "FLYING") {
-        nz = Math.min(19.5, nz);
+        nz = Math.min(24.0, nz);
       }
 
       return {
