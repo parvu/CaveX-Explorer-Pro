@@ -22,11 +22,11 @@ export const getMinGroundHeight = (x: number, y: number, mode: LocomotionMode, c
     return 1.40;                          // Quadrotor flight clearance above raised water surface
   } else {
     // Section 3: Air Pocket & Vertical Ascent Shaft (x > 12)
-    // Extended 20m shaft chimney allows flight up to z = 19.5m
+    // Extended 25m shaft chimney allows flight up to z = 24.0m
     if (mode === "WALKING") {
-      // Upper balcony platform is at X >= 17, top surface Z = 12.2m -> quadruped Z = 12.95m
-      if (x >= 17 && (currentZ === undefined || currentZ > 6.0)) {
-        return 12.95;
+      // 16m high balcony platform top surface is at Z = 16.0m -> quadruped body Z = 16.75m
+      if (x >= 17 && (currentZ === undefined || currentZ > 10.0)) {
+        return 16.75;
       }
       return 1.35;   // Base ground clearance
     }
@@ -46,9 +46,9 @@ export const getAutoSectionMode = (x: number, y: number, z: number, currentMode:
     if (z > 1.8) return "FLYING";   // Aerial flight above water surface
     return "SAILING";               // Water surface hydrofoil sailing
   } else {
-    // Section 3: Air Pocket & Vertical Shaft -> FLYING default for VTOL ascent up to 20m shaft ceiling
-    if (x >= 17 && z >= 11.5 && currentMode === "WALKING") {
-      return "WALKING"; // Standing & walking on top of upper balcony platform
+    // Section 3: Air Pocket & Vertical Shaft -> FLYING default for VTOL ascent up to 25m shaft ceiling
+    if (x >= 17 && z >= 15.0 && currentMode === "WALKING") {
+      return "WALKING"; // Standing & walking on top of 16m balcony platform
     }
     return "FLYING"; // Ascending vertical tube chimney
   }
@@ -110,84 +110,156 @@ export default function App() {
     waypoints: [
       {
         id: "wp1",
-        name: "Dry Cave Entry Corridor",
+        name: "Dry Cave Patrol Origin",
         targetMode: "WALKING",
         position: { x: -15, y: 0, z: 1.35 },
         section: "DRY_CAVE",
         completed: true,
-        description: "Rugged stalagmite quadruped terrain walk",
+        description: "Rugged stalagmite quadruped ground start (-15m)",
       },
       {
         id: "wp2",
-        name: "Flooded Water Edge Transition",
+        name: "Rugged Dry Corridor Mid-Point",
+        targetMode: "WALKING",
+        position: { x: -10, y: 0.3, z: 1.35 },
+        section: "DRY_CAVE",
+        completed: false,
+        description: "Navigating through narrow dry stalagmite passage",
+      },
+      {
+        id: "wp3",
+        name: "Water Edge Transition Readiness",
+        targetMode: "WALKING",
+        position: { x: -6, y: 0, z: 1.35 },
+        section: "DRY_CAVE",
+        completed: false,
+        description: "Approaching dry section end / flooded water shore",
+      },
+      {
+        id: "wp4",
+        name: "Water Launch & Pontoon Deployment",
         targetMode: "SAILING",
         position: { x: -4, y: 0, z: 0.55 },
         section: "FLOODED_WATER",
         completed: false,
-        description: "Hydrofoil launch matching dry section water edge (z=0.6m)",
-      },
-      {
-        id: "wp3",
-        name: "Raised Water Surface Navigation",
-        targetMode: "SAILING",
-        position: { x: 6, y: 0, z: 0.55 },
-        section: "FLOODED_WATER",
-        completed: false,
-        description: "Hydrofoil surface sailing across raised cave lake (z=0.6m)",
-      },
-      {
-        id: "wp4",
-        name: "Vertical Shaft Base Portal Entrance",
-        targetMode: "FLYING",
-        position: { x: 13.8, y: 0, z: 2.2 },
-        section: "AIR_POCKET",
-        completed: false,
-        description: "VTOL transition into wide open shaft portal base",
+        description: "Hydrofoil launch matching raised water surface (z=0.6m)",
       },
       {
         id: "wp5",
-        name: "Lower Shaft Clearance (Compact Spire 1)",
-        targetMode: "FLYING",
-        position: { x: 17.5, y: 1.0, z: 6.0 },
-        section: "AIR_POCKET",
+        name: "Flooded Lake Cruise West",
+        targetMode: "SAILING",
+        position: { x: 0, y: -0.4, z: 0.55 },
+        section: "FLOODED_WATER",
         completed: false,
-        description: "Evading lower compact rock spire with wide clearance",
+        description: "Surface sailing on raised flooded channel (z=0.6m)",
       },
       {
         id: "wp6",
-        name: "Mid-Shaft Chimney Ascent (Compact Arch 2)",
-        targetMode: "FLYING",
-        position: { x: 18.5, y: -1.0, z: 10.0 },
-        section: "AIR_POCKET",
+        name: "Submerged Rock Passage Center",
+        targetMode: "SAILING",
+        position: { x: 4, y: 0.3, z: 0.55 },
+        section: "FLOODED_WATER",
         completed: false,
-        description: "Navigating open central channel past mid obstacle (z=10.0m)",
+        description: "Hydrofoil surface navigation over submerged rock formations",
       },
       {
         id: "wp7",
-        name: "Upper Shaft Clearance (Compact Stalactite 3)",
-        targetMode: "FLYING",
-        position: { x: 17.8, y: 0.8, z: 14.5 },
-        section: "AIR_POCKET",
+        name: "Flooded Lake East Shore Approach",
+        targetMode: "SAILING",
+        position: { x: 8, y: 0, z: 0.55 },
+        section: "FLOODED_WATER",
         completed: false,
-        description: "Clearing upper compact stalactite overhang (z=14.5m)",
+        description: "Approaching east shore transition of flooded channel",
       },
       {
         id: "wp8",
-        name: "20m Vertical Shaft High Apex Altitude",
-        targetMode: "FLYING",
-        position: { x: 18.5, y: 0, z: 18.0 },
+        name: "Air Pocket Beach Transition",
+        targetMode: "SAILING",
+        position: { x: 11, y: 0, z: 0.8 },
         section: "AIR_POCKET",
         completed: false,
-        description: "High altitude exploration inside 20m shaded vertical shaft (z=18.0m)",
+        description: "Entering air pocket cave zone at base of vertical shaft",
       },
       {
         id: "wp9",
-        name: "Upper Balcony Platform Summit Landing",
-        targetMode: "WALKING",
-        position: { x: 19.2, y: 0, z: 12.95 },
+        name: "Shaft Base Portal Approach",
+        targetMode: "FLYING",
+        position: { x: 13.2, y: 0, z: 2.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Landing and walking on upper balcony platform inside shaft (z=12.95m)",
+        description: "VTOL transition into wide open 10.4m diameter shaft portal",
+      },
+      {
+        id: "wp10",
+        name: "VTOL Takeoff & Shaft Tube Entry",
+        targetMode: "FLYING",
+        position: { x: 15.5, y: 0, z: 3.8 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Ascending into vertical tube chimney (z=3.8m)",
+      },
+      {
+        id: "wp11",
+        name: "Lower Shaft Spire Evasion (North)",
+        targetMode: "FLYING",
+        position: { x: 17.5, y: 0.8, z: 6.2 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Bypassing compact lower rock spire with safe clearance (z=6.2m)",
+      },
+      {
+        id: "wp12",
+        name: "Mid-Shaft Arch Pass (South)",
+        targetMode: "FLYING",
+        position: { x: 18.8, y: -0.8, z: 9.8 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Navigating open central flight channel past mid arch (z=9.8m)",
+      },
+      {
+        id: "wp13",
+        name: "Upper Shaft Stalactite Clearance",
+        targetMode: "FLYING",
+        position: { x: 17.6, y: 0.6, z: 13.5 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Smooth evasion of upper compact stalactite overhang (z=13.5m)",
+      },
+      {
+        id: "wp14",
+        name: "Upper Shaft Rock Shelf Bypass",
+        targetMode: "FLYING",
+        position: { x: 18.8, y: -0.5, z: 16.5 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Ascending past upper rock shelf obstacle (z=16.5m)",
+      },
+      {
+        id: "wp15",
+        name: "Shaft High Ceiling Apex Sweep",
+        targetMode: "FLYING",
+        position: { x: 18.5, y: 0, z: 21.0 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "High altitude exploration near 25m shaft ceiling (z=21.0m)",
+      },
+      {
+        id: "wp16",
+        name: "16m Balcony Landing Descent Approach",
+        targetMode: "FLYING",
+        position: { x: 18.8, y: 0, z: 17.5 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Aligning VTOL descent vector over 16m high balcony platform",
+      },
+      {
+        id: "wp17",
+        name: "16m Balcony Touchdown & Leg Lock",
+        targetMode: "WALKING",
+        position: { x: 19.2, y: 0, z: 16.75 },
+        section: "AIR_POCKET",
+        completed: false,
+        description: "Landing and walking on 16m high balcony summit platform (z=16.75m)",
       },
     ],
     autoTransitions: true,

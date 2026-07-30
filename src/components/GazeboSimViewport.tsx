@@ -343,34 +343,34 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     }
 
     // SECTION 3: AIR POCKET CAVE & ENLARGED SHADED VERTICAL SHAFT (x: 12 to 24)
-    // Elevated Dry Balcony Platform Summit inside shaft (Platform surface at Z=12.2m)
+    // Elevated Dry Balcony Platform Summit inside shaft (Platform surface at Z=16.0m, body height at Z=16.75m)
     const ledgeGeo = new THREE.BoxGeometry(4.2, 0.4, 4.5);
     const ledgeMat = new THREE.MeshStandardMaterial({ color: 0x362d26, roughness: 0.85 });
     const ledge = new THREE.Mesh(ledgeGeo, ledgeMat);
-    ledge.position.set(19.2, 12.0, 0);
+    ledge.position.set(19.2, 15.8, 0);
     ledge.receiveShadow = true;
     caveGroup.add(ledge);
 
-    // Landing target pad on top of the high balcony platform
+    // Landing target pad on top of the 16m high balcony platform
     const padGeo = new THREE.RingGeometry(0.4, 1.2, 24);
     const padMat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide });
     const padMesh = new THREE.Mesh(padGeo, padMat);
     padMesh.rotation.x = -Math.PI / 2;
-    padMesh.position.set(19.2, 12.21, 0);
+    padMesh.position.set(19.2, 16.01, 0);
     caveGroup.add(padMesh);
 
-    // Support pillars for high balcony platform
-    const pillarGeo = new THREE.CylinderGeometry(0.18, 0.25, 11.8, 8);
+    // Support pillars for 16m high balcony platform
+    const pillarGeo = new THREE.CylinderGeometry(0.18, 0.25, 15.6, 8);
     const pillar1 = new THREE.Mesh(pillarGeo, ledgeMat);
-    pillar1.position.set(21.0, 5.9, 1.8);
+    pillar1.position.set(21.0, 7.8, 1.8);
     caveGroup.add(pillar1);
     const pillar2 = new THREE.Mesh(pillarGeo, ledgeMat);
-    pillar2.position.set(21.0, 5.9, -1.8);
+    pillar2.position.set(21.0, 7.8, -1.8);
     caveGroup.add(pillar2);
 
-    // Dedicated Enlarged Shaded Vertical Ascent Shaft Chimney (Radius 5.2m, Height 20.0m)
+    // Dedicated Enlarged Shaded Vertical Ascent Shaft Chimney (Radius 5.2m, Height 25.0m)
     // Smooth shaded surface material with transparency = 0.7 (NO wireframe)
-    const shaftGeo = new THREE.CylinderGeometry(5.2, 5.2, 20.0, 32, 20, true, Math.PI * 0.25, Math.PI * 1.5);
+    const shaftGeo = new THREE.CylinderGeometry(5.2, 5.2, 25.0, 32, 25, true, Math.PI * 0.25, Math.PI * 1.5);
     const shaftMat = new THREE.MeshPhysicalMaterial({
       color: 0x38bdf8,
       transparent: true,
@@ -383,11 +383,11 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       side: THREE.DoubleSide,
     });
     const shaftMesh = new THREE.Mesh(shaftGeo, shaftMat);
-    shaftMesh.position.set(18.5, 10.2, 0);
+    shaftMesh.position.set(18.5, 12.5, 0);
     caveGroup.add(shaftMesh);
 
     // Solid Shaded Structural Bezel Collar Rings for Vertical Shaft (Shaded, non-wireframe accents)
-    [0.2, 20.2].forEach((collarY) => {
+    [0.2, 25.0].forEach((collarY) => {
       const collarGeo = new THREE.TorusGeometry(5.22, 0.08, 12, 36);
       const collarMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.5 });
       const collar = new THREE.Mesh(collarGeo, collarMat);
@@ -404,10 +404,10 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     portalArch.position.set(13.3, 3.5, 0);
     caveGroup.add(portalArch);
 
-    // Glowing Guidance Rings Inside Vertical Shaft (Spanning up to 19.0m altitude)
-    [3.2, 6.5, 9.8, 13.0, 16.5, 19.0].forEach((ringY, idx) => {
+    // Glowing Guidance Rings Inside Vertical Shaft (Spanning up to 23.0m altitude)
+    [3.2, 6.5, 9.8, 13.0, 16.0, 19.5, 23.0].forEach((ringY, idx) => {
       const ringGeo = new THREE.TorusGeometry(5.15, 0.05, 8, 36);
-      const ringMat = new THREE.MeshBasicMaterial({ color: idx === 5 ? 0x10b981 : 0x06b6d4, transparent: true, opacity: 0.75 });
+      const ringMat = new THREE.MeshBasicMaterial({ color: idx === 6 ? 0x10b981 : 0x06b6d4, transparent: true, opacity: 0.75 });
       const ringMesh = new THREE.Mesh(ringGeo, ringMat);
       ringMesh.rotation.x = Math.PI / 2;
       ringMesh.position.set(18.5, ringY, 0);
@@ -471,11 +471,11 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       opacity: 0.45,
     });
 
-    // Expanded High Cavern Ceiling (Height extended up to 21.5m over 20m vertical shaft)
+    // Expanded High Cavern Ceiling (Height extended up to 26.5m over 25m vertical shaft)
     const ceilingGeo = new THREE.PlaneGeometry(45, 16, 20, 10);
     const ceiling = new THREE.Mesh(ceilingGeo, wallMat);
     ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set(0, 21.5, 0);
+    ceiling.position.set(0, 26.5, 0);
     caveGroup.add(ceiling);
 
     // Stalactites hanging down
