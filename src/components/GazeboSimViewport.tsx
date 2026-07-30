@@ -992,9 +992,9 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
 
           // DETACHABLE FLYING DRONE TAKES OFF / ASCENDS!
           if (droneGroupRef.current && spotGroupRef.current) {
-            // Spot carrier base companion computer rests grounded at Air Pocket Base Station (X=13.0, Y=0, Z=1.35m)
+            // Spot carrier base companion computer rests grounded at Dry Zone Start Base Station (X=-17.5, Y=0, Z=1.35m)
             // Three.js coordinates: rPos.x = ROS X, rPos.y = ROS Z altitude, rPos.z = ROS Y lateral
-            const targetSpotWorldX = 13.0;
+            const targetSpotWorldX = -17.5;
             const targetSpotWorldY = 1.35;
             const targetSpotWorldZ = 0.0;
 

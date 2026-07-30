@@ -63,10 +63,10 @@ export default function App() {
 
   // Robot State
   const [robotState, setRobotState] = useState<RobotState>({
-    position: { x: -17.5, y: 0, z: 1.35 },
+    position: { x: -17.5, y: 0, z: 2.5 },
     orientation: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
-    mode: "WALKING",
+    mode: "FLYING",
     jointStates: {},
     propellerRpm: 0,
     headlightOn: true,
