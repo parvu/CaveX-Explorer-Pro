@@ -68,6 +68,9 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
   const [mapZoom, setMapZoom] = useState(1.0);
   const [isExportingMap, setIsExportingMap] = useState(false);
 
+  // Shaded 3D Mesh Reconstruction Canvas
+  const meshCanvasRef = useRef<HTMLCanvasElement>(null);
+
   // PCD Point Cloud Data Export Function
   const handleExportPcdMap = () => {
     setIsExportingMap(true);
@@ -334,25 +337,25 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
       ctx.stroke();
     }
 
-    // Coordinate mapping helper from 3D ROS space (x: -18 to +22, y: -5 to +5, z: -3 to +25)
+    // Coordinate mapping helper from 3D ROS space (x: -39 to +41, y: -5 to +5, z: -3 to +25)
     // to 2D Canvas Screen coordinates based on selected mapViewMode
     const toScreen = (rx: number, ry: number, rz: number) => {
       if (mapViewMode === "topdown") {
         // 2D Top Down View (x along canvas width, y along canvas height)
-        const sx = ((rx + 18) / 42) * w * mapZoom + (1 - mapZoom) * (w / 2);
+        const sx = ((rx + 39) / 80) * w * mapZoom + (1 - mapZoom) * (w / 2);
         const sy = h / 2 + (ry / 10) * (h * 0.7) * mapZoom;
         return { x: sx, y: sy };
       } else if (mapViewMode === "side") {
         // Side Elevation Profile View (x along width, z altitude along height)
-        const sx = ((rx + 18) / 42) * w * mapZoom + (1 - mapZoom) * (w / 2);
+        const sx = ((rx + 39) / 80) * w * mapZoom + (1 - mapZoom) * (w / 2);
         const sy = h * 0.82 - (rz / 26) * (h * 0.75) * mapZoom;
         return { x: sx, y: sy };
       } else {
         // Isometric 3D Projection
-        const isoX = (rx * 0.85 - ry * 0.85) * 11 * mapZoom;
-        const isoY = (rx * 0.35 + ry * 0.35) * 8 * mapZoom - rz * 6 * mapZoom;
-        const sx = w * 0.38 + isoX;
-        const sy = h * 0.65 + isoY;
+        const isoX = (rx * 0.85 - ry * 0.85) * 6 * mapZoom;
+        const isoY = (rx * 0.35 + ry * 0.35) * 4.5 * mapZoom - rz * 3.5 * mapZoom;
+        const sx = w * 0.45 + isoX;
+        const sy = h * 0.70 + isoY;
         return { x: sx, y: sy };
       }
     };
@@ -362,26 +365,26 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
 
-    // Section 1: Dry Cave (-18 to -5)
-    const sec1A = toScreen(-18, 0, 0);
+    // Section 1: Dry Cave (-39 to -5)
+    const sec1A = toScreen(-39, 0, 0);
     const sec1B = toScreen(-5, 0, 0);
     ctx.beginPath();
     ctx.moveTo(sec1A.x, sec1A.y);
     ctx.lineTo(sec1B.x, sec1B.y);
     ctx.stroke();
 
-    // Section 2: Flooded Water (-5 to 12)
+    // Section 2: Flooded Water (-5 to 29)
     const sec2A = toScreen(-5, 0, 0);
-    const sec2B = toScreen(12, 0, 0);
+    const sec2B = toScreen(29, 0, 0);
     ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
     ctx.beginPath();
     ctx.moveTo(sec2A.x, sec2A.y);
     ctx.lineTo(sec2B.x, sec2B.y);
     ctx.stroke();
 
-    // Section 3: Vertical Shaft (12 to 22, height up to 25m)
-    const shaftBase = toScreen(18, 0, 0);
-    const shaftApex = toScreen(18, 0, 24);
+    // Section 3: Vertical Shaft (29 to 41, height up to 25m)
+    const shaftBase = toScreen(35.5, 0, 0);
+    const shaftApex = toScreen(35.5, 0, 24);
     ctx.strokeStyle = "rgba(168, 85, 247, 0.6)";
     ctx.beginPath();
     ctx.moveTo(shaftBase.x, shaftBase.y);
@@ -393,9 +396,9 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
     // Layer 1: Dry Cave Rock Points (Amber/Orange)
     if (showLidarLayer) {
       ctx.fillStyle = "#f59e0b";
-      for (let i = 0; i < 600; i++) {
+      for (let i = 0; i < 1600; i++) {
         const seed = i * 1.618;
-        const px = -17.5 + (i / 600) * 12.5;
+        const px = -39.0 + (i / 1600) * 34.0;
         const py = Math.sin(seed * 3) * 1.8 + Math.cos(seed * 5) * 0.5;
         const pz = 0.5 + Math.cos(seed * 2) * 1.2 + Math.sin(seed * 7) * 0.6;
         const pt = toScreen(px, py, pz);
@@ -406,9 +409,9 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
     // Layer 2: Flooded Water Seabed Bathymetry Points (Cyan/Teal)
     if (showSonarLayer) {
       ctx.fillStyle = "#06b6d4";
-      for (let i = 0; i < 800; i++) {
+      for (let i = 0; i < 2000; i++) {
         const seed = i * 2.718;
-        const px = -5 + (i / 800) * 17;
+        const px = -5 + (i / 2000) * 34.0;
         const py = Math.cos(seed * 2) * 2.2 + Math.sin(seed * 3.5) * 1.1;
         const pz = -0.5 - Math.sin(seed * 4) * 1.5 + Math.cos(seed * 5) * 0.4; // underwater seabed depth profile
         const pt = toScreen(px, py, pz);
@@ -418,12 +421,12 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
 
     // Layer 3: Vertical Ascent Shaft Chimney Helical Point Cloud (Magenta/Sky-Blue)
     if (showLidarLayer) {
-      for (let i = 0; i < 1200; i++) {
+      for (let i = 0; i < 3000; i++) {
         const angle = i * 0.15;
-        const radius = 2.2 + Math.sin(i * 0.1) * 0.8 + Math.cos(i * 0.05) * 0.3;
-        const px = 18.0 + Math.cos(angle) * radius;
+        const radius = 4.5 + Math.sin(i * 0.1) * 0.5 + Math.cos(i * 0.05) * 0.2;
+        const px = 35.5 + Math.cos(angle) * radius;
         const py = Math.sin(angle) * radius;
-        const pz = (i / 1200) * 24.5; // ascending 25m shaft
+        const pz = (i / 3000) * 25.0; // ascending 25m shaft
         const pt = toScreen(px, py, pz);
 
         ctx.fillStyle = pz > 15 ? "#c084fc" : "#38bdf8";
@@ -435,7 +438,7 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
     if (showWifiLayer) {
       ctx.fillStyle = "#a3e635";
       for (let k = 0; k < 12; k++) {
-        const kx = 12 + (k % 4) * 2;
+        const kx = 35.5 + Math.cos(k) * 2;
         const ky = Math.sin(k) * 1.2;
         const kz = 2 + k * 1.8;
         const pt = toScreen(kx, ky, kz);
@@ -449,20 +452,21 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
     // 3. Render Waypoint Trajectory Lines
     if (showWaypointsLayer) {
       const waypoints = [
-        { x: -15, y: 0, z: 0.6 },
-        { x: -10, y: -0.5, z: 0.6 },
-        { x: -5, y: 0, z: 0.6 },
-        { x: 0, y: -0.4, z: 0.55 },
-        { x: 4, y: 0.3, z: 0.55 },
-        { x: 8, y: 0, z: 0.55 },
-        { x: 11, y: 0, z: 0.8 },
-        { x: 13, y: 0, z: 2.0 },
-        { x: 17.2, y: 1.5, z: 5.5 },
-        { x: 18.8, y: -1.5, z: 8.5 },
-        { x: 18.0, y: 0.8, z: 12.0 },
-        { x: 18.8, y: -1.2, z: 15.5 },
-        { x: 17.5, y: 1.2, z: 19.0 },
-        { x: 18.5, y: 0, z: 23.5 },
+        { x: -34.5, y: 0, z: 1.35 },
+        { x: -20, y: 0.3, z: 1.35 },
+        { x: -7, y: 0, z: 1.35 },
+        { x: -3, y: 0, z: 0.55 },
+        { x: 5, y: -0.4, z: 0.55 },
+        { x: 15, y: 0.3, z: 0.55 },
+        { x: 25, y: 0, z: 0.55 },
+        { x: 29, y: 0, z: 0.8 },
+        { x: 30.0, y: 0, z: 2.0 },
+        { x: 34.2, y: 1.5, z: 5.5 },
+        { x: 35.8, y: -1.5, z: 8.5 },
+        { x: 35.0, y: 0.8, z: 12.0 },
+        { x: 35.8, y: -1.2, z: 15.5 },
+        { x: 34.5, y: 1.2, z: 19.0 },
+        { x: 35.5, y: 0, z: 23.5 },
       ];
 
       ctx.strokeStyle = "#10b981";
@@ -485,8 +489,8 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
       });
     }
 
-    // 4. Render Spot Ground Carrier Base Station (Parked at X=-17.5, Y=0, Z=1.35)
-    const spotPos = toScreen(-17.5, 0, 1.35);
+    // 4. Render Spot Ground Carrier Base Station (Parked at X=12.0, Y=0, Z=0.6)
+    const spotPos = toScreen(12.0, 0, 0.6);
     ctx.fillStyle = "#f59e0b";
     ctx.beginPath();
     ctx.arc(spotPos.x, spotPos.y, 7, 0, Math.PI * 2);
@@ -550,6 +554,94 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
     showWaypointsLayer,
     mapZoom,
   ]);
+
+  // Render Shaded 3D Mesh Reconstruction
+  useEffect(() => {
+    const canvas = meshCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Background
+    ctx.fillStyle = "#020617";
+    ctx.fillRect(0, 0, w, h);
+
+    // Simple isometric projection for mesh
+    const toMeshScreen = (rx: number, ry: number, rz: number) => {
+      const isoX = (rx * 0.85 - ry * 0.85) * 6 * mapZoom;
+      const isoY = (rx * 0.35 + ry * 0.35) * 4.5 * mapZoom - rz * 3.5 * mapZoom;
+      return { x: w * 0.45 + isoX, y: h * 0.70 + isoY };
+    };
+
+    // Draw some shaded polygons to simulate mesh
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.1)";
+    ctx.lineWidth = 0.5;
+
+    // Dry Cave mesh
+    for (let i = -39; i < -5; i += 2) {
+      for (let j = -2; j <= 2; j += 2) {
+        const p1 = toMeshScreen(i, j, 0.5 + Math.sin(i)*0.2);
+        const p2 = toMeshScreen(i+2, j, 0.5 + Math.sin(i+2)*0.2);
+        const p3 = toMeshScreen(i, j+2, 0.5 + Math.sin(i)*0.2);
+        const p4 = toMeshScreen(i+2, j+2, 0.5 + Math.sin(i+2)*0.2);
+
+        ctx.fillStyle = `rgba(245, 158, 11, ${0.15 + (i+39)*0.005})`; // Amber shades
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p4.x, p4.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    // Water/Flooded mesh
+    for (let i = -5; i < 29; i += 2) {
+      for (let j = -2; j <= 2; j += 2) {
+        const p1 = toMeshScreen(i, j, -1 + Math.cos(i)*0.1);
+        const p2 = toMeshScreen(i+2, j, -1 + Math.cos(i+2)*0.1);
+        const p3 = toMeshScreen(i, j+2, -1 + Math.cos(i)*0.1);
+        const p4 = toMeshScreen(i+2, j+2, -1 + Math.cos(i+2)*0.1);
+
+        ctx.fillStyle = `rgba(6, 182, 212, ${0.2 + Math.abs(j)*0.05})`; // Cyan shades
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p4.x, p4.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    // Shaft mesh (higher resolution cylinder)
+    for (let z = 0; z < 25; z += 2) {
+      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
+        const r1 = 5.2 + Math.sin(z)*0.2;
+        const r2 = 5.2 + Math.sin(z+2)*0.2;
+        const p1 = toMeshScreen(35.5 + Math.cos(angle)*r1, Math.sin(angle)*r1, z);
+        const p2 = toMeshScreen(35.5 + Math.cos(angle + Math.PI/8)*r1, Math.sin(angle + Math.PI/8)*r1, z);
+        const p3 = toMeshScreen(35.5 + Math.cos(angle)*r2, Math.sin(angle)*r2, z+2);
+        const p4 = toMeshScreen(35.5 + Math.cos(angle + Math.PI/8)*r2, Math.sin(angle + Math.PI/8)*r2, z+2);
+
+        ctx.fillStyle = `rgba(168, 85, 247, ${0.15 + (z/25)*0.2})`; // Purple shades
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p4.x, p4.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }, [mapZoom, robotState]);
 
   return (
     <div className="w-full bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col gap-4 text-slate-200">
@@ -992,6 +1084,33 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
               <span>{isExportingMap ? "Generating..." : "Export PCD Map"}</span>
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* SHADED 3D MESH RECONSTRUCTION WINDOW */}
+      {/* ========================================================================= */}
+      <div className="bg-slate-950 rounded-xl p-3.5 border border-slate-800 flex flex-col gap-3 font-mono mt-2">
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
+          <span className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+            <Layers className="w-4 h-4 text-indigo-400" />
+          </span>
+          <div>
+            <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+              Shaded 3D Mesh Reconstruction
+            </h4>
+            <p className="text-[10px] text-slate-400">
+              Live surface tessellation & Poisson reconstruction from point clouds
+            </p>
+          </div>
+        </div>
+        <div className="relative w-full aspect-[21/8] min-h-[220px] rounded-lg overflow-hidden border border-slate-800 bg-[#020617]">
+          <canvas
+            ref={meshCanvasRef}
+            width={960}
+            height={320}
+            className="w-full h-full object-cover"
+          />
         </div>
       </div>
     </div>

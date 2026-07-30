@@ -104,7 +104,7 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
   // Manual Nudge Position (WASD / Movement)
   const nudgePosition = (dx: number, dy: number, dz: number) => {
     setRobotState((prev) => {
-      const nx = Math.max(-20, Math.min(22, prev.position.x + dx));
+      const nx = Math.max(-40, Math.min(45, prev.position.x + dx));
       const ny = Math.max(-5, Math.min(5, prev.position.y + dy));
       let nz = prev.position.z + dz;
 
@@ -265,17 +265,17 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
       </div>
 
       {/* Waypoints Sequence Timeline & Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* Left: Waypoints Sequence */}
-        <div className="md:col-span-2 bg-slate-950 p-3 rounded-lg border border-slate-800 flex flex-col gap-2">
-          <span className="text-xs font-mono text-slate-400 font-semibold">
+        <div className="md:col-span-2 bg-slate-950 p-2 rounded-lg border border-slate-800 flex flex-col gap-1.5 h-48">
+          <span className="text-[11px] font-mono text-slate-400 font-semibold">
             Autonomous Exploration Mission Waypoints
           </span>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1 overflow-y-auto pr-1">
             {missionStatus.waypoints.map((wp, idx) => (
               <div
                 key={wp.id}
-                className={`flex items-center justify-between p-2 rounded text-xs font-mono border transition ${
+                className={`flex items-center justify-between p-1.5 rounded text-[10px] font-mono border transition ${
                   idx === missionStatus.currentWaypointIndex
                     ? "bg-sky-950/80 border-sky-500 text-sky-200"
                     : wp.completed
@@ -283,9 +283,9 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
                     : "bg-slate-900/40 border-slate-800/80 text-slate-500"
                 }`}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <span
-                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
                       idx === missionStatus.currentWaypointIndex
                         ? "bg-sky-500 text-slate-950"
                         : wp.completed
@@ -295,18 +295,18 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
                   >
                     {idx + 1}
                   </span>
-                  <div>
-                    <strong className="text-slate-200">{wp.name}</strong>{" "}
-                    <span className="text-[11px] text-slate-400">({wp.description})</span>
+                  <div className="flex flex-col">
+                    <strong className="text-slate-200 leading-tight">{wp.name}</strong>
+                    <span className="text-[9px] text-slate-500 truncate max-w-[200px]">{wp.description}</span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 border border-slate-700">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded text-[9px] bg-slate-800 text-slate-300 border border-slate-700">
                     {wp.targetMode}
                   </span>
-                  <span className="text-slate-400 font-mono text-[10px]">
-                    x:{wp.position.x} m
+                  <span className="text-slate-400 font-mono text-[9px] w-12 text-right">
+                    x:{wp.position.x}
                   </span>
                 </div>
               </div>
@@ -315,65 +315,65 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
         </div>
 
         {/* Right: Manual Teleop Joystick Controls */}
-        <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 flex flex-col justify-between gap-3 font-mono text-xs">
-          <span className="text-slate-400 font-semibold">Manual Drone Teleop Control</span>
+        <div className="bg-slate-950 p-2 rounded-lg border border-slate-800 flex flex-col justify-between gap-2 font-mono text-xs h-48">
+          <span className="text-[11px] text-slate-400 font-semibold">Manual Drone Teleop Control</span>
 
-          <div className="flex flex-col items-center gap-1.5">
+          <div className="flex flex-col items-center gap-1 mt-1">
             {/* Forward */}
             <button
               id="teleop-forward"
               onClick={() => nudgePosition(1.0, 0, 0)}
-              className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold border border-slate-700 w-24 text-center"
+              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold border border-slate-700 w-20 text-[10px] text-center"
             >
-              ▲ Forward (W)
+              ▲ FWD (W)
             </button>
-            <div className="flex gap-2">
+            <div className="flex gap-1">
               {/* Left */}
               <button
                 id="teleop-left"
                 onClick={() => nudgePosition(0, -0.8, 0)}
-                className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold border border-slate-700 text-center"
+                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold border border-slate-700 text-[10px] text-center"
               >
-                ◄ Left (A)
+                ◄ LFT (A)
               </button>
               {/* Backward */}
               <button
                 id="teleop-backward"
                 onClick={() => nudgePosition(-1.0, 0, 0)}
-                className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold border border-slate-700 text-center"
+                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold border border-slate-700 text-[10px] text-center"
               >
-                ▼ Back (S)
+                ▼ BCK (S)
               </button>
               {/* Right */}
               <button
                 id="teleop-right"
                 onClick={() => nudgePosition(0, 0.8, 0)}
-                className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold border border-slate-700 text-center"
+                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold border border-slate-700 text-[10px] text-center"
               >
-                Right (D) ►
+                RGT (D) ►
               </button>
             </div>
             {/* Altitude Up / Down */}
-            <div className="flex gap-2 mt-1">
+            <div className="flex gap-1 mt-1">
               <button
                 id="teleop-up"
                 onClick={() => nudgePosition(0, 0, 0.5)}
-                className="px-2.5 py-1 rounded bg-purple-950 hover:bg-purple-900 text-purple-300 font-bold border border-purple-800 text-[11px]"
+                className="px-2 py-1 rounded bg-purple-950 hover:bg-purple-900 text-purple-300 font-bold border border-purple-800 text-[10px]"
               >
                 ▲ Ascend (Q)
               </button>
               <button
                 id="teleop-down"
                 onClick={() => nudgePosition(0, 0, -0.5)}
-                className="px-2.5 py-1 rounded bg-purple-950 hover:bg-purple-900 text-purple-300 font-bold border border-purple-800 text-[11px]"
+                className="px-2 py-1 rounded bg-purple-950 hover:bg-purple-900 text-purple-300 font-bold border border-purple-800 text-[10px]"
               >
                 ▼ Descend (E)
               </button>
             </div>
           </div>
 
-          <div className="text-[10px] text-slate-500 text-center">
-            Position auto-triggers kinematic state transitions when crossing z / x cave boundaries.
+          <div className="text-[9px] text-slate-500 text-center leading-tight">
+            Position auto-triggers state transitions on cave boundaries.
           </div>
         </div>
       </div>

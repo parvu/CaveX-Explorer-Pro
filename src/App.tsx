@@ -15,13 +15,13 @@ export const getMinGroundHeight = (x: number, y: number, mode: LocomotionMode, c
     if (mode === "WALKING") return 1.35;
     if (mode === "SAILING") return 0.85;
     return 1.35; // Flight clearance over rocks
-  } else if (x <= 12) {
+  } else if (x <= 29) {
     // Section 2: Flooded Cave (Raised water surface at 0.6m matching dry section end, seabed at -2.9m)
     if (mode === "SAILING") return 0.55;  // Floating on raised water surface at 0.6m
     if (mode === "WALKING") return -2.15; // Quadruped walking on underwater seabed (-2.9m + 0.75m leg = -2.15m)
     return 1.40;                          // Quadrotor flight clearance above raised water surface
   } else {
-    // Section 3: Air Pocket & Vertical Ascent Shaft (x > 12)
+    // Section 3: Air Pocket & Vertical Ascent Shaft (x > 29)
     // Extended 25m shaft chimney allows flight up to z = 24.0m
     if (mode === "WALKING") return 1.35;   // Base ground clearance for Spot companion computer base
     if (mode === "SAILING") return 0.55;
@@ -34,7 +34,7 @@ export const getAutoSectionMode = (x: number, y: number, z: number, currentMode:
   if (x < -5) {
     // Section 1: Dry Cave -> WALKING default
     return currentMode === "FLYING" && z > 2.0 ? "FLYING" : "WALKING";
-  } else if (x <= 12) {
+  } else if (x <= 29) {
     // Section 2: Flooded Water Channel -> SAILING default (Raised water surface z = 0.6m)
     if (z < -1.0) return "WALKING"; // Underwater seabed walk
     if (z > 1.8) return "FLYING";   // Aerial flight above water surface
@@ -63,10 +63,10 @@ export default function App() {
 
   // Robot State
   const [robotState, setRobotState] = useState<RobotState>({
-    position: { x: -17.5, y: 0, z: 2.5 },
+    position: { x: -34.5, y: 0, z: 1.35 },
     orientation: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
-    mode: "FLYING",
+    mode: "WALKING",
     jointStates: {},
     propellerRpm: 0,
     headlightOn: true,
@@ -108,16 +108,16 @@ export default function App() {
         id: "wp1",
         name: "Dry Cave Entrance Start",
         targetMode: "WALKING",
-        position: { x: -17.5, y: 0, z: 1.35 },
+        position: { x: -34.5, y: 0, z: 1.35 },
         section: "DRY_CAVE",
         completed: true,
-        description: "Starting position at the beginning of the dry zone corridor (-17.5m)",
+        description: "Starting position at the beginning of the dry zone corridor (-34.5m)",
       },
       {
         id: "wp2",
         name: "Rugged Dry Corridor Mid-Point",
         targetMode: "WALKING",
-        position: { x: -10, y: 0.3, z: 1.35 },
+        position: { x: -20, y: 0.3, z: 1.35 },
         section: "DRY_CAVE",
         completed: false,
         description: "Navigating through narrow dry stalagmite passage",
@@ -126,7 +126,7 @@ export default function App() {
         id: "wp3",
         name: "Water Edge Transition Readiness",
         targetMode: "WALKING",
-        position: { x: -6, y: 0, z: 1.35 },
+        position: { x: -7, y: 0, z: 1.35 },
         section: "DRY_CAVE",
         completed: false,
         description: "Approaching dry section end / flooded water shore",
@@ -135,7 +135,7 @@ export default function App() {
         id: "wp4",
         name: "Water Launch & Pontoon Deployment",
         targetMode: "SAILING",
-        position: { x: -4, y: 0, z: 0.55 },
+        position: { x: -3, y: 0, z: 0.55 },
         section: "FLOODED_WATER",
         completed: false,
         description: "Hydrofoil launch matching raised water surface (z=0.6m)",
@@ -144,7 +144,7 @@ export default function App() {
         id: "wp5",
         name: "Flooded Lake Cruise West",
         targetMode: "SAILING",
-        position: { x: 0, y: -0.4, z: 0.55 },
+        position: { x: 5, y: -0.4, z: 0.55 },
         section: "FLOODED_WATER",
         completed: false,
         description: "Surface sailing on raised flooded channel with underwater sonar active",
@@ -153,7 +153,7 @@ export default function App() {
         id: "wp6",
         name: "Submerged Rock Passage Bathymetry",
         targetMode: "SAILING",
-        position: { x: 4, y: 0.3, z: 0.55 },
+        position: { x: 15, y: 0.3, z: 0.55 },
         section: "FLOODED_WATER",
         completed: false,
         description: "Hydrofoil surface navigation over seabed with active sonar profiling",
@@ -162,7 +162,7 @@ export default function App() {
         id: "wp7",
         name: "Flooded Lake East Shore Approach",
         targetMode: "SAILING",
-        position: { x: 8, y: 0, z: 0.55 },
+        position: { x: 25, y: 0, z: 0.55 },
         section: "FLOODED_WATER",
         completed: false,
         description: "Approaching east shore transition of flooded channel",
@@ -171,7 +171,7 @@ export default function App() {
         id: "wp8",
         name: "Air Pocket Beach / Spot Base Station",
         targetMode: "SAILING",
-        position: { x: 11, y: 0, z: 0.8 },
+        position: { x: 29, y: 0, z: 0.8 },
         section: "AIR_POCKET",
         completed: false,
         description: "Spot quadruped base companion computer parks at base of vertical shaft",
@@ -180,7 +180,7 @@ export default function App() {
         id: "wp9",
         name: "Shaft VTOL Takeoff & WiFi Streaming Sync",
         targetMode: "FLYING",
-        position: { x: 13.0, y: 0, z: 2.0 },
+        position: { x: 30.0, y: 0, z: 2.0 },
         section: "AIR_POCKET",
         completed: false,
         description: "Detachable flying drone detaches; 5.8GHz WiFi video stream syncs with Spot base",
@@ -189,7 +189,7 @@ export default function App() {
         id: "wp10",
         name: "Lower Shaft Helical Mapping (West Sweep)",
         targetMode: "FLYING",
-        position: { x: 17.2, y: 1.5, z: 5.5 },
+        position: { x: 34.2, y: 1.5, z: 5.5 },
         section: "AIR_POCKET",
         completed: false,
         description: "Ascending into lower shaft tube with 3D point cloud generation (z=5.5m)",
@@ -198,7 +198,7 @@ export default function App() {
         id: "wp11",
         name: "Lower Shaft Helical Mapping (East Sweep)",
         targetMode: "FLYING",
-        position: { x: 18.8, y: -1.5, z: 8.5 },
+        position: { x: 35.8, y: -1.5, z: 8.5 },
         section: "AIR_POCKET",
         completed: false,
         description: "3D LiDAR mapping of mid-shaft rock features and obstruction bypass (z=8.5m)",
@@ -207,7 +207,7 @@ export default function App() {
         id: "wp12",
         name: "Mid-Shaft Chimney SLAM Scan & WiFi Sync",
         targetMode: "FLYING",
-        position: { x: 18.0, y: 0.8, z: 12.0 },
+        position: { x: 35.0, y: 0.8, z: 12.0 },
         section: "AIR_POCKET",
         completed: false,
         description: "Streaming 1080p video & feature points to Spot base companion computer (z=12.0m)",
@@ -216,7 +216,7 @@ export default function App() {
         id: "wp13",
         name: "Upper Shaft Helical Sweep (South Wall)",
         targetMode: "FLYING",
-        position: { x: 18.8, y: -1.2, z: 15.5 },
+        position: { x: 35.8, y: -1.2, z: 15.5 },
         section: "AIR_POCKET",
         completed: false,
         description: "3D mapping of upper shaft stalactite formations (z=15.5m)",
@@ -225,7 +225,7 @@ export default function App() {
         id: "wp14",
         name: "Upper Shaft Helical Sweep (North Wall)",
         targetMode: "FLYING",
-        position: { x: 17.5, y: 1.2, z: 19.0 },
+        position: { x: 34.5, y: 1.2, z: 19.0 },
         section: "AIR_POCKET",
         completed: false,
         description: "High altitude vertical flight mapping up the tube (z=19.0m)",
@@ -234,7 +234,7 @@ export default function App() {
         id: "wp15",
         name: "Shaft Apex Ceiling Dome 3D Mapping",
         targetMode: "FLYING",
-        position: { x: 18.5, y: 0, z: 23.5 },
+        position: { x: 35.5, y: 0, z: 23.5 },
         section: "AIR_POCKET",
         completed: false,
         description: "Full 3D mapping of 25m shaft ceiling dome apex (z=23.5m)",
@@ -243,7 +243,7 @@ export default function App() {
         id: "wp16",
         name: "Shaft Apex 360 Spin & WiFi Telemetry Flush",
         targetMode: "FLYING",
-        position: { x: 18.5, y: 0, z: 22.5 },
+        position: { x: 35.5, y: 0, z: 22.5 },
         section: "AIR_POCKET",
         completed: false,
         description: "360-degree panorama SLAM sync to Spot companion base computer",

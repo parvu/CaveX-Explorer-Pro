@@ -276,8 +276,8 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     // ==========================================
     const caveGroup = new THREE.Group();
 
-    // SECTION 1: DRY CAVE (x: -22 to -5, z > 0)
-    const dryGroundGeo = new THREE.PlaneGeometry(17, 12, 32, 24);
+    // SECTION 1: DRY CAVE (x: -39 to -5, z > 0)
+    const dryGroundGeo = new THREE.PlaneGeometry(34, 12, 64, 24);
     const dryGroundMat = new THREE.MeshStandardMaterial({
       color: 0x2d2a26,
       roughness: 0.9,
@@ -295,23 +295,23 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     dryGroundGeo.computeVertexNormals();
     const dryGround = new THREE.Mesh(dryGroundGeo, dryGroundMat);
     dryGround.rotation.x = -Math.PI / 2;
-    dryGround.position.set(-13.5, 0, 0);
+    dryGround.position.set(-22, 0, 0);
     dryGround.receiveShadow = true;
     caveGroup.add(dryGround);
 
     // Stalagmites on dry section
     const stalagmiteMat = new THREE.MeshStandardMaterial({ color: 0x3d3935, roughness: 0.8 });
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 24; i++) {
       const height = 0.8 + Math.random() * 1.8;
       const coneGeo = new THREE.ConeGeometry(0.3 + Math.random() * 0.3, height, 6);
       const cone = new THREE.Mesh(coneGeo, stalagmiteMat);
-      cone.position.set(-20 + Math.random() * 13, height / 2, -5 + Math.random() * 10);
+      cone.position.set(-35 + Math.random() * 25, height / 2, -5 + Math.random() * 10);
       caveGroup.add(cone);
     }
 
-    // SECTION 2: FLOODED WATER SECTION (x: -5 to 12, z=0.6 water surface matching dry section end, seabed at z=-2.9)
+    // SECTION 2: FLOODED WATER SECTION (x: -5 to 29, z=0.6 water surface matching dry section end, seabed at z=-2.9)
     // Water Surface Plane (z = 0.6m matching dry section ground level)
-    const waterGeo = new THREE.PlaneGeometry(17, 12, 32, 24);
+    const waterGeo = new THREE.PlaneGeometry(34, 12, 64, 24);
     const waterMat = new THREE.MeshPhysicalMaterial({
       color: 0x0066aa,
       transparent: true,
@@ -323,28 +323,52 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     });
     const waterMesh = new THREE.Mesh(waterGeo, waterMat);
     waterMesh.rotation.x = -Math.PI / 2;
-    waterMesh.position.set(3.5, 0.6, 0); // z = 0.6 water plane matching dry section end
+    waterMesh.position.set(12, 0.6, 0); // z = 0.6 water plane matching dry section end
     waterMeshRef.current = waterMesh;
     caveGroup.add(waterMesh);
 
     // Underwater Seabed Floor (z = -2.9)
-    const seabedGeo = new THREE.PlaneGeometry(17, 12, 20, 15);
+    const seabedGeo = new THREE.PlaneGeometry(34, 12, 40, 15);
     const seabedMat = new THREE.MeshStandardMaterial({ color: 0x121c24, roughness: 0.9 });
     const seabedMesh = new THREE.Mesh(seabedGeo, seabedMat);
     seabedMesh.rotation.x = -Math.PI / 2;
-    seabedMesh.position.set(3.5, -2.9, 0);
+    seabedMesh.position.set(12, -2.9, 0);
     caveGroup.add(seabedMesh);
 
     // Submerged rock formations
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x1a2630, roughness: 0.9 });
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 16; i++) {
       const rockGeo = new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.7);
       const rock = new THREE.Mesh(rockGeo, rockMat);
-      rock.position.set(-3 + Math.random() * 13, -2.2, -4 + Math.random() * 8);
+      rock.position.set(-3 + Math.random() * 26, -2.2, -4 + Math.random() * 8);
       caveGroup.add(rock);
     }
 
-    // SECTION 3: AIR POCKET CAVE & ENLARGED SHADED VERTICAL SHAFT (x: 12 to 24)
+    // SECTION 3: AIR POCKET CAVE & ENLARGED SHADED VERTICAL SHAFT (x: 29 to 41)
+    
+    // Air Pocket Beach (Ground for Base Station at x=29 to 41)
+    const beachGeo = new THREE.PlaneGeometry(12, 12, 32, 12);
+    const beachMat = new THREE.MeshStandardMaterial({
+      color: 0x3d3a36,
+      roughness: 0.95,
+      metalness: 0.05,
+      bumpScale: 0.2,
+    });
+    // Add roughness elevation to beach
+    const beachPosAttr = beachGeo.attributes.position;
+    for (let i = 0; i < beachPosAttr.count; i++) {
+      const x = beachPosAttr.getX(i);
+      const y = beachPosAttr.getY(i);
+      const noise = Math.sin(x * 1.5) * Math.cos(y * 1.5) * 0.2 + Math.random() * 0.1;
+      beachPosAttr.setZ(i, noise);
+    }
+    beachGeo.computeVertexNormals();
+    const beach = new THREE.Mesh(beachGeo, beachMat);
+    beach.rotation.x = -Math.PI / 2;
+    beach.position.set(35, 0.8, 0); // z=0.8 for the beach
+    beach.receiveShadow = true;
+    caveGroup.add(beach);
+
     // Dedicated Enlarged Shaded Vertical Ascent Shaft Chimney (Radius 5.2m, Height 25.0m)
     // Smooth shaded surface material with transparency = 0.7 (NO wireframe)
     const shaftGeo = new THREE.CylinderGeometry(5.2, 5.2, 25.0, 32, 25, true, Math.PI * 0.25, Math.PI * 1.5);
@@ -360,16 +384,16 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       side: THREE.DoubleSide,
     });
     const shaftMesh = new THREE.Mesh(shaftGeo, shaftMat);
-    shaftMesh.position.set(18.5, 12.5, 0);
+    shaftMesh.position.set(35.5, 13.1, 0);
     caveGroup.add(shaftMesh);
 
     // Solid Shaded Structural Bezel Collar Rings for Vertical Shaft (Shaded, non-wireframe accents)
-    [0.2, 25.0].forEach((collarY) => {
+    [0.6, 25.6].forEach((collarY) => {
       const collarGeo = new THREE.TorusGeometry(5.22, 0.08, 12, 36);
       const collarMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.5 });
       const collar = new THREE.Mesh(collarGeo, collarMat);
       collar.rotation.x = Math.PI / 2;
-      collar.position.set(18.5, collarY, 0);
+      collar.position.set(35.5, collarY, 0);
       caveGroup.add(collar);
     });
 
@@ -378,7 +402,7 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     const portalArchMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 });
     const portalArch = new THREE.Mesh(portalArchGeo, portalArchMat);
     portalArch.rotation.y = Math.PI / 2;
-    portalArch.position.set(13.3, 3.5, 0);
+    portalArch.position.set(30.3, 3.5, 0);
     caveGroup.add(portalArch);
 
     // Glowing Guidance Rings Inside Vertical Shaft (Spanning up to 23.0m altitude)
@@ -387,7 +411,7 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       const ringMat = new THREE.MeshBasicMaterial({ color: idx === 6 ? 0x10b981 : 0x06b6d4, transparent: true, opacity: 0.75 });
       const ringMesh = new THREE.Mesh(ringGeo, ringMat);
       ringMesh.rotation.x = Math.PI / 2;
-      ringMesh.position.set(18.5, ringY, 0);
+      ringMesh.position.set(35.5, ringY, 0);
       caveGroup.add(ringMesh);
     });
 
@@ -401,42 +425,42 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     const obs1Geo = new THREE.ConeGeometry(0.45, 1.2, 8);
     const obs1 = new THREE.Mesh(obs1Geo, obsMat);
     obs1.rotation.z = -Math.PI / 3;
-    obs1.position.set(16.5, 5.5, -4.2);
+    obs1.position.set(33.5, 5.5, -4.2);
     caveGroup.add(obs1);
 
     const obs1Light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), obsHazardMat);
-    obs1Light.position.set(16.8, 5.5, -3.5);
+    obs1Light.position.set(33.8, 5.5, -3.5);
     caveGroup.add(obs1Light);
 
     // Obstacle 2: Compact Mid-Shaft Rock Outcrop (South Wall at Y = 9.2m)
     const obs2Geo = new THREE.BoxGeometry(0.8, 0.4, 0.8);
     const obs2 = new THREE.Mesh(obs2Geo, obsMat);
-    obs2.position.set(20.2, 9.2, 4.2);
+    obs2.position.set(37.2, 9.2, 4.2);
     caveGroup.add(obs2);
 
     const obs2Light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
-    obs2Light.position.set(19.6, 9.2, 3.5);
+    obs2Light.position.set(36.6, 9.2, 3.5);
     caveGroup.add(obs2Light);
 
     // Obstacle 3: Compact Upper Shaft Stalactite (North Wall at Y = 14.5m)
     const obs3Geo = new THREE.ConeGeometry(0.45, 1.2, 8);
     const obs3 = new THREE.Mesh(obs3Geo, obsMat);
     obs3.rotation.x = Math.PI;
-    obs3.position.set(17.2, 14.5, -4.2);
+    obs3.position.set(34.2, 14.5, -4.2);
     caveGroup.add(obs3);
 
     const obs3Light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), obsHazardMat);
-    obs3Light.position.set(17.2, 13.8, -3.5);
+    obs3Light.position.set(34.2, 13.8, -3.5);
     caveGroup.add(obs3Light);
 
     // Obstacle 4: Compact Upper Shaft Rock Shelf (South Wall at Y = 16.8m)
     const obs4Geo = new THREE.BoxGeometry(0.7, 0.3, 0.7);
     const obs4 = new THREE.Mesh(obs4Geo, obsMat);
-    obs4.position.set(19.8, 16.8, 4.2);
+    obs4.position.set(36.8, 16.8, 4.2);
     caveGroup.add(obs4);
 
     const obs4Light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), obsHazardMat);
-    obs4Light.position.set(19.3, 16.8, 3.5);
+    obs4Light.position.set(36.3, 16.8, 3.5);
     caveGroup.add(obs4Light);
 
     // Cave Walls & High Cavern Ceiling (Semi-transparent for interior visibility)
@@ -449,27 +473,33 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     });
 
     // Expanded High Cavern Ceiling (Height extended up to 26.5m over 25m vertical shaft)
-    const ceilingGeo = new THREE.PlaneGeometry(45, 16, 20, 10);
+    const ceilingGeo = new THREE.PlaneGeometry(80, 16, 20, 10);
     const ceiling = new THREE.Mesh(ceilingGeo, wallMat);
     ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set(0, 26.5, 0);
+    ceiling.position.set(1, 26.5, 0);
     caveGroup.add(ceiling);
 
     // Stalactites hanging down
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 40; i++) {
       const len = 0.8 + Math.random() * 2.2;
       const coneGeo = new THREE.ConeGeometry(0.25, len, 6);
       const stalactite = new THREE.Mesh(coneGeo, stalagmiteMat);
       stalactite.rotation.x = Math.PI;
-      stalactite.position.set(-20 + Math.random() * 35, 8.5 - len / 2, -5 + Math.random() * 10);
+      stalactite.position.set(-39 + Math.random() * 80, 8.5 - len / 2, -5 + Math.random() * 10);
       caveGroup.add(stalactite);
     }
 
     // Back Cave Wall (Expanded height)
-    const backWallGeo = new THREE.PlaneGeometry(45, 17);
+    const backWallGeo = new THREE.PlaneGeometry(80, 26.5);
     const backWall = new THREE.Mesh(backWallGeo, wallMat);
-    backWall.position.set(0, 5, -6);
+    backWall.position.set(1, 13.25, -6);
     caveGroup.add(backWall);
+
+    // Front Cave Wall
+    const frontWallGeo = new THREE.PlaneGeometry(80, 26.5);
+    const frontWall = new THREE.Mesh(frontWallGeo, wallMat);
+    frontWall.position.set(1, 13.25, 6);
+    caveGroup.add(frontWall);
 
     scene.add(caveGroup);
 
@@ -507,14 +537,14 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     });
 
     // Spot Main Body Top Shell (Yellow Protective Fairing)
-    const spotTopGeo = new THREE.BoxGeometry(1.15, 0.22, 0.48);
+    const spotTopGeo = new THREE.BoxGeometry(2.30, 0.22, 0.48);
     const spotTopMesh = new THREE.Mesh(spotTopGeo, spotYellowMat);
     spotTopMesh.position.set(0, 0.08, 0);
     spotTopMesh.castShadow = true;
     spotGroup.add(spotTopMesh);
 
     // Spot Lower Frame Chassis (Dark Slate Carbon)
-    const spotBottomGeo = new THREE.BoxGeometry(1.18, 0.20, 0.46);
+    const spotBottomGeo = new THREE.BoxGeometry(2.36, 0.20, 0.46);
     const spotBottomMesh = new THREE.Mesh(spotBottomGeo, spotDarkMat);
     spotBottomMesh.position.set(0, -0.06, 0);
     spotBottomMesh.castShadow = true;
@@ -522,7 +552,7 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
 
     // Spot Side Accent Plates (Yellow side panels)
     [-0.245, 0.245].forEach((zSide) => {
-      const sidePlateGeo = new THREE.BoxGeometry(0.8, 0.14, 0.02);
+      const sidePlateGeo = new THREE.BoxGeometry(1.6, 0.14, 0.02);
       const sidePlate = new THREE.Mesh(sidePlateGeo, spotYellowMat);
       sidePlate.position.set(0, 0.02, zSide);
       spotGroup.add(sidePlate);
@@ -531,7 +561,7 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     // Spot Front Sensor Head Module (Stereo Camera & Depth Sensor Face)
     const spotHeadGeo = new THREE.BoxGeometry(0.22, 0.24, 0.40);
     const spotHeadMesh = new THREE.Mesh(spotHeadGeo, spotHeadMat);
-    spotHeadMesh.position.set(0.58, 0.02, 0);
+    spotHeadMesh.position.set(1.15, 0.02, 0);
     spotGroup.add(spotHeadMesh);
 
     // Front Stereo Camera Lenses
@@ -540,13 +570,13 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       const lensMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, metalness: 0.9 });
       const lens = new THREE.Mesh(lensGeo, lensMat);
       lens.rotation.z = Math.PI / 2;
-      lens.position.set(0.69, 0.04, zCam);
+      lens.position.set(1.26, 0.04, zCam);
       spotGroup.add(lens);
     });
 
     // Spot Top Carry Handles / Roll Rails
     [-0.21, 0.21].forEach((zRail) => {
-      const railGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.9, 8);
+      const railGeo = new THREE.CylinderGeometry(0.015, 0.015, 1.8, 8);
       const railMesh = new THREE.Mesh(railGeo, spotYellowMat);
       railMesh.rotation.z = Math.PI / 2;
       railMesh.position.set(-0.05, 0.20, zRail);
@@ -582,10 +612,10 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     // --- Spot Articulated Quadruped Legs (FL, FR, BL, BR) ---
     const legs: THREE.Group[] = [];
     const legPositions = [
-      { x: 0.48, z: 0.32, name: "FL" },
-      { x: 0.48, z: -0.32, name: "FR" },
-      { x: -0.48, z: 0.32, name: "BL" },
-      { x: -0.48, z: -0.32, name: "BR" },
+      { x: 1.05, z: 0.32, name: "FL" },
+      { x: 1.05, z: -0.32, name: "FR" },
+      { x: -1.05, z: 0.32, name: "BL" },
+      { x: -1.05, z: -0.32, name: "BR" },
     ];
 
     legPositions.forEach((pos) => {
@@ -644,19 +674,19 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       pGroup.position.set(0, -0.05, zPos);
 
       // Yellow + Dark Hydrodynamic Float Hull
-      const pontoonMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 1.35, 16), spotYellowMat);
+      const pontoonMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 2.70, 16), spotYellowMat);
       pontoonMesh.rotation.z = Math.PI / 2;
 
       // Dark Hydrodynamic Nose Cones
       const noseGeo = new THREE.ConeGeometry(0.11, 0.3, 16);
       const noseFront = new THREE.Mesh(noseGeo, spotDarkMat);
       noseFront.rotation.z = -Math.PI / 2;
-      noseFront.position.set(0.825, 0, 0);
+      noseFront.position.set(1.5, 0, 0);
       pGroup.add(noseFront);
 
       const noseBack = new THREE.Mesh(noseGeo, spotDarkMat);
       noseBack.rotation.z = Math.PI / 2;
-      noseBack.position.set(-0.825, 0, 0);
+      noseBack.position.set(-1.5, 0, 0);
       pGroup.add(noseBack);
 
       pGroup.add(pontoonMesh);
@@ -776,7 +806,7 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     lidarMeshRef.current = lidarGroup;
 
     // Laser Ray Visualizer Lines
-    const rayCount = 36;
+    const rayCount = 180;
     const linePositions = new Float32Array(rayCount * 6);
     const rayGeo = new THREE.BufferGeometry();
     rayGeo.setAttribute("position", new THREE.BufferAttribute(linePositions, 3));
@@ -900,17 +930,17 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
 
         // Animate LiDAR Spinning Dome
         if (lidarMeshRef.current) {
-          lidarMeshRef.current.rotation.y += 0.12;
+          lidarMeshRef.current.rotation.y += 0.45;
         }
 
         // Animate LiDAR Laser Beams
         if (laserRaysRef.current && showLaserBeamsRef.current) {
           const pos = laserRaysRef.current.geometry.attributes.position;
           for (let i = 0; i < rayCount; i++) {
-            const angle = (i / rayCount) * Math.PI * 2 + elapsedTime * 4;
+            const angle = (i / rayCount) * Math.PI * 2 + elapsedTime * 12;
             const dist = 3 + Math.sin(angle * 4 + elapsedTime * 2) * 1.5;
             pos.setXYZ(i * 2, 0, 0, 0);
-            pos.setXYZ(i * 2 + 1, Math.cos(angle) * dist, (Math.random() - 0.5) * 0.5, Math.sin(angle) * dist);
+            pos.setXYZ(i * 2 + 1, Math.cos(angle) * dist, (Math.random() - 0.5) * 1.0, Math.sin(angle) * dist);
           }
           laserRaysRef.current.geometry.attributes.position.needsUpdate = true;
           laserRaysRef.current.visible = true;
@@ -977,7 +1007,7 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
             pr.rotation.y += 0.05;
           });
           // Bobbing Water Surface Motion (only when in flooded water section)
-          if (rPos.x >= -5 && rPos.x <= 12) {
+          if (rPos.x >= -5 && rPos.x <= 29) {
             rPos.y = -0.05 + Math.sin(elapsedTime * 2) * 0.04;
           }
         } else if (currentMode === "FLYING") {
@@ -992,10 +1022,10 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
 
           // DETACHABLE FLYING DRONE TAKES OFF / ASCENDS!
           if (droneGroupRef.current && spotGroupRef.current) {
-            // Spot carrier base companion computer rests grounded at Dry Zone Start Base Station (X=-17.5, Y=0, Z=1.35m)
+            // Spot carrier base companion computer rests grounded at end of Flooded Zone Base Station (X=29.0, Y=0, Z=0.6m)
             // Three.js coordinates: rPos.x = ROS X, rPos.y = ROS Z altitude, rPos.z = ROS Y lateral
-            const targetSpotWorldX = -17.5;
-            const targetSpotWorldY = 1.35;
+            const targetSpotWorldX = 29.0;
+            const targetSpotWorldY = 0.6;
             const targetSpotWorldZ = 0.0;
 
             spotGroupRef.current.position.set(
