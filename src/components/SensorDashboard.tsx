@@ -50,6 +50,11 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
   onToggleWifi,
 }) => {
   const lidarCanvasRef = useRef<HTMLCanvasElement>(null);
+  const occupancyGridCanvasRef = useRef<HTMLCanvasElement>(null);
+  const slamTrajectoryCanvasRef = useRef<HTMLCanvasElement>(null);
+  const trajectoryPointsRef = useRef<{x: number, y: number}[]>([]);
+  const featureClustersRef = useRef<{x: number, y: number, life: number}[]>([]);
+  const discoveredCellsRef = useRef<Set<string>>(new Set());
   const cameraCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const isLowBattery = robotState.battery < 20;
@@ -305,6 +310,139 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
     ctx.fillText(`SLAM Toolbox 2D Grid (10m x 10m)`, 8, 16);
     ctx.fillText(`Confidence: ${sensorData.slamConfidence.toFixed(0)}%`, 8, 30);
   }, [sensorData, robotState]);
+
+  // Update & Render Occupancy Grid Overlay
+  useEffect(() => {
+    // 1. Update Discovered Cells
+    const rx = robotState.position.x;
+    const ry = robotState.position.y;
+    // Map a swath of floor
+    for (let dx = -3; dx <= 3; dx += 0.5) {
+      for (let dy = -3; dy <= 3; dy += 0.5) {
+        if (dx * dx + dy * dy <= 9) {
+          const cx = Math.round((rx + dx) * 2) / 2;
+          const cy = Math.round((ry + dy) * 2) / 2;
+          discoveredCellsRef.current.add(`${cx},${cy}`);
+        }
+      }
+    }
+
+    // 2. Render to Overlay Canvas
+    const canvas = occupancyGridCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const centerX = w / 2;
+    const centerY = h / 2;
+    const scale = 16; // 1 meter = 16px
+
+    ctx.fillStyle = "rgba(16, 185, 129, 0.25)"; // Emerald-500 transparent
+    ctx.strokeStyle = "rgba(16, 185, 129, 0.4)";
+    ctx.lineWidth = 1;
+
+    discoveredCellsRef.current.forEach((cell) => {
+      const [cellX, cellY] = cell.split(",").map(Number);
+      
+      // Calculate position relative to robot
+      const dx = cellX - rx;
+      const dy = cellY - ry;
+      
+      // In LiDAR map, robot always faces right (if yaw is zero)
+      // The local map is fixed in orientation, just translated.
+      const sx = centerX + dx * scale;
+      const sy = centerY + dy * scale;
+      
+      const cellSize = 0.5 * scale;
+      
+      if (sx > -cellSize && sx < w + cellSize && sy > -cellSize && sy < h + cellSize) {
+        ctx.fillRect(sx - cellSize / 2, sy - cellSize / 2, cellSize, cellSize);
+        ctx.strokeRect(sx - cellSize / 2, sy - cellSize / 2, cellSize, cellSize);
+      }
+    });
+  }, [robotState.position.x, robotState.position.y]);
+
+  // Update & Render SLAM Trajectory & Feature Point Clusters Overlay
+  useEffect(() => {
+    const canvas = slamTrajectoryCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // 1. Record New Trajectory Pose
+    const pose = { x: sensorData.slamPose.x, y: sensorData.slamPose.y };
+    const lastPose = trajectoryPointsRef.current[trajectoryPointsRef.current.length - 1];
+    
+    // Only append if moved a bit, to keep array size manageable
+    if (!lastPose || Math.hypot(lastPose.x - pose.x, lastPose.y - pose.y) > 0.1) {
+      trajectoryPointsRef.current.push(pose);
+      if (trajectoryPointsRef.current.length > 300) {
+        trajectoryPointsRef.current.shift();
+      }
+    }
+
+    // 2. Generate Random Feature Points based on count
+    // The number of feature points to generate per tick scales with sensorData.featurePointsCount
+    const numFeaturesToGen = Math.min(Math.floor(sensorData.featurePointsCount / 10), 10);
+    for (let i = 0; i < numFeaturesToGen; i++) {
+      featureClustersRef.current.push({
+        x: pose.x + (Math.random() - 0.5) * 4,
+        y: pose.y + (Math.random() - 0.5) * 4,
+        life: 1.0, // life decays from 1 to 0
+      });
+    }
+
+    // Decay life & filter out dead feature points
+    featureClustersRef.current.forEach(f => f.life -= 0.02);
+    featureClustersRef.current = featureClustersRef.current.filter(f => f.life > 0);
+
+    // 3. Clear and Render
+    ctx.clearRect(0, 0, w, h);
+
+    const centerX = w / 2;
+    const centerY = h / 2;
+    const scale = 16; // 1 meter = 16px
+    const rx = robotState.position.x;
+    const ry = robotState.position.y;
+
+    // Render Trajectory Line
+    if (trajectoryPointsRef.current.length > 1) {
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(167, 139, 250, 0.9)"; // Purple-400
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      
+      trajectoryPointsRef.current.forEach((pt, idx) => {
+        const dx = pt.x - rx;
+        const dy = pt.y - ry;
+        const sx = centerX + dx * scale;
+        const sy = centerY + dy * scale;
+        if (idx === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      });
+      ctx.stroke();
+    }
+
+    // Render Feature Clusters (cyan dots with fading opacity)
+    featureClustersRef.current.forEach(pt => {
+      const dx = pt.x - rx;
+      const dy = pt.y - ry;
+      const sx = centerX + dx * scale;
+      const sy = centerY + dy * scale;
+      
+      ctx.fillStyle = `rgba(56, 189, 248, ${Math.max(0, pt.life)})`; // Sky-400
+      ctx.beginPath();
+      ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+  }, [sensorData.slamPose, sensorData.featurePointsCount, robotState.position]);
 
   // Render 3D SLAM Mapping Result Window Canvas
   useEffect(() => {
@@ -641,6 +779,40 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
         ctx.stroke();
       }
     }
+
+    // Draw robot position on mesh
+    if (robotState) {
+      const rp = toMeshScreen(robotState.position.x, robotState.position.y, robotState.position.z);
+      
+      // Outer glow
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(16, 185, 129, 0.3)";
+      ctx.fill();
+      
+      // Core point
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = "#10b981"; // Emerald
+      ctx.fill();
+      
+      // Drop line to the ground (simplified Z = 0)
+      const floorMode = robotState.position.x < -5 ? 0 : (robotState.position.x < 29 ? -1 : 0);
+      const rpGround = toMeshScreen(robotState.position.x, robotState.position.y, floorMode);
+      ctx.beginPath();
+      ctx.moveTo(rp.x, rp.y);
+      ctx.lineTo(rpGround.x, rpGround.y);
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.5)";
+      ctx.setLineDash([2, 2]);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      
+      // Label
+      ctx.fillStyle = "#10b981";
+      ctx.font = "10px monospace";
+      ctx.fillText(`SLAM: ${robotState.position.x.toFixed(1)}, ${robotState.position.y.toFixed(1)}`, rp.x + 10, rp.y);
+    }
   }, [mapZoom, robotState]);
 
   return (
@@ -737,6 +909,8 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
 
           <div className="relative w-full aspect-video rounded overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center">
             <canvas ref={lidarCanvasRef} width={320} height={180} className="w-full h-full object-contain" />
+            <canvas ref={occupancyGridCanvasRef} width={320} height={180} className="absolute inset-0 w-full h-full object-contain pointer-events-none opacity-80 mix-blend-screen" />
+            <canvas ref={slamTrajectoryCanvasRef} width={320} height={180} className="absolute inset-0 w-full h-full object-contain pointer-events-none opacity-90" />
           </div>
         </div>
 

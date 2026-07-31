@@ -16,9 +16,12 @@ find_package(nav_msgs REQUIRED)
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
 
-# Install launch files
+# Install launch files, URDFs, Worlds, and Models
 install(DIRECTORY
   launch
+  urdf
+  worlds
+  models
   DESTINATION share/${PROJECT_NAME}
 )
 

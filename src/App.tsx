@@ -106,175 +106,157 @@ export default function App() {
     waypoints: [
       {
         id: "wp1",
-        name: "Dry Cave Entrance Start",
+        name: "Dry Cave Entrance",
         targetMode: "WALKING",
-        position: { x: -34.5, y: 0, z: 1.35 },
+        position: { x: -37.0, y: 0, z: 1.35 },
         section: "DRY_CAVE",
         completed: true,
-        description: "Starting position at the beginning of the dry zone corridor (-34.5m)",
+        description: "Starting position in dry cave (-37m)",
       },
       {
         id: "wp2",
-        name: "Rugged Dry Corridor Mid-Point",
+        name: "Dry Cave Mid-Point",
         targetMode: "WALKING",
-        position: { x: -20, y: 0.3, z: 1.35 },
+        position: { x: -22.0, y: 2.0, z: 1.35 },
         section: "DRY_CAVE",
         completed: false,
-        description: "Navigating through narrow dry stalagmite passage",
+        description: "Navigating stalagmites",
       },
       {
         id: "wp3",
-        name: "Water Edge Transition Readiness",
+        name: "Approaching Water Edge",
         targetMode: "WALKING",
-        position: { x: -7, y: 0, z: 1.35 },
+        position: { x: -7.0, y: -1.0, z: 1.35 },
         section: "DRY_CAVE",
         completed: false,
-        description: "Approaching dry section end / flooded water shore",
+        description: "Reaching the end of the dry floor",
       },
       {
         id: "wp4",
-        name: "Water Launch & Pontoon Deployment",
+        name: "Water Entry & Sailing Mode",
         targetMode: "SAILING",
-        position: { x: -3, y: 0, z: 0.55 },
+        position: { x: -3.0, y: 0.0, z: 0.6 },
         section: "FLOODED_WATER",
         completed: false,
-        description: "Hydrofoil launch matching raised water surface (z=0.6m)",
+        description: "Transition to sailing on the flooded cave water",
       },
       {
         id: "wp5",
-        name: "Flooded Lake Cruise West",
+        name: "Flooded Cave Navigation",
         targetMode: "SAILING",
-        position: { x: 5, y: -0.4, z: 0.55 },
+        position: { x: 12.0, y: 3.0, z: 0.6 },
         section: "FLOODED_WATER",
         completed: false,
-        description: "Surface sailing on raised flooded channel with underwater sonar active",
+        description: "Avoiding submerged rocks",
       },
       {
         id: "wp6",
-        name: "Submerged Rock Passage Bathymetry",
+        name: "Approaching East Shore",
         targetMode: "SAILING",
-        position: { x: 15, y: 0.3, z: 0.55 },
+        position: { x: 27.0, y: -2.0, z: 0.6 },
         section: "FLOODED_WATER",
         completed: false,
-        description: "Hydrofoil surface navigation over seabed with active sonar profiling",
+        description: "Reaching the base of the air pocket",
       },
       {
         id: "wp7",
-        name: "Flooded Lake East Shore Approach",
-        targetMode: "SAILING",
-        position: { x: 25, y: 0, z: 0.55 },
-        section: "FLOODED_WATER",
+        name: "Shore Arrival & Takeoff Prep",
+        targetMode: "WALKING",
+        position: { x: 30.0, y: 0.0, z: 1.35 },
+        section: "AIR_POCKET",
         completed: false,
-        description: "Approaching east shore transition of flooded channel",
+        description: "Transitioning back to walking on shore",
       },
       {
         id: "wp8",
-        name: "Air Pocket Beach / Spot Base Station",
-        targetMode: "SAILING",
-        position: { x: 29, y: 0, z: 0.8 },
+        name: "VTOL Takeoff",
+        targetMode: "FLYING",
+        position: { x: 30.0, y: 0.0, z: 4.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Spot quadruped base companion computer parks at base of vertical shaft",
+        description: "Initiating vertical takeoff in the air pocket",
       },
       {
         id: "wp9",
-        name: "Shaft VTOL Takeoff & WiFi Streaming Sync",
+        name: "Shaft Entry & Stabilization",
         targetMode: "FLYING",
-        position: { x: 30.0, y: 0, z: 2.0 },
+        position: { x: 32.5, y: 0.0, z: 6.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Detachable flying drone detaches; 5.8GHz WiFi video stream syncs with Spot base",
+        description: "Ascending into the lower shaft",
       },
       {
         id: "wp10",
-        name: "Lower Shaft Helical Mapping (West Sweep)",
+        name: "Helical Mapping - Lower East",
         targetMode: "FLYING",
-        position: { x: 34.2, y: 1.5, z: 5.5 },
+        position: { x: 34.5, y: 2.5, z: 8.5 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Ascending into lower shaft tube with 3D point cloud generation (z=5.5m)",
+        description: "Scanning lower east wall",
       },
       {
         id: "wp11",
-        name: "Lower Shaft Helical Mapping (East Sweep)",
+        name: "Helical Mapping - Mid North",
         targetMode: "FLYING",
-        position: { x: 35.8, y: -1.5, z: 8.5 },
+        position: { x: 36.5, y: 0.0, z: 11.5 },
         section: "AIR_POCKET",
         completed: false,
-        description: "3D LiDAR mapping of mid-shaft rock features and obstruction bypass (z=8.5m)",
+        description: "Navigating past mid-shaft outcrops",
       },
       {
         id: "wp12",
-        name: "Mid-Shaft Chimney SLAM Scan & WiFi Sync",
+        name: "Helical Mapping - Upper West",
         targetMode: "FLYING",
-        position: { x: 35.0, y: 0.8, z: 12.0 },
+        position: { x: 34.5, y: -3.0, z: 15.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Streaming 1080p video & feature points to Spot base companion computer (z=12.0m)",
+        description: "Scanning upper stalactites",
       },
       {
         id: "wp13",
-        name: "Upper Shaft Helical Sweep (South Wall)",
+        name: "Helical Mapping - Upper South",
         targetMode: "FLYING",
-        position: { x: 35.8, y: -1.2, z: 15.5 },
+        position: { x: 33.5, y: 0.0, z: 18.5 },
         section: "AIR_POCKET",
         completed: false,
-        description: "3D mapping of upper shaft stalactite formations (z=15.5m)",
+        description: "Approaching apex dome",
       },
       {
         id: "wp14",
-        name: "Upper Shaft Helical Sweep (North Wall)",
+        name: "Shaft Apex Dome 360 Scan",
         targetMode: "FLYING",
-        position: { x: 34.5, y: 1.2, z: 19.0 },
+        position: { x: 35.5, y: 0.0, z: 23.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "High altitude vertical flight mapping up the tube (z=19.0m)",
+        description: "Full resolution ceiling mapping",
       },
       {
         id: "wp15",
-        name: "Shaft Apex Ceiling Dome 3D Mapping",
+        name: "Vertical Descent - Center",
         targetMode: "FLYING",
-        position: { x: 35.5, y: 0, z: 23.5 },
+        position: { x: 35.0, y: 0.0, z: 12.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Full 3D mapping of 25m shaft ceiling dome apex (z=23.5m)",
+        description: "Returning down the shaft center",
       },
       {
         id: "wp16",
-        name: "Shaft Apex 360 Spin & WiFi Telemetry Flush",
+        name: "Landing Approach",
         targetMode: "FLYING",
-        position: { x: 35.5, y: 0, z: 22.5 },
+        position: { x: 31.0, y: 0.0, z: 4.0 },
         section: "AIR_POCKET",
         completed: false,
-        description: "360-degree panorama SLAM sync to Spot companion base computer",
+        description: "Aligning for touchdown",
       },
       {
         id: "wp17",
-        name: "Shaft Return Descending Mapping Sweep",
+        name: "Spot Base Docking",
         targetMode: "FLYING",
-        position: { x: 17.8, y: -0.6, z: 14.0 },
+        position: { x: 30.0, y: 0.0, z: 1.5 },
         section: "AIR_POCKET",
         completed: false,
-        description: "Descending flight verifying shaft point cloud map continuity",
-      },
-      {
-        id: "wp18",
-        name: "Shaft Lower Portal Docking Alignment",
-        targetMode: "FLYING",
-        position: { x: 15.0, y: 0, z: 4.5 },
-        section: "AIR_POCKET",
-        completed: false,
-        description: "Aligning VTOL descent vector with Spot base station docking bay",
-      },
-      {
-        id: "wp19",
-        name: "Spot Back Cradle Docking Touchdown",
-        targetMode: "FLYING",
-        position: { x: 13.0, y: 0, z: 1.5 },
-        section: "AIR_POCKET",
-        completed: false,
-        description: "Precision landing and docking onto Spot companion base cradle",
-      },
+        description: "Precision landing on Spot cradle",
+      }
     ],
     autoTransitions: true,
     fsmState: "IDLE",
@@ -306,29 +288,64 @@ export default function App() {
       setRobotState((prev) => {
         const drainRate = prev.mode === "FLYING" ? 0.08 : prev.mode === "SAILING" ? 0.03 : 0.02;
         const newBattery = Math.max(0, prev.battery - drainRate);
+        let newX = prev.position.x;
         let newY = prev.position.y;
         let newZ = prev.position.z;
 
         if (antiCollisionEnabled) {
-          // Detect Y wall bounds [-3.0, 3.0]
-          if (newY > 2.3) {
-            newY -= 0.15; // Auto evasion nudge left
-            setEvasionAlert({ active: true, obstacle: "Right Cave Wall Proximity (0.7m)" });
-          } else if (newY < -2.3) {
-            newY += 0.15; // Auto evasion nudge right
-            setEvasionAlert({ active: true, obstacle: "Left Cave Wall Proximity (0.7m)" });
-          } else if (prev.mode === "FLYING" && prev.position.x < 12 && newZ > 4.5) {
-            newZ -= 0.15; // Auto evasion nudge down in low ceiling cave
-            setEvasionAlert({ active: true, obstacle: "Cave Ceiling Obstacle (0.8m)" });
-          } else {
-            setEvasionAlert({ active: false, obstacle: "" });
+          // Detect Y wall bounds [-3.0, 3.0] inside the narrow sections
+          if (newX < 30) {
+            if (newY > 2.3) {
+              newY -= 0.15;
+              setEvasionAlert({ active: true, obstacle: "Right Cave Wall Proximity (0.7m)" });
+            } else if (newY < -2.3) {
+              newY += 0.15;
+              setEvasionAlert({ active: true, obstacle: "Left Cave Wall Proximity (0.7m)" });
+            } else if (prev.mode === "FLYING" && newX < 12 && newZ > 4.5) {
+              newZ -= 0.15;
+              setEvasionAlert({ active: true, obstacle: "Cave Ceiling Obstacle (0.8m)" });
+            } else {
+              setEvasionAlert({ active: false, obstacle: "" });
+            }
+          }
+          
+          // Shaft Obstacles Spherical Evasion
+          if (newX > 30) {
+            const obstacles = [
+              { id: "O1", x: 33.5, y: -4.2, z: 5.5, radius: 1.5, name: "Lower Shaft Spire" },
+              { id: "O2", x: 37.2, y: 4.2, z: 9.2, radius: 1.5, name: "Mid-Shaft Rock Outcrop" },
+              { id: "O3", x: 34.2, y: -4.2, z: 14.5, radius: 1.5, name: "Upper Shaft Stalactite" },
+              { id: "O4", x: 36.8, y: 4.2, z: 16.8, radius: 1.5, name: "Upper Shaft Rock Shelf" },
+            ];
+            
+            let evaded = false;
+            for (const obs of obstacles) {
+              const dx = newX - obs.x;
+              const dy = newY - obs.y;
+              const dz = newZ - obs.z;
+              const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+              
+              if (dist < obs.radius) {
+                // Avoidance push
+                const pushStr = (obs.radius - dist) + 0.1;
+                newX += (dx / dist) * pushStr;
+                newY += (dy / dist) * pushStr;
+                newZ += (dz / dist) * pushStr;
+                setEvasionAlert({ active: true, obstacle: `Collision Avoidance: ${obs.name}` });
+                evaded = true;
+                break;
+              }
+            }
+            if (!evaded) {
+              setEvasionAlert({ active: false, obstacle: "" });
+            }
           }
         } else {
           setEvasionAlert({ active: false, obstacle: "" });
         }
 
         // Ground Collision Anti-penetration floor check
-        const minZFloor = getMinGroundHeight(prev.position.x, newY, prev.mode, newZ);
+        const minZFloor = getMinGroundHeight(newX, newY, prev.mode, newZ);
         if (newZ < minZFloor) {
           newZ = minZFloor;
         }
@@ -336,7 +353,7 @@ export default function App() {
         return {
           ...prev,
           battery: newBattery,
-          position: { ...prev.position, y: newY, z: newZ },
+          position: { ...prev.position, x: newX, y: newY, z: newZ },
         };
       });
 
@@ -366,33 +383,23 @@ export default function App() {
                 ],
               }));
 
-              let newZ = nextWp.position?.z ?? 1.35;
               let rpm = prev.propellerRpm;
               let buoyancy = prev.buoyancyForce;
 
               if (nextWp.targetMode === "WALKING") {
-                newZ = nextWp.position?.z ?? 1.35;
                 rpm = 0;
                 buoyancy = 0;
               } else if (nextWp.targetMode === "SAILING") {
-                newZ = 0.55;
                 rpm = 300;
                 buoyancy = 41.2;
               } else if (nextWp.targetMode === "FLYING") {
-                newZ = nextWp.position?.z ?? 2.0;
                 rpm = 4200;
                 buoyancy = 0;
-              }
-
-              const safeMinZ = getMinGroundHeight(nextWp.position.x, nextWp.position.y, nextWp.targetMode, newZ);
-              if (newZ < safeMinZ) {
-                newZ = safeMinZ;
               }
 
               return {
                 ...prev,
                 mode: nextWp.targetMode,
-                position: { ...prev.position, z: newZ },
                 propellerRpm: rpm,
                 buoyancyForce: buoyancy,
                 waterSubmerged: nextWp.targetMode === "SAILING",
@@ -400,14 +407,33 @@ export default function App() {
               };
             }
 
-            const step = 0.15;
             const safeDist = dist > 0 ? dist : 1;
-            const nextX = prev.position.x + (dx / safeDist) * step;
-            const nextY = prev.position.y + (dy / safeDist) * step;
-            let nextZ = prev.position.z + (dz / safeDist) * step;
+            let nextX = prev.position.x;
+            let nextY = prev.position.y;
+            let nextZ = prev.position.z;
+            
+            if (prev.mode === "FLYING") {
+              // Smooth flight path with subtle hover noise
+              const time = Date.now() / 1000;
+              const hoverX = Math.sin(time * 1.5) * 0.03;
+              const hoverY = Math.cos(time * 1.2) * 0.03;
+              const hoverZ = Math.sin(time * 2.0) * 0.02;
+              
+              const speed = 0.25;
+              nextX += (dx / safeDist) * speed + hoverX;
+              nextY += (dy / safeDist) * speed + hoverY;
+              nextZ += (dz / safeDist) * speed + hoverZ;
+            } else {
+              // Walking / Sailing mode linear step
+              const step = 0.15;
+              nextX += (dx / safeDist) * step;
+              nextY += (dy / safeDist) * step;
+              nextZ += (dz / safeDist) * step;
+            }
 
             const dynamicMode = getAutoSectionMode(nextX, nextY, nextZ, prev.mode);
             const floorZ = getMinGroundHeight(nextX, nextY, dynamicMode);
+
             if (nextZ < floorZ) {
               nextZ = floorZ;
             }

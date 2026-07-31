@@ -1,0 +1,29 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="cavex_world">
+    <include><uri>model://sun</uri></include>
+    <include><uri>model://ground_plane</uri></include>
+
+    <!-- Dry Cave Section Box (-39 to -5) -->
+    <model name="dry_cave">
+      <static>true</static>
+      <pose>-22 0 1 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>34 12 2</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>34 12 2</size></box></geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual>
+      </link>
+    </model>
+
+    <!-- Water Section (Raised) ( -5 to 29 ) -->
+    <model name="flooded_cave_water">
+      <static>true</static>
+      <pose>12 0 0.6 0 0 0</pose>
+      <link name="link">
+        <visual name="water">
+          <geometry><box><size>34 12 0.1</size></box></geometry>
+          <material><ambient>0 0.4 0.8 0.5</ambient></material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>
