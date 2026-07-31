@@ -1179,7 +1179,7 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
   // Determine current section label
   const getCurrentSectionName = (x: number): string => {
     if (x < -5) return "Section 1: Dry Cave (Rugged Rock)";
-    if (x <= 12) return "Section 2: Flooded Cave (Water Surface z=0)";
+    if (x <= 29) return "Section 2: Flooded Cave (Water Surface z=0)";
     return "Section 3: Air Pocket Shaft (Air Ceiling)";
   };
 
