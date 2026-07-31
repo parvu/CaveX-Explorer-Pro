@@ -33,7 +33,7 @@ chmod +x ${file.path} 2>/dev/null || true
   });
 
   script += `echo "ROS 2 Jazzy Workspace generated successfully!"
-echo "To build: cd hybrid_drone_ws && colcon build"
+echo "Building workspace..."\ncd hybrid_drone_ws\ncolcon build --symlink-install\nsource install/setup.bash\necho "Build complete. Run: ros2 launch hybrid_cave_drone gazebo_cave_sim.launch.py"
 `;
 
   downloadFile("setup_ros2_workspace.sh", script);

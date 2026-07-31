@@ -117,7 +117,7 @@ export default function App() {
         id: "wp2",
         name: "Dry Cave Mid-Point",
         targetMode: "WALKING",
-        position: { x: -22.0, y: 2.0, z: 1.35 },
+        position: { x: -22.0, y: 1.0, z: 1.35 },
         section: "DRY_CAVE",
         completed: false,
         description: "Navigating stalagmites",
@@ -144,7 +144,7 @@ export default function App() {
         id: "wp5",
         name: "Flooded Cave Navigation",
         targetMode: "SAILING",
-        position: { x: 12.0, y: 3.0, z: 0.6 },
+        position: { x: 12.0, y: 1.5, z: 0.6 },
         section: "FLOODED_WATER",
         completed: false,
         description: "Avoiding submerged rocks",
@@ -153,7 +153,7 @@ export default function App() {
         id: "wp6",
         name: "Approaching East Shore",
         targetMode: "SAILING",
-        position: { x: 27.0, y: -2.0, z: 0.6 },
+        position: { x: 27.0, y: -1.0, z: 0.6 },
         section: "FLOODED_WATER",
         completed: false,
         description: "Reaching the base of the air pocket",
@@ -295,12 +295,12 @@ export default function App() {
         if (antiCollisionEnabled) {
           // Detect Y wall bounds [-3.0, 3.0] inside the narrow sections
           if (newX < 30) {
-            if (newY > 2.3) {
+            if (newY > 2.6) {
               newY -= 0.15;
-              setEvasionAlert({ active: true, obstacle: "Right Cave Wall Proximity (0.7m)" });
-            } else if (newY < -2.3) {
+              setEvasionAlert({ active: true, obstacle: "Right Cave Wall Proximity (0.4m)" });
+            } else if (newY < -2.6) {
               newY += 0.15;
-              setEvasionAlert({ active: true, obstacle: "Left Cave Wall Proximity (0.7m)" });
+              setEvasionAlert({ active: true, obstacle: "Left Cave Wall Proximity (0.4m)" });
             } else if (prev.mode === "FLYING" && newX < 12 && newZ > 4.5) {
               newZ -= 0.15;
               setEvasionAlert({ active: true, obstacle: "Cave Ceiling Obstacle (0.8m)" });

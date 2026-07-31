@@ -73,8 +73,6 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
   const [mapZoom, setMapZoom] = useState(1.0);
   const [isExportingMap, setIsExportingMap] = useState(false);
 
-  // Shaded 3D Mesh Reconstruction Canvas
-  const meshCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // PCD Point Cloud Data Export Function
   const handleExportPcdMap = () => {
@@ -693,128 +691,6 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
     mapZoom,
   ]);
 
-  // Render Shaded 3D Mesh Reconstruction
-  useEffect(() => {
-    const canvas = meshCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const w = canvas.width;
-    const h = canvas.height;
-
-    // Background
-    ctx.fillStyle = "#020617";
-    ctx.fillRect(0, 0, w, h);
-
-    // Simple isometric projection for mesh
-    const toMeshScreen = (rx: number, ry: number, rz: number) => {
-      const isoX = (rx * 0.85 - ry * 0.85) * 6 * mapZoom;
-      const isoY = (rx * 0.35 + ry * 0.35) * 4.5 * mapZoom - rz * 3.5 * mapZoom;
-      return { x: w * 0.45 + isoX, y: h * 0.70 + isoY };
-    };
-
-    // Draw some shaded polygons to simulate mesh
-    ctx.strokeStyle = "rgba(56, 189, 248, 0.1)";
-    ctx.lineWidth = 0.5;
-
-    // Dry Cave mesh
-    for (let i = -39; i < -5; i += 2) {
-      for (let j = -2; j <= 2; j += 2) {
-        const p1 = toMeshScreen(i, j, 0.5 + Math.sin(i)*0.2);
-        const p2 = toMeshScreen(i+2, j, 0.5 + Math.sin(i+2)*0.2);
-        const p3 = toMeshScreen(i, j+2, 0.5 + Math.sin(i)*0.2);
-        const p4 = toMeshScreen(i+2, j+2, 0.5 + Math.sin(i+2)*0.2);
-
-        ctx.fillStyle = `rgba(245, 158, 11, ${0.15 + (i+39)*0.005})`; // Amber shades
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.lineTo(p4.x, p4.y);
-        ctx.lineTo(p3.x, p3.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-    }
-
-    // Water/Flooded mesh
-    for (let i = -5; i < 29; i += 2) {
-      for (let j = -2; j <= 2; j += 2) {
-        const p1 = toMeshScreen(i, j, -1 + Math.cos(i)*0.1);
-        const p2 = toMeshScreen(i+2, j, -1 + Math.cos(i+2)*0.1);
-        const p3 = toMeshScreen(i, j+2, -1 + Math.cos(i)*0.1);
-        const p4 = toMeshScreen(i+2, j+2, -1 + Math.cos(i+2)*0.1);
-
-        ctx.fillStyle = `rgba(6, 182, 212, ${0.2 + Math.abs(j)*0.05})`; // Cyan shades
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.lineTo(p4.x, p4.y);
-        ctx.lineTo(p3.x, p3.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-    }
-
-    // Shaft mesh (higher resolution cylinder)
-    for (let z = 0; z < 25; z += 2) {
-      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
-        const r1 = 5.2 + Math.sin(z)*0.2;
-        const r2 = 5.2 + Math.sin(z+2)*0.2;
-        const p1 = toMeshScreen(35.5 + Math.cos(angle)*r1, Math.sin(angle)*r1, z);
-        const p2 = toMeshScreen(35.5 + Math.cos(angle + Math.PI/8)*r1, Math.sin(angle + Math.PI/8)*r1, z);
-        const p3 = toMeshScreen(35.5 + Math.cos(angle)*r2, Math.sin(angle)*r2, z+2);
-        const p4 = toMeshScreen(35.5 + Math.cos(angle + Math.PI/8)*r2, Math.sin(angle + Math.PI/8)*r2, z+2);
-
-        ctx.fillStyle = `rgba(168, 85, 247, ${0.15 + (z/25)*0.2})`; // Purple shades
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.lineTo(p4.x, p4.y);
-        ctx.lineTo(p3.x, p3.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-    }
-
-    // Draw robot position on mesh
-    if (robotState) {
-      const rp = toMeshScreen(robotState.position.x, robotState.position.y, robotState.position.z);
-      
-      // Outer glow
-      ctx.beginPath();
-      ctx.arc(rp.x, rp.y, 8, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(16, 185, 129, 0.3)";
-      ctx.fill();
-      
-      // Core point
-      ctx.beginPath();
-      ctx.arc(rp.x, rp.y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = "#10b981"; // Emerald
-      ctx.fill();
-      
-      // Drop line to the ground (simplified Z = 0)
-      const floorMode = robotState.position.x < -5 ? 0 : (robotState.position.x < 29 ? -1 : 0);
-      const rpGround = toMeshScreen(robotState.position.x, robotState.position.y, floorMode);
-      ctx.beginPath();
-      ctx.moveTo(rp.x, rp.y);
-      ctx.lineTo(rpGround.x, rpGround.y);
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.5)";
-      ctx.setLineDash([2, 2]);
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.setLineDash([]);
-      
-      // Label
-      ctx.fillStyle = "#10b981";
-      ctx.font = "10px monospace";
-      ctx.fillText(`SLAM: ${robotState.position.x.toFixed(1)}, ${robotState.position.y.toFixed(1)}`, rp.x + 10, rp.y);
-    }
-  }, [mapZoom, robotState]);
-
   return (
     <div className="w-full bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col gap-4 text-slate-200">
       <div className="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -1264,29 +1140,6 @@ export const SensorDashboard: React.FC<SensorDashboardProps> = ({
       {/* ========================================================================= */}
       {/* SHADED 3D MESH RECONSTRUCTION WINDOW */}
       {/* ========================================================================= */}
-      <div className="bg-slate-950 rounded-xl p-3.5 border border-slate-800 flex flex-col gap-3 font-mono mt-2">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-          <span className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
-            <Layers className="w-4 h-4 text-indigo-400" />
-          </span>
-          <div>
-            <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-              Shaded 3D Mesh Reconstruction
-            </h4>
-            <p className="text-[10px] text-slate-400">
-              Live surface tessellation & Poisson reconstruction from point clouds
-            </p>
-          </div>
-        </div>
-        <div className="relative w-full aspect-[21/8] min-h-[220px] rounded-lg overflow-hidden border border-slate-800 bg-[#020617]">
-          <canvas
-            ref={meshCanvasRef}
-            width={960}
-            height={320}
-            className="w-full h-full object-cover"
-          />
-        </div>
-      </div>
     </div>
   );
 };

@@ -55,6 +55,10 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
   const laserRaysRef = useRef<THREE.LineSegments | null>(null);
   const sonarPulseMeshRef = useRef<THREE.Mesh | null>(null);
   const waterMeshRef = useRef<THREE.Mesh | null>(null);
+  const slamVoxelMeshRef = useRef<THREE.InstancedMesh | null>(null);
+  const exploredVoxelsRef = useRef<Set<string>>(new Set());
+  const voxelCountRef = useRef<number>(0);
+  const tempMatrix = new THREE.Matrix4();
   const spotlightRef = useRef<THREE.SpotLight | null>(null);
   const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
   const dirLightRef = useRef<THREE.DirectionalLight | null>(null);
@@ -504,6 +508,27 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
     scene.add(caveGroup);
 
     // ==========================================
+    // 5.5 SLAM 3D MESH RECONSTRUCTION
+    // ==========================================
+    const maxVoxels = 20000;
+    const voxelGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    const voxelMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.8,
+      metalness: 0.2,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const slamVoxelMesh = new THREE.InstancedMesh(voxelGeo, voxelMat, maxVoxels);
+    slamVoxelMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    if (slamVoxelMesh.instanceColor) slamVoxelMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    slamVoxelMesh.count = 0;
+    slamVoxelMesh.castShadow = true;
+    slamVoxelMesh.receiveShadow = true;
+    scene.add(slamVoxelMesh);
+    slamVoxelMeshRef.current = slamVoxelMesh;
+
+    // ==========================================
     // 6. BOSTON DYNAMICS SPOT QUADRUPED & DETACHABLE FLYING DRONE
     // ==========================================
     const robotGroup = new THREE.Group();
@@ -922,6 +947,80 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
           waterPos.setZ(i, wave);
         }
         waterMeshRef.current.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // SLAM 3D MESH RECONSTRUCTION UPDATE
+      const currentCamMode = activeCameraModeRef.current;
+      if (robotGroupRef.current && slamVoxelMeshRef.current) {
+        if (currentCamMode === "topdown") {
+           slamVoxelMeshRef.current.visible = true;
+        } else {
+           slamVoxelMeshRef.current.visible = false;
+        }
+
+        const rx = robotGroupRef.current.position.x;
+        const ry = robotGroupRef.current.position.y;
+        const rz = robotGroupRef.current.position.z;
+
+        // Reset SLAM Map on Simulation Reset
+        if (Math.abs(rx - -15) < 0.1 && Math.abs(ry - 0.6) < 0.1 && Math.abs(rz - 0) < 0.1) {
+           exploredVoxelsRef.current.clear();
+           voxelCountRef.current = 0;
+           slamVoxelMeshRef.current.count = 0;
+        }
+
+        // Generate Voxels around the robot
+        const maxVoxels = 20000;
+        let vCount = voxelCountRef.current;
+        let needsUpdate = false;
+
+        for (let dx = -8; dx <= 8; dx += 1) {
+          for (let dy = -6; dy <= 6; dy += 1) {
+            for (let dz = -6; dz <= 6; dz += 1) {
+              if (dx*dx + dy*dy + dz*dz <= 49) { // 7m sphere
+                 const gx = Math.round(rx + dx);
+                 const gy = Math.round(ry + dy); // altitude
+                 const gz = Math.round(rz + dz); // lateral
+                 
+                 let isSolid = false;
+                 // Cave bounds estimation
+                 if (gx < 30) {
+                    if (gy < (gx >= -5 && gx <= 29 ? -1 : 0)) isSolid = true; // floor
+                    if (gz > 3 || gz < -3) isSolid = true; // walls
+                 } else {
+                    if (gy < 0) isSolid = true; // floor under shaft
+                    if (gz*gz + (gx-35.5)*(gx-35.5) > 25) isSolid = true; // cylinder shaft wall
+                 }
+                 
+                 if (isSolid) {
+                    const key = `${gx},${gy},${gz}`;
+                    if (!exploredVoxelsRef.current.has(key) && vCount < maxVoxels) {
+                       exploredVoxelsRef.current.add(key);
+                       tempMatrix.setPosition(gx, gy, gz);
+                       slamVoxelMeshRef.current.setMatrixAt(vCount, tempMatrix);
+                       
+                       const color = new THREE.Color();
+                       // Use altitude (gy) for color shading
+                       color.setHSL((gy + 10) / 40, 0.8, 0.6);
+                       slamVoxelMeshRef.current.setColorAt(vCount, color);
+                       
+                       vCount++;
+                       needsUpdate = true;
+                    }
+                 }
+              }
+            }
+          }
+        }
+        
+        if (needsUpdate) {
+           slamVoxelMeshRef.current.count = vCount;
+           slamVoxelMeshRef.current.instanceMatrix.needsUpdate = true;
+           if (slamVoxelMeshRef.current.instanceColor) {
+               slamVoxelMeshRef.current.instanceColor.needsUpdate = true;
+           }
+           voxelCountRef.current = vCount;
+        }
       }
 
       // Update Robot Kinematics according to Mode & Position
