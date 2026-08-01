@@ -127,7 +127,7 @@ export const KinematicChainEditor: React.FC<KinematicChainEditorProps> = ({
                 <div key={j.name} className="flex flex-col gap-1">
                   <div className="flex justify-between text-[11px] text-slate-400">
                     <span>{j.name} ({j.chain})</span>
-                    <strong className="text-purple-300">{j.angle.toFixed(2)} rad</strong>
+                    <strong className="text-purple-300">{(j.angle ?? 0).toFixed(2)} rad</strong>
                   </div>
                   <input
                     type="range"

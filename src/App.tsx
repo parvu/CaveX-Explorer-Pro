@@ -6,6 +6,7 @@ import { SensorDashboard } from "./components/SensorDashboard";
 import { MultiModalNavPlanner } from "./components/MultiModalNavPlanner";
 import { KinematicChainEditor } from "./components/KinematicChainEditor";
 import { ROS2WorkspaceExplorer } from "./components/ROS2WorkspaceExplorer";
+import { SICSlamVisualizer } from "./components/SICSlamVisualizer";
 import { AICopilotModal } from "./components/AICopilotModal";
 
 // Ground Collision Floor Height Calculator & Safety Clearance
@@ -46,7 +47,7 @@ export const getAutoSectionMode = (x: number, y: number, z: number, currentMode:
 };
 
 export default function App() {
-  const [activeView, setActiveView] = useState<"simulation" | "workspace" | "urdf">("simulation");
+  const [activeView, setActiveView] = useState<"simulation" | "workspace" | "urdf" | "sicslam">("simulation");
   const [activeCameraMode, setActiveCameraMode] = useState<CameraMode>("orbit");
   const [showLaserBeams, setShowLaserBeams] = useState(true);
   const [showSonarPulse, setShowSonarPulse] = useState(true);
@@ -557,6 +558,10 @@ export default function App() {
 
         {activeView === "urdf" && (
           <KinematicChainEditor robotState={robotState} setRobotState={setRobotState} />
+        )}
+
+        {activeView === "sicslam" && (
+          <SICSlamVisualizer robotState={robotState} sensorData={sensorData} />
         )}
 
         {activeView === "workspace" && (

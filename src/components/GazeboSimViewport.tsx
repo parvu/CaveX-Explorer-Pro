@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { RobotState, LocomotionMode, EnvironmentSection, SensorData, CameraMode } from "../types";
 import { getMinGroundHeight } from "../App";
-import { Camera, Eye, Layers, Maximize2, RotateCcw, Zap, Compass, Navigation, Video, Circle, Sun, ShieldCheck, ShieldAlert, Folder, Download, Radio } from "lucide-react";
+import { Camera, Eye, Layers, Maximize2, RotateCcw, Zap, Compass, Navigation, Video, Circle, Sun, ShieldCheck, ShieldAlert, Folder, Download, Radio, BatteryCharging, BatteryWarning, Waves, AlertTriangle, Edit3, Plus, Trash2, Box, Move, Sliders, EyeOff, Sparkles, Check, Crosshair, Target, Lightbulb, MapPin, Copy, Settings, X, GripVertical, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from "lucide-react";
 
 interface GazeboSimViewportProps {
   robotState: RobotState;
@@ -20,6 +20,18 @@ interface GazeboSimViewportProps {
   antiCollisionEnabled?: boolean;
   setAntiCollisionEnabled?: (val: boolean) => void;
   evasionAlert?: { active: boolean; obstacle: string };
+}
+
+export interface EditableSimObject {
+  id: string;
+  name: string;
+  type: "boulder" | "stalagmite" | "buoy" | "target" | "spotlight" | "waypoint";
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  scale: { x: number; y: number; z: number };
+  color: string;
+  intensity?: number;
+  visible: boolean;
 }
 
 export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
@@ -89,6 +101,152 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
 
   const evasionAlertRef = useRef(evasionAlert);
   evasionAlertRef.current = evasionAlert;
+
+  // Gazebo Viewport 3D World Scene Editor State
+  const [isEditorMode, setIsEditorMode] = useState(false);
+  const [editorTab, setEditorTab] = useState<"objects" | "spawn" | "environment">("objects");
+  const [spawnedObjects, setSpawnedObjects] = useState<EditableSimObject[]>([
+    {
+      id: "obj-initial-boulder-1",
+      name: "Subsea Rock Ridge A",
+      type: "boulder",
+      position: { x: 5, y: -1.2, z: -1.5 },
+      rotation: { x: 0, y: 45, z: 0 },
+      scale: { x: 1.2, y: 1.0, z: 1.2 },
+      color: "#475569",
+      visible: true,
+    },
+    {
+      id: "obj-initial-buoy-1",
+      name: "Sonar Acoustic Buoy 1",
+      type: "buoy",
+      position: { x: 12, y: 0.6, z: 2.0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1.0, y: 1.0, z: 1.0 },
+      color: "#f97316",
+      intensity: 3.0,
+      visible: true,
+    },
+    {
+      id: "obj-initial-target-1",
+      name: "ARUCO Calibration Grid",
+      type: "target",
+      position: { x: 20, y: -0.5, z: -2.0 },
+      rotation: { x: 0, y: 90, z: 0 },
+      scale: { x: 1.0, y: 1.0, z: 1.0 },
+      color: "#06b6d4",
+      visible: true,
+    },
+  ]);
+
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>("obj-initial-boulder-1");
+  const [clickToPlaceType, setClickToPlaceType] = useState<EditableSimObject["type"] | null>(null);
+
+  // Environment & Physics Parameters
+  const [envLightIntensity, setEnvLightIntensity] = useState<number>(3.5);
+  const [waterFogDensity, setWaterFogDensity] = useState<number>(0.04);
+  const [waterColor, setWaterColor] = useState<string>("#0f2b48");
+  const [waterWaveHeight, setWaterWaveHeight] = useState<number>(0.4);
+  const [antiCollisionRadius, setAntiCollisionRadius] = useState<number>(2.2);
+
+  // Editor Refs
+  const editorObjectsGroupRef = useRef<THREE.Group | null>(null);
+  const clickToPlaceTypeRef = useRef(clickToPlaceType);
+  clickToPlaceTypeRef.current = clickToPlaceType;
+
+  const spawnedObjectsRef = useRef(spawnedObjects);
+  spawnedObjectsRef.current = spawnedObjects;
+
+  const selectedObjectIdRef = useRef(selectedObjectId);
+  selectedObjectIdRef.current = selectedObjectId;
+
+  // Helper Functions for Object Spawning, Transforming, and Editing
+  const spawnNewObject = (
+    type: EditableSimObject["type"],
+    customPos?: { x: number; y: number; z: number }
+  ) => {
+    const rx = robotStateRef.current.position.x;
+    const ry = robotStateRef.current.position.y;
+    const rz = robotStateRef.current.position.z;
+
+    const spawnX = customPos ? customPos.x : Number((rx + 2.5).toFixed(2));
+    const spawnY = customPos ? customPos.y : Number((ry).toFixed(2));
+    const spawnZ = customPos ? customPos.z : Number((rz + (Math.random() * 2 - 1)).toFixed(2));
+
+    const typeNames: Record<EditableSimObject["type"], string> = {
+      boulder: "Heavy Boulder",
+      stalagmite: "Cave Column",
+      buoy: "Beacon Buoy",
+      target: "Inspection Target",
+      spotlight: "Lighting Beacon",
+      waypoint: "Subsea Waypoint",
+    };
+
+    const defaultColors: Record<EditableSimObject["type"], string> = {
+      boulder: "#475569",
+      stalagmite: "#334155",
+      buoy: "#f97316",
+      target: "#06b6d4",
+      spotlight: "#fbbf24",
+      waypoint: "#10b981",
+    };
+
+    const newObj: EditableSimObject = {
+      id: `obj-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: `${typeNames[type]} ${spawnedObjects.length + 1}`,
+      type,
+      position: { x: spawnX, y: spawnY, z: spawnZ },
+      rotation: { x: 0, y: Math.floor(Math.random() * 360), z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+      color: defaultColors[type],
+      intensity: type === "spotlight" ? 4.0 : type === "buoy" ? 2.5 : 1.0,
+      visible: true,
+    };
+
+    setSpawnedObjects((prev) => [...prev, newObj]);
+    setSelectedObjectId(newObj.id);
+  };
+
+  const updateSelectedObject = (updater: (obj: EditableSimObject) => EditableSimObject) => {
+    if (!selectedObjectId) return;
+    setSpawnedObjects((prev) =>
+      prev.map((o) => (o.id === selectedObjectId ? updater(o) : o))
+    );
+  };
+
+  const deleteObject = (id: string) => {
+    setSpawnedObjects((prev) => prev.filter((o) => o.id !== id));
+    if (selectedObjectId === id) {
+      const remaining = spawnedObjects.filter((o) => o.id !== id);
+      setSelectedObjectId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+    }
+  };
+
+  const duplicateObject = (id: string) => {
+    const target = spawnedObjects.find((o) => o.id === id);
+    if (!target) return;
+    const clone: EditableSimObject = {
+      ...target,
+      id: `obj-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: `${target.name} (Copy)`,
+      position: {
+        x: Number((target.position.x + 0.8).toFixed(2)),
+        y: target.position.y,
+        z: Number((target.position.z + 0.8).toFixed(2)),
+      },
+    };
+    setSpawnedObjects((prev) => [...prev, clone]);
+    setSelectedObjectId(clone.id);
+  };
+
+  const snapToRobot = (id: string) => {
+    const rx = Number((robotStateRef.current.position.x + 2.0).toFixed(2));
+    const ry = Number((robotStateRef.current.position.y).toFixed(2));
+    const rz = Number((robotStateRef.current.position.z).toFixed(2));
+    setSpawnedObjects((prev) =>
+      prev.map((o) => (o.id === id ? { ...o, position: { x: rx, y: ry, z: rz } } : o))
+    );
+  };
 
   // Video Recording State & Custom Download Directory
   const [isRecording, setIsRecording] = useState(false);
@@ -507,17 +665,22 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
 
     scene.add(caveGroup);
 
+    // 5.8 Editor Group for Custom User Spawned 3D Props
+    const editorGroup = new THREE.Group();
+    editorObjectsGroupRef.current = editorGroup;
+    scene.add(editorGroup);
+
     // ==========================================
-    // 5.5 SLAM 3D MESH RECONSTRUCTION
+    // 5.5 SLAM 3D MESH RECONSTRUCTION (1cm Voxel Grid)
     // ==========================================
-    const maxVoxels = 20000;
-    const voxelGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    const maxVoxels = 50000;
+    const voxelGeo = new THREE.BoxGeometry(0.015, 0.015, 0.015); // 1cm high-resolution voxel units
     const voxelMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      roughness: 0.8,
-      metalness: 0.2,
+      roughness: 0.7,
+      metalness: 0.3,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.92,
     });
     const slamVoxelMesh = new THREE.InstancedMesh(voxelGeo, voxelMat, maxVoxels);
     slamVoxelMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -910,8 +1073,54 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       cameraAngle.current.radius = Math.max(4, Math.min(30, cameraAngle.current.radius + e.deltaY * 0.015));
     };
 
+    const handleCanvasClick = (e: MouseEvent) => {
+      const deltaX = Math.abs(e.clientX - previousMousePos.current.x);
+      const deltaY = Math.abs(e.clientY - previousMousePos.current.y);
+      if (deltaX > 6 || deltaY > 6) return;
+
+      if (!mountRef.current || !rendererRef.current || !cameraRef.current || !sceneRef.current) return;
+
+      const rect = mountRef.current.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, cameraRef.current);
+
+      if (clickToPlaceTypeRef.current) {
+        const intersects = raycaster.intersectObjects(sceneRef.current.children, true);
+        if (intersects.length > 0) {
+          const pt = intersects[0].point;
+          spawnNewObject(clickToPlaceTypeRef.current, {
+            x: Number(pt.x.toFixed(2)),
+            y: Number(pt.y.toFixed(2)),
+            z: Number(pt.z.toFixed(2)),
+          });
+          setClickToPlaceType(null);
+        }
+        return;
+      }
+
+      if (editorObjectsGroupRef.current) {
+        const hits = raycaster.intersectObjects(editorObjectsGroupRef.current.children, true);
+        if (hits.length > 0) {
+          let topObj: THREE.Object3D | null = hits[0].object;
+          while (topObj && topObj.parent && topObj.parent !== editorObjectsGroupRef.current) {
+            topObj = topObj.parent;
+          }
+          if (topObj && topObj.userData?.objectId) {
+            setSelectedObjectId(topObj.userData.objectId);
+            setIsEditorMode(true);
+          }
+        }
+      }
+    };
+
     const domElem = mountRef.current;
     domElem.addEventListener("mousedown", handleMouseDown);
+    domElem.addEventListener("click", handleCanvasClick);
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     domElem.addEventListener("wheel", handleWheel);
@@ -952,11 +1161,7 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       // SLAM 3D MESH RECONSTRUCTION UPDATE
       const currentCamMode = activeCameraModeRef.current;
       if (robotGroupRef.current && slamVoxelMeshRef.current) {
-        if (currentCamMode === "topdown") {
-           slamVoxelMeshRef.current.visible = true;
-        } else {
-           slamVoxelMeshRef.current.visible = false;
-        }
+        slamVoxelMeshRef.current.visible = true;
 
         const rx = robotGroupRef.current.position.x;
         const ry = robotGroupRef.current.position.y;
@@ -969,41 +1174,49 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
            slamVoxelMeshRef.current.count = 0;
         }
 
-        // Generate Voxels around the robot
-        const maxVoxels = 20000;
+        // Generate Voxels around the robot at 1cm (0.01m) resolution grid
+        const maxVoxels = 50000;
+        const voxelRes = 0.01; // 1cm resolution
         let vCount = voxelCountRef.current;
         let needsUpdate = false;
 
-        for (let dx = -8; dx <= 8; dx += 1) {
-          for (let dy = -6; dy <= 6; dy += 1) {
-            for (let dz = -6; dz <= 6; dz += 1) {
-              if (dx*dx + dy*dy + dz*dz <= 49) { // 7m sphere
-                 const gx = Math.round(rx + dx);
-                 const gy = Math.round(ry + dy); // altitude
-                 const gz = Math.round(rz + dz); // lateral
-                 
+        const scanRadius = 4.0;
+        const scanStep = 0.12; // Sample step for fluid frame rate
+        for (let dx = -scanRadius; dx <= scanRadius; dx += scanStep) {
+          for (let dy = -scanRadius; dy <= scanRadius; dy += scanStep) {
+            for (let dz = -scanRadius; dz <= scanRadius; dz += scanStep) {
+              if (dx*dx + dy*dy + dz*dz <= scanRadius * scanRadius) {
+                 const wx = rx + dx;
+                 const wy = ry + dy; // altitude
+                 const wz = rz + dz; // lateral
+
                  let isSolid = false;
                  // Cave bounds estimation
-                 if (gx < 30) {
-                    if (gy < (gx >= -5 && gx <= 29 ? -1 : 0)) isSolid = true; // floor
-                    if (gz > 3 || gz < -3) isSolid = true; // walls
+                 if (wx < 30) {
+                    if (wy < (wx >= -5 && wx <= 29 ? -1 : 0)) isSolid = true; // floor
+                    if (wz > 3.2 || wz < -3.2) isSolid = true; // walls
                  } else {
-                    if (gy < 0) isSolid = true; // floor under shaft
-                    if (gz*gz + (gx-35.5)*(gx-35.5) > 25) isSolid = true; // cylinder shaft wall
+                    if (wy < 0) isSolid = true; // floor under shaft
+                    if (wz*wz + (wx-35.5)*(wx-35.5) > 25) isSolid = true; // cylinder shaft wall
                  }
-                 
+
                  if (isSolid) {
-                    const key = `${gx},${gy},${gz}`;
+                    // Quantize strictly to 1cm (0.01m) grid
+                    const gx = Math.round(wx / voxelRes) * voxelRes;
+                    const gy = Math.round(wy / voxelRes) * voxelRes;
+                    const gz = Math.round(wz / voxelRes) * voxelRes;
+
+                    const key = `${gx.toFixed(2)},${gy.toFixed(2)},${gz.toFixed(2)}`;
                     if (!exploredVoxelsRef.current.has(key) && vCount < maxVoxels) {
                        exploredVoxelsRef.current.add(key);
                        tempMatrix.setPosition(gx, gy, gz);
                        slamVoxelMeshRef.current.setMatrixAt(vCount, tempMatrix);
-                       
+
                        const color = new THREE.Color();
                        // Use altitude (gy) for color shading
-                       color.setHSL((gy + 10) / 40, 0.8, 0.6);
+                       color.setHSL((gy + 10) / 40, 0.85, 0.6);
                        slamVoxelMeshRef.current.setColorAt(vCount, color);
-                       
+
                        vCount++;
                        needsUpdate = true;
                     }
@@ -1206,9 +1419,26 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
             );
             cameraRef.current.lookAt(rPos.x, rPos.y + 0.3, rPos.z);
           } else if (currentCamMode === "fpv") {
-            // First Person Drone Camera View (Elevated for clear front visibility)
-            cameraRef.current.position.set(rPos.x + 0.65, rPos.y + 0.25, rPos.z);
-            cameraRef.current.lookAt(rPos.x + 12, rPos.y + 0.2, rPos.z);
+            // First Person Drone / Spot Nose Camera View (Oriented along vehicle heading)
+            const headingRad = (robotStateRef.current.orientation?.z || 0) * (Math.PI / 180);
+            const pitchRad = (robotStateRef.current.orientation?.y || 0) * (Math.PI / 180);
+            const currentMode = robotStateRef.current.mode;
+
+            // Position camera right at front optical camera lens
+            const camHeight = currentMode === "FLYING" ? 0.22 : 0.45;
+            const forwardDist = 0.45;
+            const fpvX = rPos.x + forwardDist * Math.cos(headingRad);
+            const fpvY = rPos.y + camHeight;
+            const fpvZ = rPos.z + forwardDist * Math.sin(headingRad);
+
+            cameraRef.current.position.set(fpvX, fpvY, fpvZ);
+
+            const lookDist = 12;
+            const lookX = fpvX + lookDist * Math.cos(headingRad) * Math.cos(pitchRad);
+            const lookY = fpvY + lookDist * Math.sin(pitchRad);
+            const lookZ = fpvZ + lookDist * Math.sin(headingRad) * Math.cos(pitchRad);
+
+            cameraRef.current.lookAt(lookX, lookY, lookZ);
           } else if (currentCamMode === "follow") {
             // Third Person Drone Follow View (Smooth Chase Cam trailing robot)
             const headingRad = (robotStateRef.current.orientation?.z || 0) * (Math.PI / 180);
@@ -1239,6 +1469,7 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       cancelAnimationFrame(animationFrameId);
       if (domElem) {
         domElem.removeEventListener("mousedown", handleMouseDown);
+        domElem.removeEventListener("click", handleCanvasClick);
         domElem.removeEventListener("wheel", handleWheel);
       }
       window.removeEventListener("mousemove", handleMouseMove);
@@ -1255,6 +1486,207 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
       }
     };
   }, [hasWebGLError]);
+
+  // Synchronize Custom Editable 3D Objects & Environment in Three.js Scene
+  useEffect(() => {
+    if (!editorObjectsGroupRef.current) return;
+    const group = editorObjectsGroupRef.current;
+
+    // Clear previous object children
+    while (group.children.length > 0) {
+      const child = group.children[0];
+      group.remove(child);
+    }
+
+    // Live update Ambient Lighting & Fog & Shield Radius
+    if (ambientLightRef.current) {
+      ambientLightRef.current.intensity = envLightIntensity;
+    }
+    if (sceneRef.current?.fog) {
+      (sceneRef.current.fog as THREE.FogExp2).density = waterFogDensity;
+    }
+    if (waterMeshRef.current) {
+      (waterMeshRef.current.material as THREE.MeshStandardMaterial).color.set(waterColor);
+    }
+    if (shieldMeshRef.current) {
+      shieldMeshRef.current.scale.setScalar(antiCollisionRadius / 1.6);
+    }
+
+    // Build 3D Meshes for Spawned Objects
+    spawnedObjects.forEach((obj) => {
+      if (!obj.visible) return;
+
+      const objGroup = new THREE.Group();
+      objGroup.userData = { objectId: obj.id };
+
+      const objColor = new THREE.Color(obj.color);
+      const mainMat = new THREE.MeshStandardMaterial({
+        color: objColor,
+        roughness: obj.type === "boulder" || obj.type === "stalagmite" ? 0.85 : 0.3,
+        metalness: obj.type === "target" || obj.type === "buoy" ? 0.7 : 0.2,
+      });
+
+      if (obj.type === "boulder") {
+        const rockGeo = new THREE.DodecahedronGeometry(0.8, 1);
+        const rockMesh = new THREE.Mesh(rockGeo, mainMat);
+        rockMesh.castShadow = true;
+        rockMesh.receiveShadow = true;
+        objGroup.add(rockMesh);
+      } else if (obj.type === "stalagmite") {
+        const coneGeo = new THREE.ConeGeometry(0.55, 2.4, 8);
+        const coneMesh = new THREE.Mesh(coneGeo, mainMat);
+        coneMesh.position.y = 1.2;
+        coneMesh.castShadow = true;
+        objGroup.add(coneMesh);
+      } else if (obj.type === "buoy") {
+        const baseGeo = new THREE.CylinderGeometry(0.35, 0.45, 0.6, 16);
+        const baseMesh = new THREE.Mesh(baseGeo, mainMat);
+
+        const floatDome = new THREE.Mesh(
+          new THREE.SphereGeometry(0.4, 16, 12),
+          new THREE.MeshStandardMaterial({ color: objColor, metalness: 0.8, roughness: 0.2 })
+        );
+        floatDome.position.y = 0.3;
+
+        const mast = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.02, 0.02, 1.2, 8),
+          new THREE.MeshStandardMaterial({ color: 0x1e293b })
+        );
+        mast.position.y = 0.9;
+
+        const lightDome = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12, 12, 12),
+          new THREE.MeshBasicMaterial({ color: 0x00f0ff })
+        );
+        lightDome.position.y = 1.5;
+
+        const beaconLight = new THREE.PointLight(0x00f0ff, obj.intensity || 2.5, 12);
+        beaconLight.position.y = 1.5;
+
+        objGroup.add(baseMesh);
+        objGroup.add(floatDome);
+        objGroup.add(mast);
+        objGroup.add(lightDome);
+        objGroup.add(beaconLight);
+      } else if (obj.type === "target") {
+        const pole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.04, 0.04, 1.8, 12),
+          new THREE.MeshStandardMaterial({ color: 0x334155 })
+        );
+        pole.position.y = 0.9;
+
+        const frame = new THREE.Mesh(
+          new THREE.BoxGeometry(1.2, 1.2, 0.08),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a })
+        );
+        frame.position.set(0, 1.5, 0);
+
+        const gridBoard = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.0, 1.0),
+          new THREE.MeshBasicMaterial({ color: 0xffffff })
+        );
+        gridBoard.position.set(0, 1.5, 0.05);
+
+        const crosshairRing = new THREE.Mesh(
+          new THREE.RingGeometry(0.2, 0.25, 24),
+          new THREE.MeshBasicMaterial({ color: objColor, side: THREE.DoubleSide })
+        );
+        crosshairRing.position.set(0, 1.5, 0.06);
+
+        objGroup.add(pole);
+        objGroup.add(frame);
+        objGroup.add(gridBoard);
+        objGroup.add(crosshairRing);
+      } else if (obj.type === "spotlight") {
+        const tripodBase = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.5, 0.7, 0.4, 6),
+          new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3 })
+        );
+        tripodBase.position.y = 0.2;
+
+        const pole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.06, 2.2, 12),
+          new THREE.MeshStandardMaterial({ color: 0x475569 })
+        );
+        pole.position.y = 1.3;
+
+        const spotHousing = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.25, 0.35, 0.5, 12),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2 })
+        );
+        spotHousing.rotation.x = Math.PI / 4;
+        spotHousing.position.set(0, 2.3, 0.2);
+
+        const spotLight = new THREE.SpotLight(
+          new THREE.Color(obj.color),
+          obj.intensity || 4.0,
+          25,
+          Math.PI / 3,
+          0.4
+        );
+        spotLight.position.set(0, 2.3, 0.2);
+        spotLight.target.position.set(0, 0, 4);
+
+        objGroup.add(tripodBase);
+        objGroup.add(pole);
+        objGroup.add(spotHousing);
+        objGroup.add(spotLight);
+        objGroup.add(spotLight.target);
+      } else if (obj.type === "waypoint") {
+        const outerRing = new THREE.Mesh(
+          new THREE.TorusGeometry(0.8, 0.04, 16, 32),
+          new THREE.MeshBasicMaterial({ color: objColor })
+        );
+        outerRing.rotation.x = Math.PI / 2;
+
+        const innerRing = new THREE.Mesh(
+          new THREE.TorusGeometry(0.4, 0.03, 16, 24),
+          new THREE.MeshBasicMaterial({ color: 0xffffff })
+        );
+        innerRing.rotation.x = Math.PI / 2;
+
+        const verticalShaft = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.015, 4.0, 8),
+          new THREE.MeshBasicMaterial({ color: objColor, transparent: true, opacity: 0.5 })
+        );
+        verticalShaft.position.y = 2.0;
+
+        objGroup.add(outerRing);
+        objGroup.add(innerRing);
+        objGroup.add(verticalShaft);
+      }
+
+      objGroup.position.set(obj.position.x, obj.position.y, obj.position.z);
+      objGroup.rotation.set(
+        THREE.MathUtils.degToRad(obj.rotation.x),
+        THREE.MathUtils.degToRad(obj.rotation.y),
+        THREE.MathUtils.degToRad(obj.rotation.z)
+      );
+      objGroup.scale.set(obj.scale.x, obj.scale.y, obj.scale.z);
+
+      // Highlight Selection Ring
+      if (obj.id === selectedObjectId) {
+        const maxRadius = 1.0 * Math.max(obj.scale.x, obj.scale.z);
+        const selRing = new THREE.Mesh(
+          new THREE.RingGeometry(maxRadius, maxRadius + 0.15, 32),
+          new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+        );
+        selRing.rotation.x = Math.PI / 2;
+        selRing.position.y = -0.02;
+        objGroup.add(selRing);
+      }
+
+      group.add(objGroup);
+    });
+  }, [
+    spawnedObjects,
+    selectedObjectId,
+    envLightIntensity,
+    waterFogDensity,
+    waterColor,
+    waterWaveHeight,
+    antiCollisionRadius,
+  ]);
 
   // Sync robotState position change with 3D scene & anti-clipping collision floor check
   useEffect(() => {
@@ -1285,7 +1717,7 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
   return (
     <div className="relative w-full h-full min-h-[420px] bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col">
       {/* Viewport Top Control Overlay */}
-      <div className="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded-lg border border-slate-700/60 text-xs font-mono text-slate-200">
+      <div className="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 backdrop-blur-md pl-3 pr-[8px] py-2 rounded-lg border border-slate-700/60 text-xs font-mono text-slate-200">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 text-sky-400 font-semibold border border-slate-700">
             <Compass className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: "8s" }} />
@@ -1355,6 +1787,24 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
             title="Top-down SLAM Map (Bright Fog-Free)"
           >
             <Layers className="w-3.5 h-3.5" /> Map
+          </button>
+
+          {/* Gazebo Viewport 3D Sim World Editor Toggle Button */}
+          <button
+            id="btn-toggle-editor"
+            onClick={() => setIsEditorMode(!isEditorMode)}
+            className={`px-2.5 py-1 rounded flex items-center gap-1.5 transition text-xs font-bold ${
+              isEditorMode
+                ? "bg-sky-500 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.5)] border border-sky-300"
+                : "bg-slate-800 text-sky-400 border border-slate-700 hover:bg-slate-700"
+            }`}
+            title="Toggle Gazebo 3D World Scene Editor (Spawn, Transform & Edit Props)"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+            <span>Sim Editor</span>
+            <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-slate-950 text-sky-300 text-[10px]">
+              {spawnedObjects.length}
+            </span>
           </button>
 
           <div className="h-4 w-px bg-slate-700 mx-1 hidden sm:block" />
@@ -1528,27 +1978,771 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
         )}
       </div>
 
+      {/* Floating Gazebo Simulation World Editor Panel */}
+      {isEditorMode && (
+        <div className="absolute top-14 right-3 bottom-14 w-80 md:w-96 z-30 bg-slate-900/95 backdrop-blur-xl border border-sky-500/40 rounded-xl shadow-[0_0_25px_rgba(0,0,0,0.8)] flex flex-col font-mono text-xs overflow-hidden text-slate-200">
+          {/* Panel Header */}
+          <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded bg-sky-500/20 border border-sky-400/50 flex items-center justify-center text-sky-400">
+                <Edit3 className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-100 text-xs flex items-center gap-1.5">
+                  Gazebo World Editor
+                  <span className="px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 text-[10px]">
+                    {spawnedObjects.length} Objects
+                  </span>
+                </h3>
+                <p className="text-[10px] text-slate-400">3D Simulation Viewport Editing Facilities</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsEditorMode(false)}
+              className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition"
+              title="Close Editor Panel"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Editor Tabs Navigation */}
+          <div className="grid grid-cols-3 bg-slate-950 border-b border-slate-800 p-1 gap-1">
+            <button
+              onClick={() => setEditorTab("objects")}
+              className={`py-1.5 rounded text-[11px] font-bold flex items-center justify-center gap-1 transition ${
+                editorTab === "objects"
+                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30"
+                  : "bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              }`}
+            >
+              <Box className="w-3.5 h-3.5" />
+              <span>Objects ({spawnedObjects.length})</span>
+            </button>
+            <button
+              onClick={() => setEditorTab("spawn")}
+              className={`py-1.5 rounded text-[11px] font-bold flex items-center justify-center gap-1 transition ${
+                editorTab === "spawn"
+                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30"
+                  : "bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              }`}
+            >
+              <Plus className="w-3.5 h-3.5 text-emerald-400" />
+              <span>+ Spawn</span>
+            </button>
+            <button
+              onClick={() => setEditorTab("environment")}
+              className={`py-1.5 rounded text-[11px] font-bold flex items-center justify-center gap-1 transition ${
+                editorTab === "environment"
+                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30"
+                  : "bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5 text-amber-400" />
+              <span>Environment</span>
+            </button>
+          </div>
+
+          {/* Editor Tab Content */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
+            {/* TAB 1: OBJECTS OUTLINER & INSPECTOR */}
+            {editorTab === "objects" && (
+              <div className="space-y-3">
+                {/* Outliner List */}
+                <div className="bg-slate-950/70 p-2 rounded-lg border border-slate-800 space-y-1">
+                  <div className="text-[10px] uppercase font-bold text-slate-400 px-1 mb-1 flex justify-between items-center">
+                    <span>Scene Object Outliner</span>
+                    <span className="text-slate-500">Click to Select</span>
+                  </div>
+                  {spawnedObjects.length === 0 ? (
+                    <div className="text-center py-4 text-slate-500 text-[11px]">
+                      No custom objects spawned yet. Switch to <strong>+ Spawn</strong> tab to add props!
+                    </div>
+                  ) : (
+                    spawnedObjects.map((obj) => {
+                      const isSel = obj.id === selectedObjectId;
+                      return (
+                        <div
+                          key={obj.id}
+                          onClick={() => setSelectedObjectId(obj.id)}
+                          className={`flex items-center justify-between p-1.5 rounded cursor-pointer transition ${
+                            isSel
+                              ? "bg-sky-950/80 border border-sky-500/60 text-sky-200 font-bold"
+                              : "bg-slate-900/80 border border-slate-800 hover:bg-slate-800 text-slate-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: obj.color }}
+                            />
+                            <span className="truncate text-[11px]">{obj.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSpawnedObjects((prev) =>
+                                  prev.map((o) => (o.id === obj.id ? { ...o, visible: !o.visible } : o))
+                                );
+                              }}
+                              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200"
+                              title={obj.visible ? "Hide Object" : "Show Object"}
+                            >
+                              {obj.visible ? <Eye className="w-3 h-3 text-emerald-400" /> : <EyeOff className="w-3 h-3 text-slate-500" />}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                duplicateObject(obj.id);
+                              }}
+                              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-amber-300"
+                              title="Duplicate Object"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteObject(obj.id);
+                              }}
+                              className="p-1 hover:bg-slate-800 rounded text-rose-400 hover:text-rose-300"
+                              title="Delete Object"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Selected Object Inspector */}
+                {selectedObjectId && (
+                  (() => {
+                    const activeObj = spawnedObjects.find((o) => o.id === selectedObjectId);
+                    if (!activeObj) return null;
+                    return (
+                      <div className="bg-slate-950/80 p-3 rounded-lg border border-sky-500/30 space-y-2.5">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                          <span className="font-bold text-sky-400 text-[11px] uppercase flex items-center gap-1">
+                            <Sliders className="w-3.5 h-3.5" /> Object Transform Inspector
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px] uppercase font-mono">
+                            {activeObj.type}
+                          </span>
+                        </div>
+
+                        {/* Name Input */}
+                        <div>
+                          <label className="text-[10px] text-slate-400 block mb-1">Object Name Label:</label>
+                          <input
+                            type="text"
+                            value={activeObj.name}
+                            onChange={(e) =>
+                              updateSelectedObject((o) => ({ ...o, name: e.target.value }))
+                            }
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs font-mono focus:border-sky-500 focus:outline-none"
+                          />
+                        </div>
+
+                        {/* Position Controls (X, Y, Z) */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center text-[10px] text-slate-400">
+                            <span>Position (X: Forward, Y: Height, Z: Lateral):</span>
+                            <button
+                              onClick={() => snapToRobot(activeObj.id)}
+                              className="text-sky-400 hover:underline flex items-center gap-1 text-[10px]"
+                              title="Move object right in front of current robot location"
+                            >
+                              <Target className="w-3 h-3" /> Snap to Robot
+                            </button>
+                          </div>
+
+                          {/* Position X */}
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="w-4 font-bold text-sky-400">X:</span>
+                            <input
+                              type="range"
+                              min="-35"
+                              max="35"
+                              step="0.2"
+                              value={activeObj.position.x}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                updateSelectedObject((o) => ({
+                                  ...o,
+                                  position: { ...o.position, x: val },
+                                }));
+                              }}
+                              className="flex-1 accent-sky-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                            />
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={activeObj.position.x}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                updateSelectedObject((o) => ({
+                                  ...o,
+                                  position: { ...o.position, x: val },
+                                }));
+                              }}
+                              className="w-14 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-slate-200 text-[11px]"
+                            />
+                          </div>
+
+                          {/* Position Y */}
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="w-4 font-bold text-emerald-400">Y:</span>
+                            <input
+                              type="range"
+                              min="-3"
+                              max="8"
+                              step="0.1"
+                              value={activeObj.position.y}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                updateSelectedObject((o) => ({
+                                  ...o,
+                                  position: { ...o.position, y: val },
+                                }));
+                              }}
+                              className="flex-1 accent-emerald-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                            />
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={activeObj.position.y}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                updateSelectedObject((o) => ({
+                                  ...o,
+                                  position: { ...o.position, y: val },
+                                }));
+                              }}
+                              className="w-14 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-slate-200 text-[11px]"
+                            />
+                          </div>
+
+                          {/* Position Z */}
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="w-4 font-bold text-purple-400">Z:</span>
+                            <input
+                              type="range"
+                              min="-5"
+                              max="5"
+                              step="0.1"
+                              value={activeObj.position.z}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                updateSelectedObject((o) => ({
+                                  ...o,
+                                  position: { ...o.position, z: val },
+                                }));
+                              }}
+                              className="flex-1 accent-purple-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                            />
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={activeObj.position.z}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                updateSelectedObject((o) => ({
+                                  ...o,
+                                  position: { ...o.position, z: val },
+                                }));
+                              }}
+                              className="w-14 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-slate-200 text-[11px]"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Directional Nudge Pad */}
+                        <div className="bg-slate-900/60 p-2 rounded border border-slate-800 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400">Position Nudge:</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() =>
+                                updateSelectedObject((o) => ({
+                                  ...o,
+                                  position: { ...o.position, x: Number((o.position.x - 0.5).toFixed(2)) },
+                                }))
+                              }
+                              className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] border border-slate-700"
+                              title="Nudge Back (X -0.5m)"
+                            >
+                              ← X
+                            </button>
+                            <button
+                              onClick={() =>
+                                updateSelectedObject((o) => ({
+                                  ...o,
+                                  position: { ...o.position, x: Number((o.position.x + 0.5).toFixed(2)) },
+                                }))
+                              }
+                              className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] border border-slate-700"
+                              title="Nudge Forward (X +0.5m)"
+                            >
+                              X →
+                            </button>
+                            <button
+                              onClick={() =>
+                                updateSelectedObject((o) => ({
+                                  ...o,
+                                  position: { ...o.position, z: Number((o.position.z - 0.5).toFixed(2)) },
+                                }))
+                              }
+                              className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] border border-slate-700"
+                              title="Nudge Left (Z -0.5m)"
+                            >
+                              ↑ Z
+                            </button>
+                            <button
+                              onClick={() =>
+                                updateSelectedObject((o) => ({
+                                  ...o,
+                                  position: { ...o.position, z: Number((o.position.z + 0.5).toFixed(2)) },
+                                }))
+                              }
+                              className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] border border-slate-700"
+                              title="Nudge Right (Z +0.5m)"
+                            >
+                              ↓ Z
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Rotation & Scale */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] text-slate-400 block mb-0.5">Yaw Rotation:</label>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="range"
+                                min="0"
+                                max="360"
+                                step="15"
+                                value={activeObj.rotation.y}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value);
+                                  updateSelectedObject((o) => ({
+                                    ...o,
+                                    rotation: { ...o.rotation, y: val },
+                                  }));
+                                }}
+                                className="flex-1 accent-amber-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                              />
+                              <span className="text-[10px] text-amber-300 font-bold w-8 text-right">
+                                {activeObj.rotation.y}°
+                              </span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-slate-400 block mb-0.5">Scale Multiplier:</label>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="range"
+                                min="0.3"
+                                max="3.0"
+                                step="0.1"
+                                value={activeObj.scale.x}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value);
+                                  updateSelectedObject((o) => ({
+                                    ...o,
+                                    scale: { x: val, y: val, z: val },
+                                  }));
+                                }}
+                                className="flex-1 accent-sky-500 h-1.5 bg-slate-800 rounded cursor-pointer"
+                              />
+                              <span className="text-[10px] text-sky-300 font-bold w-8 text-right">
+                                {activeObj.scale.x.toFixed(1)}x
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Color Palette Swatches */}
+                        <div>
+                          <label className="text-[10px] text-slate-400 block mb-1">Color Palette Swatches:</label>
+                          <div className="flex items-center gap-1.5">
+                            {["#475569", "#334155", "#f97316", "#06b6d4", "#fbbf24", "#10b981", "#ef4444", "#f8fafc"].map(
+                              (hex) => (
+                                <button
+                                  key={hex}
+                                  onClick={() =>
+                                    updateSelectedObject((o) => ({ ...o, color: hex }))
+                                  }
+                                  className={`w-5 h-5 rounded-full border transition ${
+                                    activeObj.color === hex
+                                      ? "border-white scale-110 shadow-md shadow-sky-400/50"
+                                      : "border-slate-700 opacity-80 hover:opacity-100"
+                                  }`}
+                                  style={{ backgroundColor: hex }}
+                                />
+                              )
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Intensity Slider if applicable */}
+                        {(activeObj.type === "spotlight" || activeObj.type === "buoy") && (
+                          <div>
+                            <label className="text-[10px] text-slate-400 block mb-0.5">Beacon Light Intensity:</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range"
+                                min="0.5"
+                                max="8.0"
+                                step="0.5"
+                                value={activeObj.intensity || 3.0}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value);
+                                  updateSelectedObject((o) => ({ ...o, intensity: val }));
+                                }}
+                                className="flex-1 accent-amber-400 h-1.5 bg-slate-800 rounded cursor-pointer"
+                              />
+                              <span className="text-[10px] text-amber-300 font-bold">
+                                {(activeObj.intensity || 3.0).toFixed(1)} Lux
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: SPAWN PROPS */}
+            {editorTab === "spawn" && (
+              <div className="space-y-2.5">
+                <div className="text-[10px] text-slate-400">
+                  Select a 3D simulation prop preset to add into the Gazebo cave world:
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Boulder */}
+                  <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 hover:border-slate-700 flex flex-col justify-between space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded bg-slate-800 flex items-center justify-center text-slate-300">
+                        <Box className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-200 text-[11px]">Rugged Boulder</div>
+                        <div className="text-[9px] text-slate-400">Rock Hazard</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => spawnNewObject("boulder")}
+                        className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 text-[10px] font-bold"
+                      >
+                        Spawn Nose
+                      </button>
+                      <button
+                        onClick={() => setClickToPlaceType("boulder")}
+                        className="p-1 rounded bg-sky-600/80 hover:bg-sky-500 text-white"
+                        title="Click on 3D Viewport to place"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Stalagmite Column */}
+                  <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 hover:border-slate-700 flex flex-col justify-between space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded bg-slate-800 flex items-center justify-center text-slate-300">
+                        <ArrowUp className="w-4 h-4 text-slate-400" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-200 text-[11px]">Cave Pillar</div>
+                        <div className="text-[9px] text-slate-400">Vertical Rock</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => spawnNewObject("stalagmite")}
+                        className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 text-[10px] font-bold"
+                      >
+                        Spawn Nose
+                      </button>
+                      <button
+                        onClick={() => setClickToPlaceType("stalagmite")}
+                        className="p-1 rounded bg-sky-600/80 hover:bg-sky-500 text-white"
+                        title="Click on 3D Viewport to place"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Acoustic Buoy */}
+                  <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 hover:border-slate-700 flex flex-col justify-between space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded bg-amber-500/20 flex items-center justify-center text-amber-400">
+                        <Radio className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-200 text-[11px]">Acoustic Buoy</div>
+                        <div className="text-[9px] text-slate-400">Floats on Water</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => spawnNewObject("buoy")}
+                        className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-[10px] font-bold"
+                      >
+                        Spawn Nose
+                      </button>
+                      <button
+                        onClick={() => setClickToPlaceType("buoy")}
+                        className="p-1 rounded bg-amber-600/80 hover:bg-amber-500 text-white"
+                        title="Click on 3D Viewport to place"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Inspection Target */}
+                  <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 hover:border-slate-700 flex flex-col justify-between space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400">
+                        <Target className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-200 text-[11px]">Optical Target</div>
+                        <div className="text-[9px] text-slate-400">ARUCO Grid</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => spawnNewObject("target")}
+                        className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[10px] font-bold"
+                      >
+                        Spawn Nose
+                      </button>
+                      <button
+                        onClick={() => setClickToPlaceType("target")}
+                        className="p-1 rounded bg-cyan-600/80 hover:bg-cyan-500 text-white"
+                        title="Click on 3D Viewport to place"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Lighting Tower */}
+                  <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 hover:border-slate-700 flex flex-col justify-between space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded bg-yellow-500/20 flex items-center justify-center text-yellow-400">
+                        <Lightbulb className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-200 text-[11px]">Spotlight Tower</div>
+                        <div className="text-[9px] text-slate-400">Subsea Lighting</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => spawnNewObject("spotlight")}
+                        className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-yellow-300 text-[10px] font-bold"
+                      >
+                        Spawn Nose
+                      </button>
+                      <button
+                        onClick={() => setClickToPlaceType("spotlight")}
+                        className="p-1 rounded bg-yellow-600/80 hover:bg-yellow-500 text-white"
+                        title="Click on 3D Viewport to place"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Waypoint Marker */}
+                  <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 hover:border-slate-700 flex flex-col justify-between space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <MapPin className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-200 text-[11px]">Waypoint Marker</div>
+                        <div className="text-[9px] text-slate-400">Transponder Ring</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => spawnNewObject("waypoint")}
+                        className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[10px] font-bold"
+                      >
+                        Spawn Nose
+                      </button>
+                      <button
+                        onClick={() => setClickToPlaceType("waypoint")}
+                        className="p-1 rounded bg-emerald-600/80 hover:bg-emerald-500 text-white"
+                        title="Click on 3D Viewport to place"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: ENVIRONMENT & PHYSICS */}
+            {editorTab === "environment" && (
+              <div className="space-y-3">
+                <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-2.5">
+                  <div className="font-bold text-amber-400 text-[11px] uppercase border-b border-slate-800 pb-1 flex items-center gap-1">
+                    <Sun className="w-3.5 h-3.5" /> Ambient Cave Lighting
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="8.0"
+                      step="0.5"
+                      value={envLightIntensity}
+                      onChange={(e) => setEnvLightIntensity(parseFloat(e.target.value))}
+                      className="flex-1 accent-amber-400 h-1.5 bg-slate-800 rounded cursor-pointer"
+                    />
+                    <span className="text-[11px] text-amber-300 font-bold w-12 text-right">
+                      {envLightIntensity.toFixed(1)} Lux
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-2.5">
+                  <div className="font-bold text-sky-400 text-[11px] uppercase border-b border-slate-800 pb-1 flex items-center gap-1">
+                    <Waves className="w-3.5 h-3.5" /> Water Fog & Turbidity
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-0.5">Water Fog Density:</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min="0.01"
+                        max="0.12"
+                        step="0.005"
+                        value={waterFogDensity}
+                        onChange={(e) => setWaterFogDensity(parseFloat(e.target.value))}
+                        className="flex-1 accent-sky-400 h-1.5 bg-slate-800 rounded cursor-pointer"
+                      />
+                      <span className="text-[11px] text-sky-300 font-bold w-12 text-right">
+                        {waterFogDensity.toFixed(3)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Water Color Preset:</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { name: "Deep Cyan", hex: "#0f2b48" },
+                        { name: "Emerald Subsea", hex: "#064e3b" },
+                        { name: "Muddy Cave", hex: "#451a03" },
+                        { name: "Crystal Blue", hex: "#0284c7" },
+                      ].map((preset) => (
+                        <button
+                          key={preset.hex}
+                          onClick={() => setWaterColor(preset.hex)}
+                          className={`py-1 px-1.5 rounded text-[10px] font-mono border transition truncate ${
+                            waterColor === preset.hex
+                              ? "bg-slate-800 border-sky-400 text-sky-300 font-bold"
+                              : "bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200"
+                          }`}
+                        >
+                          {preset.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-2.5">
+                  <div className="font-bold text-emerald-400 text-[11px] uppercase border-b border-slate-800 pb-1 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Anti-Collision Safety Buffer
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="0.8"
+                      max="4.0"
+                      step="0.2"
+                      value={antiCollisionRadius}
+                      onChange={(e) => setAntiCollisionRadius(parseFloat(e.target.value))}
+                      className="flex-1 accent-emerald-400 h-1.5 bg-slate-800 rounded cursor-pointer"
+                    />
+                    <span className="text-[11px] text-emerald-300 font-bold w-12 text-right">
+                      {antiCollisionRadius.toFixed(1)} m
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (window.confirm("Are you sure you want to clear all custom spawned objects?")) {
+                      setSpawnedObjects([]);
+                      setSelectedObjectId(null);
+                    }
+                  }}
+                  className="w-full py-2 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Clear All Custom Objects
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Click-To-Place Active Viewport Top Banner */}
+      {clickToPlaceType && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 bg-sky-950/95 border border-sky-400 text-sky-200 px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 font-mono text-xs animate-bounce">
+          <Crosshair className="w-4 h-4 text-sky-300 animate-spin" style={{ animationDuration: "4s" }} />
+          <span>
+            <strong>CLICK-TO-PLACE ACTIVE:</strong> Click anywhere in the 3D viewport canvas to place a <strong>{clickToPlaceType}</strong>
+          </span>
+          <button
+            onClick={() => setClickToPlaceType(null)}
+            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px]"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Bottom Telemetry HUD Bar */}
       <div className="absolute bottom-3 left-3 right-3 z-10 bg-slate-900/85 backdrop-blur-md px-4 py-2.5 rounded-lg border border-slate-700/70 text-xs font-mono text-slate-200 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <div>
             <span className="text-slate-400">Position (x, y, z):</span>{" "}
             <strong className="text-sky-300">
-              [{robotState.position.x.toFixed(2)}, {robotState.position.y.toFixed(2)}, {robotState.position.z.toFixed(2)}]m
+              [{(robotState?.position?.x ?? 0).toFixed(2)}, {(robotState?.position?.y ?? 0).toFixed(2)}, {(robotState?.position?.z ?? 0).toFixed(2)}]m
             </strong>
           </div>
           <div>
             <span className="text-slate-400">Mode:</span>{" "}
             <span
               className={`px-2 py-0.5 rounded font-bold ${
-                robotState.mode === "WALKING"
+                robotState?.mode === "WALKING"
                   ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                  : robotState.mode === "SAILING"
+                  : robotState?.mode === "SAILING"
                   ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
                   : "bg-purple-500/20 text-purple-400 border border-purple-500/30"
               }`}
             >
-              {robotState.mode}
+              {robotState?.mode ?? "WALKING"}
             </span>
           </div>
         </div>
@@ -1556,15 +2750,19 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
         <div className="flex items-center gap-4 text-slate-300">
           <div>
             <span className="text-slate-400">Buoyancy:</span>{" "}
-            <span className="text-emerald-400 font-semibold">{robotState.buoyancyForce.toFixed(1)} N</span>
+            <span className="text-emerald-400 font-semibold">{(robotState?.buoyancyForce ?? 0).toFixed(1)} N</span>
+          </div>
+          <div>
+            <span className="text-slate-400">Sonar Depth:</span>{" "}
+            <span className="text-rose-400 font-semibold">{(sensorData?.sonarDepth ?? 0).toFixed(2)} m</span>
           </div>
           <div>
             <span className="text-slate-400">Rotor RPM:</span>{" "}
-            <span className="text-sky-400 font-semibold">{robotState.propellerRpm}</span>
+            <span className="text-sky-400 font-semibold">{robotState?.propellerRpm ?? 0}</span>
           </div>
           <div>
             <span className="text-slate-400">Battery:</span>{" "}
-            <span className="text-amber-400 font-semibold">{robotState.battery.toFixed(0)}%</span>
+            <span className="text-amber-400 font-semibold">{(robotState?.battery ?? 0).toFixed(0)}%</span>
           </div>
         </div>
       </div>

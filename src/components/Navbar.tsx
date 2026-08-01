@@ -1,6 +1,6 @@
 import React from "react";
 import { LocomotionMode } from "../types";
-import { Compass, Sparkles, Terminal, RotateCcw, ShieldCheck, Cpu } from "lucide-react";
+import { Compass, Sparkles, Terminal, RotateCcw, ShieldCheck, Cpu, Radio } from "lucide-react";
 import { downloadFullWorkspaceAsShellScript } from "../utils/workspaceExport";
 import { ROS2_JAZZY_WORKSPACE_FILES } from "../data/ros2WorkspaceData";
 
@@ -8,8 +8,8 @@ interface NavbarProps {
   currentMode: LocomotionMode;
   onResetSim: () => void;
   onOpenAICopilot: () => void;
-  activeView: "simulation" | "workspace" | "urdf";
-  setActiveView: (view: "simulation" | "workspace" | "urdf") => void;
+  activeView: "simulation" | "workspace" | "urdf" | "sicslam";
+  setActiveView: (view: "simulation" | "workspace" | "urdf" | "sicslam") => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -69,6 +69,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           }`}
         >
           <Compass className="w-3.5 h-3.5" /> 3D Cave Visualizer
+        </button>
+        <button
+          id="nav-tab-sicslam"
+          onClick={() => setActiveView("sicslam")}
+          className={`px-3 py-1.5 rounded transition flex items-center gap-1.5 ${
+            activeView === "sicslam"
+              ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_10px_rgba(6,182,212,0.25)]"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> SIC-SLAM Engine
         </button>
         <button
           id="nav-tab-urdf"

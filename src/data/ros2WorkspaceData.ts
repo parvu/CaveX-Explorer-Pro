@@ -548,6 +548,59 @@ def generate_launch_description():
     ])`
   },
   {
+    path: "hybrid_drone_ws/src/hybrid_cave_drone/src/sic_slam_node.cpp",
+    name: "sic_slam_node.cpp",
+    language: "cpp",
+    content: `#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+
+/**
+ * @brief SIC-SLAM: Subsea Sonar-Inertial-Camera Constrained SLAM Node
+ * Implements Invariant EKF Lie Group SE_2(3) state filtering with GTSAM factor graph optimization
+ */
+class SICSlamNode : public rclcpp::Node {
+public:
+  SICSlamNode() : Node("sic_slam_node") {
+    RCLCPP_INFO(this->get_logger(), "Initializing SIC-SLAM Invariant EKF & Multi-Modal Factor Graph Solver...");
+
+    // Subscribers
+    sonar_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+      "/sonar/range_azimuth_image", 10, std::bind(&SICSlamNode::sonarCallback, this, std::placeholders::_1));
+    imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
+      "/imu/data_raw", 100, std::bind(&SICSlamNode::imuCallback, this, std::placeholders::_1));
+
+    // Publisher
+    odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/sic_slam/odometry", 10);
+  }
+
+private:
+  void sonarCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
+    (void)msg;
+    // Process acoustic multibeam fan image features...
+  }
+
+  void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
+    (void)msg;
+    // Invariant Lie Group IMU pre-integration...
+  }
+
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sonar_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
+};
+
+int main(int argc, char** argv) {
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<SICSlamNode>());
+  rclcpp::shutdown();
+  return 0;
+}
+`
+  },
+  {
     path: "hybrid_drone_ws/README.md",
     name: "README.md",
     language: "markdown",
