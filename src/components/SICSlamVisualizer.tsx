@@ -56,6 +56,35 @@ export const SICSlamVisualizer: React.FC<SICSlamVisualizerProps> = ({
   const [loopClosureCount, setLoopClosureCount] = useState<number>(18);
   const [acousticFeatures, setAcousticFeatures] = useState<number>(142);
 
+  // Live telemetry from the real ROS2 stack (web_telemetry_bridge.py ->
+  // /api/telemetry), when the sim is actually running. When absent, the
+  // panel below falls back to the animated concept/demo numbers above --
+  // it never claims demo numbers are live.
+  const [liveTelemetry, setLiveTelemetry] = useState<{
+    ate_rmse: number | null;
+    sic_slam_pose: { x: number; y: number; z: number } | null;
+    ground_truth: { x: number; y: number; z: number } | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/telemetry");
+        const json = await res.json();
+        if (!cancelled) setLiveTelemetry(json.live ? json.data : null);
+      } catch {
+        if (!cancelled) setLiveTelemetry(null);
+      }
+    };
+    poll();
+    const id = setInterval(poll, 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   // Canvases
   const sonarCanvasRef = useRef<HTMLCanvasElement>(null);
   const factorGraphCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -478,21 +507,34 @@ export const SICSlamVisualizer: React.FC<SICSlamVisualizerProps> = ({
             <div className="bg-slate-950 rounded-xl p-4 border border-emerald-500/30 flex flex-col gap-3">
               <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" /> SIC-SLAM Estimation Health
+                {liveTelemetry ? (
+                  <span className="ml-auto text-[10px] normal-case tracking-normal text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-800">
+                    ● live from ROS2
+                  </span>
+                ) : (
+                  <span className="ml-auto text-[10px] normal-case tracking-normal text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+                    concept demo
+                  </span>
+                )}
               </h4>
 
               <div className="flex flex-col gap-2 text-xs">
                 <div className="bg-slate-900 p-2.5 rounded border border-slate-800 flex justify-between items-center">
-                  <span className="text-slate-400">ATE RMSE (SIC-SLAM):</span>
-                  <strong className="text-emerald-400 text-sm font-bold">{ateSICSlam.toFixed(3)} m</strong>
+                  <span className="text-slate-400">
+                    ATE RMSE ({liveTelemetry ? "SIC-SLAM v0, live" : "SIC-SLAM, demo"}):
+                  </span>
+                  <strong className="text-emerald-400 text-sm font-bold">
+                    {(liveTelemetry?.ate_rmse ?? ateSICSlam).toFixed(3)} m
+                  </strong>
                 </div>
 
                 <div className="bg-slate-900 p-2.5 rounded border border-slate-800 flex justify-between items-center">
-                  <span className="text-slate-400">ATE RMSE (Pure VIO):</span>
+                  <span className="text-slate-400">ATE RMSE (Pure VIO, demo):</span>
                   <strong className="text-amber-400 text-sm font-bold">{ateVIO.toFixed(3)} m</strong>
                 </div>
 
                 <div className="bg-slate-900 p-2.5 rounded border border-slate-800 flex justify-between items-center">
-                  <span className="text-slate-400">Dead Reckoning Drift:</span>
+                  <span className="text-slate-400">Dead Reckoning Drift (demo):</span>
                   <strong className="text-rose-400 text-sm font-bold">{ateDeadReckoning.toFixed(3)} m</strong>
                 </div>
 

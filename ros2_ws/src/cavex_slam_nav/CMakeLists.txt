@@ -21,7 +21,7 @@ install(DIRECTORY
   launch
   urdf
   worlds
-  models
+#  models
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -29,6 +29,12 @@ install(DIRECTORY
 install(PROGRAMS
   cavex_slam_nav/drone_commander.py
   cavex_slam_nav/base_station_controller.py
+  cavex_slam_nav/ate_evaluator_node.py
+  cavex_slam_nav/analyze_ate_runs.py
+  cavex_slam_nav/odom_tf_broadcaster.py
+  cavex_slam_nav/slam_pose_publisher.py
+  cavex_slam_nav/sic_slam_node.py
+  cavex_slam_nav/web_telemetry_bridge.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -1,14 +1,10 @@
 import express from "express";
 import path from "path";
-import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
@@ -39,6 +35,21 @@ async function startServer() {
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // Live telemetry sink for the ROS2 stack (see web_telemetry_bridge.py),
+  // replacing the desktop Gazebo/rtabmap_viz GUIs. In-memory only -- this
+  // is a display cache, not a store of record.
+  let latestTelemetry: { data: unknown; receivedAt: number } | null = null;
+  app.post("/api/telemetry", (req, res) => {
+    latestTelemetry = { data: req.body, receivedAt: Date.now() };
+    res.json({ status: "ok" });
+  });
+  app.get("/api/telemetry", (req, res) => {
+    if (!latestTelemetry || Date.now() - latestTelemetry.receivedAt > 5000) {
+      return res.json({ live: false });
+    }
+    res.json({ live: true, ...latestTelemetry });
   });
 
   // AI Assistant endpoint for ROS 2 Jazzy node & URDF code generation

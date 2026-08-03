@@ -17,9 +17,12 @@
   <depend>nav_msgs</depend>
   <depend>rtabmap_ros</depend>
   <depend>nav2_bringup</depend>
-  <depend>gazebo_ros</depend>
+  <depend>ros_gz_sim</depend>
+  <depend>ros_gz_bridge</depend>
+  <depend>xacro</depend>
   <depend>robot_state_publisher</depend>
   <depend>tf2_ros</depend>
+  <depend>python3-numpy</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
