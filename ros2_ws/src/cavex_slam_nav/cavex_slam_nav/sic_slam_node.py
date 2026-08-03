@@ -121,6 +121,16 @@ class SicSlamNode(Node):
         self.theta = slam_theta
 
     def _predict_and_publish(self):
+        if not self._got_slam_fix:
+            # Before the first RTAB-Map correction, (x, y, theta) are still
+            # at the arbitrary (0,0,0) init value, not the robot's real
+            # spawn pose -- publishing here would score as a ~robot-spawn-
+            # distance outlier against ground truth for no real reason
+            # (this was the actual cause of the large max-error outlier
+            # seen in the first SIC-SLAM v0 run, not turn dynamics).
+            self._last_predict = self.get_clock().now()
+            return
+
         now = self.get_clock().now()
         dt = (now - self._last_predict).nanoseconds * 1e-9
         self._last_predict = now

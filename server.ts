@@ -52,6 +52,26 @@ async function startServer() {
     res.json({ live: true, ...latestTelemetry });
   });
 
+  // Reverse direction: web UI -> ROS2 waypoint goals. Push queues a single
+  // pending goal (last write wins -- one robot, one active goal); GET pops
+  // it (returns it once, then clears) -- web_telemetry_bridge.py polls this
+  // and republishes it as a PoseStamped on /cavex/nav/goal for
+  // waypoint_follower.py to drive to.
+  let pendingGoal: { x: number; y: number } | null = null;
+  app.post("/api/waypoint-goal", (req, res) => {
+    const { x, y } = req.body ?? {};
+    if (typeof x !== "number" || typeof y !== "number") {
+      return res.status(400).json({ error: "x and y (numbers) are required." });
+    }
+    pendingGoal = { x, y };
+    res.json({ status: "ok" });
+  });
+  app.get("/api/waypoint-goal", (req, res) => {
+    const goal = pendingGoal;
+    pendingGoal = null;
+    res.json({ goal });
+  });
+
   // AI Assistant endpoint for ROS 2 Jazzy node & URDF code generation
   app.post("/api/gemini/ros2-assistant", async (req, res) => {
     try {

@@ -112,8 +112,19 @@ def generate_launch_description():
             }],
         ),
 
-        # Visualization sink: pushes pose/ATE telemetry to the web frontend
-        # at http://localhost:3000 instead of a desktop GUI.
+        # Real (if minimal -- straight-line P-controller, no obstacle
+        # avoidance) waypoint navigation. See waypoint_follower.py for scope.
+        Node(
+            package='cavex_slam_nav',
+            executable='waypoint_follower.py',
+            name='waypoint_follower',
+            output='screen',
+            parameters=[{'use_sim_time': use_sim_time}],
+        ),
+
+        # Visualization sink: pushes pose/ATE/lidar telemetry to the web
+        # frontend at http://localhost:3000 instead of a desktop GUI, and
+        # relays waypoint goals from the web UI back to /cavex/nav/goal.
         Node(
             package='cavex_slam_nav',
             executable='web_telemetry_bridge.py',

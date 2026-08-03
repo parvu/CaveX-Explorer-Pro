@@ -273,6 +273,70 @@ export default function App() {
     setRobotState((prev) => ({ ...prev, headlightOn: headlight }));
   }, [headlight]);
 
+  // Live ROS2 telemetry (see web_telemetry_bridge.py -> /api/telemetry).
+  // Real robot pose (ground_truth) and real lidar scan (lidar_ranges) are
+  // used to drive the 3D view + sensor panels below in place of the
+  // client-fabricated physics when the ROS2 stack is actually running.
+  // Falls back to the mock simulation (unchanged) when it isn't -- same
+  // honest live/demo split already used in SICSlamVisualizer.tsx.
+  const [liveTelemetry, setLiveTelemetry] = useState<{
+    ground_truth: { x: number; y: number; z: number; yaw: number } | null;
+    sic_slam_pose: { x: number; y: number; z: number; yaw: number } | null;
+    ate_rmse: number | null;
+    lidar_ranges: number[] | null;
+    nav_goal: { x: number; y: number; distance_remaining: number } | null;
+  } | null>(null);
+  const isLive = liveTelemetry !== null && liveTelemetry.ground_truth !== null;
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/telemetry");
+        const json = await res.json();
+        if (!cancelled) setLiveTelemetry(json.live ? json.data : null);
+      } catch {
+        if (!cancelled) setLiveTelemetry(null);
+      }
+    };
+    poll();
+    const id = setInterval(poll, 500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!liveTelemetry?.ground_truth) return;
+    const gt = liveTelemetry.ground_truth;
+    setRobotState((prev) => ({
+      ...prev,
+      position: { x: gt.x, y: gt.y, z: prev.position.z },
+      orientation: { ...prev.orientation, z: (gt.yaw * 180) / Math.PI },
+    }));
+    if (liveTelemetry.lidar_ranges) {
+      setSensorData((prev) => ({ ...prev, lidarRanges: liveTelemetry.lidar_ranges! }));
+    }
+  }, [liveTelemetry]);
+
+  // Real (if minimal -- straight-line, no obstacle avoidance) waypoint
+  // navigation: POSTs a ground (x, y) goal for waypoint_follower.py to
+  // drive to. There is no flight/dive capability in this sim's actual
+  // robot, so z/mode from the mission's waypoint list is not honored here
+  // -- only the ground position is real.
+  const sendWaypointGoal = async (x: number, y: number) => {
+    try {
+      await fetch("/api/waypoint-goal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ x, y }),
+      });
+    } catch {
+      // best-effort -- the ROS2 bridge just won't see a new goal this tick
+    }
+  };
+
   // Periodic sensor updates & autonomous mission loop
   useEffect(() => {
     const interval = setInterval(() => {
@@ -280,12 +344,20 @@ export default function App() {
       setSensorData((prev) => ({
         ...prev,
         featurePointsCount: 35 + Math.floor(Math.random() * 15),
-        lidarRanges: prev.lidarRanges.map((r) => Math.max(0.5, r + (Math.random() - 0.5) * 0.15)),
+        // Real lidar_ranges is set from telemetry above when live -- don't
+        // jitter over it here, that would fight the real data every tick.
+        lidarRanges: isLive
+          ? prev.lidarRanges
+          : prev.lidarRanges.map((r) => Math.max(0.5, r + (Math.random() - 0.5) * 0.15)),
         sonarEchoStrength: Math.max(40, Math.min(100, prev.sonarEchoStrength + (Math.random() - 0.5) * 4)),
         slamConfidence: Math.max(90, Math.min(99, prev.slamConfidence + (Math.random() - 0.5) * 1)),
       }));
 
-      // Dynamic battery drain & Anti-Collision Avoidance Guard
+      // Dynamic battery drain & Anti-Collision Avoidance Guard -- position
+      // comes from real telemetry when live (see the effect above), so
+      // this mock physics step is skipped then (it would otherwise fight
+      // the real pose every 150ms).
+      if (isLive) return;
       setRobotState((prev) => {
         const drainRate = prev.mode === "FLYING" ? 0.08 : prev.mode === "SAILING" ? 0.03 : 0.02;
         const newBattery = Math.max(0, prev.battery - drainRate);
@@ -457,7 +529,7 @@ export default function App() {
     }, 150);
 
     return () => clearInterval(interval);
-  }, [missionStatus.active, missionStatus.currentWaypointIndex, missionStatus.waypoints]);
+  }, [missionStatus.active, missionStatus.currentWaypointIndex, missionStatus.waypoints, isLive]);
 
   // Reset Simulation
   const handleResetSim = () => {
@@ -523,6 +595,8 @@ export default function App() {
                 antiCollisionEnabled={antiCollisionEnabled}
                 setAntiCollisionEnabled={setAntiCollisionEnabled}
                 evasionAlert={evasionAlert}
+                isLive={isLive}
+                liveTelemetry={liveTelemetry}
               />
             </div>
 
@@ -534,6 +608,8 @@ export default function App() {
               setMissionStatus={setMissionStatus}
               sensorData={sensorData}
               setSensorData={setSensorData}
+              isLive={isLive}
+              sendWaypointGoal={sendWaypointGoal}
             />
 
             {/* Bottom: Multi-Sensor Perception Dashboard */}

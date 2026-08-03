@@ -20,6 +20,15 @@ interface GazeboSimViewportProps {
   antiCollisionEnabled?: boolean;
   setAntiCollisionEnabled?: (val: boolean) => void;
   evasionAlert?: { active: boolean; obstacle: string };
+  /** True when the real ROS2 stack is connected (see App.tsx's /api/telemetry poll). */
+  isLive?: boolean;
+  liveTelemetry?: {
+    ground_truth: { x: number; y: number; z: number; yaw: number } | null;
+    sic_slam_pose: { x: number; y: number; z: number; yaw: number } | null;
+    ate_rmse: number | null;
+    lidar_ranges: number[] | null;
+    nav_goal: { x: number; y: number; distance_remaining: number } | null;
+  } | null;
 }
 
 export interface EditableSimObject {
@@ -50,6 +59,8 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
   antiCollisionEnabled = true,
   setAntiCollisionEnabled,
   evasionAlert = { active: false, obstacle: "" },
+  isLive = false,
+  liveTelemetry = null,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -1916,6 +1927,41 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
 
       {/* Main 3D Canvas Mount */}
       <div ref={mountRef} className="relative w-full h-full flex-1 cursor-grab active:cursor-grabbing">
+        {/* Inline live telemetry HUD -- real ROS2 data (pose, lidar, ATE)
+            when connected (see App.tsx's /api/telemetry poll), a plain
+            "not connected" badge otherwise. Position matches the scene's
+            other overlays (pointer-events-none, absolute over the canvas). */}
+        <div className="absolute top-4 left-4 z-20 pointer-events-none bg-slate-950/85 backdrop-blur border border-slate-700 rounded-lg px-3 py-2 font-mono text-[11px] text-slate-300 shadow-xl min-w-[190px]">
+          {isLive && liveTelemetry?.ground_truth ? (
+            <>
+              <div className="flex items-center gap-1.5 text-emerald-400 font-bold mb-1">
+                <Radio className="w-3 h-3 animate-pulse" /> ROS2 LIVE
+              </div>
+              <div>
+                pos: ({liveTelemetry.ground_truth.x.toFixed(2)}, {liveTelemetry.ground_truth.y.toFixed(2)})
+              </div>
+              <div>heading: {((liveTelemetry.ground_truth.yaw * 180) / Math.PI).toFixed(0)}°</div>
+              {sensorData.lidarRanges?.length > 0 && (
+                <div>lidar min: {Math.min(...sensorData.lidarRanges).toFixed(2)}m</div>
+              )}
+              {liveTelemetry.sic_slam_pose && (
+                <div>
+                  SIC-SLAM v0: ({liveTelemetry.sic_slam_pose.x.toFixed(2)}, {liveTelemetry.sic_slam_pose.y.toFixed(2)})
+                </div>
+              )}
+              {liveTelemetry.ate_rmse !== null && (
+                <div>ATE RMSE: {liveTelemetry.ate_rmse.toFixed(3)}m</div>
+              )}
+              {liveTelemetry.nav_goal && (
+                <div>
+                  goal dist: {liveTelemetry.nav_goal.distance_remaining?.toFixed(2) ?? "--"}m
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-slate-500">○ ROS2 not connected (concept demo)</div>
+          )}
+        </div>
         {/* Anti-Collision Active Evasion Alert Overlay */}
         {evasionAlert?.active && (
           <div className="absolute top-16 right-4 z-20 pointer-events-none flex items-center gap-2 bg-rose-950/90 backdrop-blur border border-rose-500/80 px-3.5 py-2 rounded-lg text-rose-200 font-mono text-xs shadow-2xl animate-pulse">

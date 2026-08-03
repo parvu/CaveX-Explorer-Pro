@@ -10,6 +10,10 @@ interface MultiModalNavPlannerProps {
   setMissionStatus: React.Dispatch<React.SetStateAction<MissionStatus>>;
   sensorData: SensorData;
   setSensorData: React.Dispatch<React.SetStateAction<SensorData>>;
+  /** True when the real ROS2 stack is connected (see App.tsx's /api/telemetry poll). */
+  isLive?: boolean;
+  /** Sends a real ground (x, y) goal to waypoint_follower.py. Ignored (unused) when !isLive. */
+  sendWaypointGoal?: (x: number, y: number) => void;
 }
 
 export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
@@ -19,6 +23,8 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
   setMissionStatus,
   sensorData,
   setSensorData,
+  isLive,
+  sendWaypointGoal,
 }) => {
   // Manual Kinematic Mode Switch Handler
   const handleModeSwitch = (newMode: LocomotionMode) => {
@@ -69,10 +75,22 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
 
     handleModeSwitch(targetWp.targetMode);
 
-    setRobotState((prev) => ({
-      ...prev,
-      position: targetWp.position,
-    }));
+    let logLine: string;
+    if (isLive && sendWaypointGoal) {
+      // Real robot: send the ground (x, y) as an actual nav goal for
+      // waypoint_follower.py to drive to. There's no flight/dive capability
+      // in this sim, so z/mode-changing waypoints (SAILING/FLYING) will
+      // only be honored as a ground position -- the robot won't fly or
+      // submerge, it'll just drive there and stay on the ground.
+      sendWaypointGoal(targetWp.position.x, targetWp.position.y);
+      logLine = `[Nav2, LIVE] Sent real goal: ${targetWp.name} (${targetWp.position.x.toFixed(1)}, ${targetWp.position.y.toFixed(1)}) -- ground position only, no flight/dive in this sim`;
+    } else {
+      setRobotState((prev) => ({
+        ...prev,
+        position: targetWp.position,
+      }));
+      logLine = `[Nav2] Reached Waypoint: ${targetWp.name} (${targetWp.section})`;
+    }
 
     const updatedWaypoints = missionStatus.waypoints.map((wp, idx) => ({
       ...wp,
@@ -84,20 +102,31 @@ export const MultiModalNavPlanner: React.FC<MultiModalNavPlannerProps> = ({
       currentWaypointIndex: nextIdx,
       waypoints: updatedWaypoints,
       logs: [
-        `[Nav2] Reached Waypoint: ${targetWp.name} (${targetWp.section})`,
+        logLine,
         `[FSM] Environment Medium: ${targetWp.section} -> Kinematic Chain: ${targetWp.targetMode}`,
         ...prev.logs.slice(0, 15),
       ],
     }));
   };
 
-  // Toggle Autonomous Mission Auto-pilot Loop
+  // Toggle Autonomous Mission Auto-pilot Loop.
+  // ponytail: multi-waypoint auto-sequencing only runs against the demo
+  // physics loop (App.tsx skips it when isLive); live mode drives one
+  // real goal at a time via "Step Waypoint" above. Auto-advancing on real
+  // distance_remaining feedback (already in telemetry) is the upgrade path.
   const toggleAutoMission = () => {
     const active = !missionStatus.active;
     setMissionStatus((prev) => ({
       ...prev,
       active,
-      logs: [active ? "[Nav2] Autonomous Mission Started." : "[Nav2] Autonomous Mission Paused.", ...prev.logs.slice(0, 15)],
+      logs: [
+        active
+          ? isLive
+            ? "[Nav2] Auto Mission is demo-only in live mode -- use Step Waypoint to send real goals."
+            : "[Nav2] Autonomous Mission Started."
+          : "[Nav2] Autonomous Mission Paused.",
+        ...prev.logs.slice(0, 15),
+      ],
     }));
   };
 

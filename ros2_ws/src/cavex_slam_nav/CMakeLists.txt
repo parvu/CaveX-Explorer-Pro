@@ -35,6 +35,7 @@ install(PROGRAMS
   cavex_slam_nav/slam_pose_publisher.py
   cavex_slam_nav/sic_slam_node.py
   cavex_slam_nav/web_telemetry_bridge.py
+  cavex_slam_nav/waypoint_follower.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
