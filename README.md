@@ -24,9 +24,12 @@ npm run build
 npm start         # http://localhost:3000
 ```
 
-While the ROS 2 stack below is running, the SLAM Benchmark panel in the UI
-polls `/api/telemetry` and shows a "● live from ROS2" badge with real pose
-and ATE data instead of the concept-demo numbers.
+While the ROS 2 stack below is running, the SLAM Benchmark panel and the 3D
+simulation viewport both poll `/api/telemetry` and show live pose, lidar,
+and ATE data instead of the concept-demo numbers. Clicking "Step Waypoint"
+in the Nav planner sends a real (x, y) goal to `waypoint_follower.py` via
+`/api/waypoint-goal` — z/mode aren't honored (no flight/dive capability in
+this sim).
 
 ## ROS 2 / Gazebo simulation stack
 
@@ -70,6 +73,17 @@ Score a run against ground truth (Absolute Trajectory Error, Umeyama-aligned):
 ```bash
 ros2 topic pub --once /cavex/eval/finish_run std_msgs/msg/Empty "{}"
 python3 ros2_ws/src/cavex_slam_nav/cavex_slam_nav/analyze_ate_runs.py ros2_ws/cavex_ate_runs.csv
+```
+
+Send a real waypoint goal (straight-line P-controller, no obstacle
+avoidance -- see `waypoint_follower.py`; it closes the loop on RTAB-Map's
+pose, not ground truth, so its own SLAM error isn't hidden from it):
+
+```bash
+ros2 topic pub --once /cavex/nav/goal geometry_msgs/msg/PoseStamped \
+  "{header: {frame_id: map}, pose: {position: {x: -15, y: 1}}}"
+# or via the web bridge:
+curl -X POST http://localhost:3000/api/waypoint-goal -H "Content-Type: application/json" -d '{"x": -15, "y": 1}'
 ```
 
 **On "SIC-SLAM"**: `sic_slam_node.py` is a real but minimal prototype (cmd_vel
