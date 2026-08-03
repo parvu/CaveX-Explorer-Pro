@@ -92,3 +92,14 @@ sonar + Invariant-EKF + GTSAM factor-graph system described in the funding
 application, which remains a WP2-WP3 deliverable. See the docstrings in
 `sic_slam_node.py` and `ate_evaluator_node.py` for the exact scope, and don't
 cite its ATE numbers as "SIC-SLAM" results without that caveat.
+
+Latest result (10 runs, meets the OS2 ≥10-run methodology): **ATE RMSE =
+0.019 ± 0.004 m**. This simulation's ground truth is noiseless and RTAB-Map's
+own input odometry is that same ground truth, so treat this as a best-case/
+idealized-loop number, not a real-sensor-noise result — a real caveat for any
+report that cites it.
+
+**On "sonar"**: there is no sonar sensor in this simulation (the robot has an
+RGB camera, 2D lidar, and IMU only). The frontend's sonar panels and `sonarActive`/
+`sonarDepth`/`sonarEchoStrength` fields are concept-demo values, not backed by
+any real sensor or ROS2 topic — don't wire them up as if they were.
