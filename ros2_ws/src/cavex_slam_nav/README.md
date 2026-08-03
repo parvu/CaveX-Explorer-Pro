@@ -11,10 +11,14 @@ For the CaveX hybrid drone navigating complex environments (dry caves, flooded z
 3. **Robust Loop Closure**: By using a memory management approach, RTAB-Map performs large-scale mapping without memory exhaustion, perfect for long cave explorations.
 4. **ROS 2 & Nav2 Native**: RTAB-Map is officially supported in ROS 2 Humble/Iron and provides a direct 2D/3D costmap for Nav2.
 
-## Build Instructions
+## Build & Run Instructions
+See the top-level [README.md](../../../README.md) for full instructions
+(Gazebo simulation, driving the robot, ATE evaluation, web dashboard). Quick
+build:
 ```bash
-cd ~/ros2_ws
-colcon build --packages-select cavex_slam_nav
+cd ros2_ws   # repo root
+colcon build --symlink-install --packages-select cavex_slam_nav
 source install/setup.bash
-ros2 launch cavex_slam_nav rtabmap_nav.launch.py
+ros2 launch cavex_slam_nav gazebo_sim.launch.py   # terminal 1
+ros2 launch cavex_slam_nav rtabmap_nav.launch.py  # terminal 2
 ```
