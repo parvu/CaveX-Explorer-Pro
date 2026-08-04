@@ -24,7 +24,13 @@ quadruped_controller_node:
     publish_joint_states: true
     publish_joint_control: true
     gazebo: true
-    joint_controller_topic: "joint_group_position_controller/command"
+    # joint_trajectory_controller::JointTrajectoryController subscribes on
+    # "<controller_name>/joint_trajectory" (confirmed via `strings` on the
+    # installed libjoint_trajectory_controller.so — it contains the literal
+    # "~/joint_trajectory", not "~/command"), NOT CHAMP's own default of
+    # "<name>/command". Set to match the real controller topic so the
+    # gait -> joint-command pipeline works as configured by this file alone.
+    joint_controller_topic: "joint_group_position_controller/joint_trajectory"
     loop_rate: 200.0
     # "urdf" (the robot_description XML as a string, parsed via
     # champ::URDF::loadFromString) is intentionally left unset here — it
