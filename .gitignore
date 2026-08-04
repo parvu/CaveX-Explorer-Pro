@@ -11,3 +11,4 @@ ros2_ws/log/
 ros2_ws/cavex_ate_runs.csv
 __pycache__/
 *.pyc
+.worktrees/
