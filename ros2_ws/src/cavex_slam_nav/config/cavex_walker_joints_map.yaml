@@ -1,0 +1,46 @@
+# joints_map / links_map for champ_base's quadruped_controller_node.
+#
+# No bundled example of this schema exists anywhere in the vendored
+# champ/champ_base/champ_msgs source (champ_base/config only has
+# ekf/velocity_smoother configs -- no robot example). The schema below is
+# read directly from the library code that actually consumes it, not
+# guessed or copied from an external example:
+#
+#   champ/include/champ/utils/urdf_loader.h
+#     - getJointNames(): reads joints_map.left_front / .right_front /
+#       .left_hind / .right_hind, each a string array; only the first 3
+#       entries per leg are used (j<3 loop) -- one per actuated joint
+#       (hip, upper_leg/thigh, lower_leg/knee).
+#     - loadFromString()/loadFromFile() -> fillLeg(): reads
+#       links_map.left_front / .right_front / .left_hind / .right_hind,
+#       each a string array of exactly 4 link names, walked pairwise
+#       (root->[0], [0]->[1], [1]->[2], [2]->[3]) to compute each of
+#       champ's 4 internal joint_chain segment translations via URDF FK.
+#   champ/include/champ/quadruped_base/quadruped_leg.h
+#     - QuadrupedLeg::joint_chain has exactly 4 slots: hip, upper_leg,
+#       lower_leg, foot -- confirming links_map needs 4 link names per leg,
+#       the last being a virtual foot frame (not a controlled joint, see
+#       cavex_walker.urdf.xacro's <leg>_foot_link/_foot_joint, added
+#       specifically to satisfy this).
+#   champ_base/src/quadruped_controller.cpp: constructor calls
+#     champ::URDF::loadFromString(...) (needs links_map) immediately
+#     followed by champ::URDF::getJointNames(...) (needs joints_map) --
+#     both are required or the node throws "No {links,joints} config file
+#     provided" (the exact failure Task 1 hit when testing with neither
+#     param supplied).
+#
+# Leg key naming (left_front/right_front/left_hind/right_hind) and the
+# base.legs[] push order in urdf_loader.h map 1:1 onto this project's
+# lf/rf/lh/rh prefixes (left-front, right-front, left-hind, right-hind).
+quadruped_controller_node:
+  ros__parameters:
+    links_map:
+      left_front:  ["lf_hip_link", "lf_thigh_link", "lf_knee_link", "lf_foot_link"]
+      right_front: ["rf_hip_link", "rf_thigh_link", "rf_knee_link", "rf_foot_link"]
+      left_hind:   ["lh_hip_link", "lh_thigh_link", "lh_knee_link", "lh_foot_link"]
+      right_hind:  ["rh_hip_link", "rh_thigh_link", "rh_knee_link", "rh_foot_link"]
+    joints_map:
+      left_front:  ["lf_hip_joint", "lf_thigh_joint", "lf_knee_joint"]
+      right_front: ["rf_hip_joint", "rf_thigh_joint", "rf_knee_joint"]
+      left_hind:   ["lh_hip_joint", "lh_thigh_joint", "lh_knee_joint"]
+      right_hind:  ["rh_hip_joint", "rh_thigh_joint", "rh_knee_joint"]

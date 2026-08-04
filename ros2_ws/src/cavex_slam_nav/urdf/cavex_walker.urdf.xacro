@@ -31,8 +31,18 @@
     thigh_joint = CHAMP's "hip_y" (pitch, lifts the thigh)
     knee_joint  = CHAMP's "knee"  (pitch, bends the shank)
   CHAMP's config additionally carries a 4th, non-actuated "foot" frame per
-  leg for FK bookkeeping; this file omits it since it isn't a controlled
-  joint and isn't required for gz_ros2_control's command interface.
+  leg for FK bookkeeping; this file omits it as a controlled joint (not
+  needed for gz_ros2_control's command interface) but Task 5 adds a fixed
+  <leg>_foot_link/<leg>_foot_joint pair per leg below anyway: champ's
+  links_map schema (champ/include/champ/utils/urdf_loader.h,
+  champ/include/champ/quadruped_base/quadruped_leg.h's 4-element
+  joint_chain) requires exactly 4 link names per leg to walk the kinematic
+  chain for its own internal forward kinematics (hip -> upper_leg ->
+  lower_leg -> foot). Without a real foot_link offset by -shank_length from
+  knee_link, champ's link chain would be one segment short and its leg IK
+  would be computed for the wrong leg length. See
+  cavex_walker_joints_map.yaml for how links_map/joints_map reference these
+  names.
 -->
 <robot name="cavex_walker" xmlns:xacro="http://ros.org/wiki/xacro">
 
@@ -142,12 +152,66 @@
       <axis xyz="0 1 0"/>
       <limit lower="-2.5" upper="0.0" effort="20" velocity="10"/>
     </joint>
+
+    <!-- Virtual foot frame: fixed, offset by -shank_length from the knee.
+         Not a controlled joint (see header comment) - exists solely so
+         champ's links_map has a real 4th link per leg with the correct
+         shank length baked into its FK, matching quadruped_leg.h's
+         hip/upper_leg/lower_leg/foot 4-element joint_chain. -->
+    <link name="${prefix}_foot_link"/>
+    <joint name="${prefix}_foot_joint" type="fixed">
+      <parent link="${prefix}_knee_link"/>
+      <child link="${prefix}_foot_link"/>
+      <origin xyz="0 0 -${shank_length}" rpy="0 0 0"/>
+    </joint>
   </xacro:macro>
 
   <xacro:champ_leg prefix="lf" x_sign="1"  y_sign="1"/>
   <xacro:champ_leg prefix="rf" x_sign="1"  y_sign="-1"/>
   <xacro:champ_leg prefix="lh" x_sign="-1" y_sign="1"/>
   <xacro:champ_leg prefix="rh" x_sign="-1" y_sign="-1"/>
+
+  <!-- ros2_control hardware interface block. Found missing empirically:
+       `gz_ros2_control::GazeboSimROS2ControlPlugin` (the <gazebo><plugin>
+       block above) only supplies the controller_manager YAML - it still
+       needs this separate <ros2_control> tag in the URDF itself to know
+       which joints exist and what command/state interfaces they expose.
+       Without it, gz-sim's controller_manager aborts on spawn with
+       "no 'ros2_control' tag found in the URDF" (std::terminate, process
+       exit 134) - reproduced and confirmed via a real launch attempt
+       before adding this block, not assumed. Hardware plugin name/type
+       confirmed installed, not guessed:
+       `cat /opt/ros/jazzy/share/gz_ros2_control/gz_hardware_plugins.xml`
+       -> pluginlib class name "gz_ros2_control/GazeboSimSystem". Command
+       interface limits match each joint's own <limit> above. -->
+  <xacro:macro name="champ_ros2_control_joint" params="name lower upper">
+    <joint name="${name}">
+      <command_interface name="position">
+        <param name="min">${lower}</param>
+        <param name="max">${upper}</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <ros2_control name="GazeboSimSystem" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <xacro:champ_ros2_control_joint name="lf_hip_joint"   lower="-0.75" upper="0.75"/>
+    <xacro:champ_ros2_control_joint name="lf_thigh_joint" lower="-1.5"  upper="1.5"/>
+    <xacro:champ_ros2_control_joint name="lf_knee_joint"  lower="-2.5"  upper="0.0"/>
+    <xacro:champ_ros2_control_joint name="rf_hip_joint"   lower="-0.75" upper="0.75"/>
+    <xacro:champ_ros2_control_joint name="rf_thigh_joint" lower="-1.5"  upper="1.5"/>
+    <xacro:champ_ros2_control_joint name="rf_knee_joint"  lower="-2.5"  upper="0.0"/>
+    <xacro:champ_ros2_control_joint name="lh_hip_joint"   lower="-0.75" upper="0.75"/>
+    <xacro:champ_ros2_control_joint name="lh_thigh_joint" lower="-1.5"  upper="1.5"/>
+    <xacro:champ_ros2_control_joint name="lh_knee_joint"  lower="-2.5"  upper="0.0"/>
+    <xacro:champ_ros2_control_joint name="rh_hip_joint"   lower="-0.75" upper="0.75"/>
+    <xacro:champ_ros2_control_joint name="rh_thigh_joint" lower="-1.5"  upper="1.5"/>
+    <xacro:champ_ros2_control_joint name="rh_knee_joint"  lower="-2.5"  upper="0.0"/>
+  </ros2_control>
 
   <!-- Lidar (3D) -->
   <link name="lidar_link">
@@ -224,6 +288,34 @@
   <gazebo>
     <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
       <parameters>$(find cavex_slam_nav)/config/cavex_walker_ros2_control.yaml</parameters>
+    </plugin>
+  </gazebo>
+
+  <!-- Ground-truth world pose (Task 5 Step 3). This robot has no
+       OdometryPublisher (that was cavex_robot's wheeled/VelocityControl
+       approach) - a legged robot's true pose isn't a commanded-velocity
+       integral, so we publish the model's real simulator-internal pose
+       instead. Same honesty standard as cavex_robot's /odom: this is
+       simulator ground truth, not a claim about real-hardware sensing.
+       Bridged to ROS as geometry_msgs/PoseArray (gz.msgs.Pose_V) -
+       differs from cavex_robot's nav_msgs/Odometry-shaped ground truth, so
+       Task 10's ate_evaluator_node.py (which expects Odometry) needs a
+       small PoseArray -> Odometry republisher, not a direct bridge.
+       filename verified installed: `find / -iname "*pose-publisher*"` ->
+       libgz-sim8-pose-publisher-system.so / symlinked as
+       gz-sim-pose-publisher-system.so; class name gz::sim::systems::
+       PosePublisher confirmed via `strings` on that .so. -->
+  <gazebo>
+    <plugin filename="gz-sim-pose-publisher-system" name="gz::sim::systems::PosePublisher">
+      <publish_model_pose>true</publish_model_pose>
+      <publish_link_pose>false</publish_link_pose>
+      <publish_visual_pose>false</publish_visual_pose>
+      <publish_collision_pose>false</publish_collision_pose>
+      <publish_sensor_pose>false</publish_sensor_pose>
+      <publish_nested_model_pose>false</publish_nested_model_pose>
+      <use_pose_vector_msg>true</use_pose_vector_msg>
+      <static_publisher>false</static_publisher>
+      <update_frequency>30</update_frequency>
     </plugin>
   </gazebo>
 </robot>
