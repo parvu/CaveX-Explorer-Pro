@@ -1,0 +1,52 @@
+# gz_ros2_control controller config for cavex_walker.urdf.xacro.
+#
+# champ_base's quadruped_controller_node publishes trajectory_msgs/JointTrajectory
+# to a topic named by its "joint_controller_topic" param, default
+# "joint_group_position_controller/command" (see
+# ros2_ws/src/champ_base/src/quadruped_controller.cpp). The controller
+# below is named "joint_group_position_controller" to match that prefix,
+# and command_interfaces/state_interfaces are set to satisfy a
+# position-only JointTrajectory message.
+#
+# NOTE for whoever writes the launch file (this task only builds the
+# description/config, it doesn't launch anything): joint_trajectory_controller
+# actually subscribes on "<controller_name>/joint_trajectory", not
+# ".../command" — same class of mismatch as the champ_base cmd_vel/smooth
+# gap noted in Task 1. Bridge it either by setting quadruped_controller_node's
+# "joint_controller_topic" ROS param to
+# "joint_group_position_controller/joint_trajectory", or with a topic remap
+# at launch. Not fixed here since this task doesn't launch any nodes.
+#
+# Joint list is the 12 actuated leg joints from cavex_walker.urdf.xacro
+# (4 legs x hip/thigh/knee); see that file's header for where the leg
+# geometry/joint mapping came from.
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    joint_group_position_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+joint_group_position_controller:
+  ros__parameters:
+    joints:
+      - lf_hip_joint
+      - lf_thigh_joint
+      - lf_knee_joint
+      - rf_hip_joint
+      - rf_thigh_joint
+      - rf_knee_joint
+      - lh_hip_joint
+      - lh_thigh_joint
+      - lh_knee_joint
+      - rh_hip_joint
+      - rh_thigh_joint
+      - rh_knee_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity

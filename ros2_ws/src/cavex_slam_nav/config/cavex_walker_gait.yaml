@@ -1,0 +1,32 @@
+# CHAMP gait config for quadruped_controller_node (champ_base).
+# Param names/nesting match what quadruped_controller.cpp reads via
+# this->get_parameter("gait.*", ...) / top-level get_parameter calls
+# (ros2_ws/src/champ_base/src/quadruped_controller.cpp).
+#
+# gait.* values below are copied verbatim from CHAMP's own vendored Spot
+# example: chvmp/robots' configs/spot_config/config/gait/gait.yaml
+# (cloned from https://github.com/chvmp/robots.git for this task) — same
+# source as the leg dimensions in cavex_walker.urdf.xacro.
+quadruped_controller_node:
+  ros__parameters:
+    gait:
+      pantograph_leg: false
+      max_linear_velocity_x: 1.5
+      max_linear_velocity_y: 0.25
+      max_angular_velocity_z: 1.0
+      com_x_translation: -0.05
+      swing_height: 0.06
+      stance_depth: -0.01
+      stance_duration: 0.4
+      nominal_height: 0.48
+      knee_orientation: ">>"
+    publish_foot_contacts: true
+    publish_joint_states: true
+    publish_joint_control: true
+    gazebo: true
+    joint_controller_topic: "joint_group_position_controller/command"
+    loop_rate: 200.0
+    # "urdf" (the robot_description XML as a string, parsed via
+    # champ::URDF::loadFromString) is intentionally left unset here — it
+    # must be supplied at launch time (e.g. from the robot_state_publisher's
+    # robot_description), not hardcoded in this static config file.

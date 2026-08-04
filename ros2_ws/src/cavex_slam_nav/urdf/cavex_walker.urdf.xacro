@@ -1,0 +1,229 @@
+<?xml version="1.0"?>
+<!--
+  Spot-like quadruped (CHAMP) — NOT Boston Dynamics' proprietary Spot model.
+
+  Dimension sources:
+  - Hip mount offsets, thigh (upper-leg) lateral offset, thigh length, and
+    shank (lower-leg) length below are copied verbatim from CHAMP's own
+    vendored Spot example, chvmp/robots' `configs/spot_config/config.json`
+    ("firmware.transforms", cloned at
+    https://github.com/chvmp/robots.git for this task). Those are real
+    kinematic offsets CHAMP ships for its Spot-like example, not invented.
+  - `nominal_height` (base_footprint -> base_link static offset below) is
+    likewise copied from that same repo's
+    `configs/spot_config/config/gait/gait.yaml` (0.48 m).
+  - chvmp/robots' spot_config has no primitive body-box size: its
+    `config.json` sets `"default_urdf": false` and points at an external,
+    unvendored `spot_description` mesh package. So the base_link box
+    (0.7 x 0.3 x 0.15 m) below is NOT from that source or from Boston
+    Dynamics' spec sheet — it's sized to comfortably enclose the real hip
+    offsets above (front/rear hip spread 0.5957 m, left/right hip spread
+    0.11 m) with a modest chassis margin, same simple-primitives style as
+    cavex_robot.urdf.xacro's base_link.
+
+  Joint naming: CHAMP's `quadruped_controller_node` reads joint names from
+  ROS params (`joints_map.*`, see champ/include/champ/utils/urdf_loader.h -
+  they are NOT hardcoded in champ/champ_base source), so this file is free
+  to choose names. We use the <leg>_<hip|thigh|knee>_joint convention this
+  task's brief specifies, with leg prefixes lf/rf/lh/rh (left/right,
+  front/hind) — mapped onto CHAMP's own 3-joint-per-leg chain as:
+    hip_joint   = CHAMP's "hip_x" (roll / abduction, mounted on base_link)
+    thigh_joint = CHAMP's "hip_y" (pitch, lifts the thigh)
+    knee_joint  = CHAMP's "knee"  (pitch, bends the shank)
+  CHAMP's config additionally carries a 4th, non-actuated "foot" frame per
+  leg for FK bookkeeping; this file omits it since it isn't a controlled
+  joint and isn't required for gz_ros2_control's command interface.
+-->
+<robot name="cavex_walker" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- Body -->
+  <xacro:property name="body_length" value="0.7"/>
+  <xacro:property name="body_width" value="0.3"/>
+  <xacro:property name="body_height" value="0.15"/>
+  <xacro:property name="nominal_height" value="0.48"/> <!-- CHAMP spot_config gait.yaml nominal_height -->
+
+  <!-- Leg geometry (chvmp/robots configs/spot_config/config.json firmware.transforms) -->
+  <xacro:property name="hip_x_offset" value="0.29785"/>    <!-- base_link -> hip_joint, front/rear -->
+  <xacro:property name="hip_y_offset" value="0.055"/>      <!-- base_link -> hip_joint, left/right -->
+  <xacro:property name="thigh_y_offset" value="0.110945"/> <!-- hip_joint -> thigh_joint, lateral -->
+  <xacro:property name="thigh_x_offset" value="0.025"/>    <!-- thigh_joint -> knee_joint, forward -->
+  <xacro:property name="thigh_length" value="0.3205"/>     <!-- thigh_joint -> knee_joint, vertical -->
+  <xacro:property name="shank_length" value="0.37"/>       <!-- knee_joint -> foot, vertical -->
+  <xacro:property name="leg_radius" value="0.035"/>
+
+  <link name="base_footprint"/>
+  <joint name="base_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${nominal_height}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="base_link">
+    <visual>
+      <geometry><box size="${body_length} ${body_width} ${body_height}"/></geometry>
+      <material name="yellow"><color rgba="1 1 0 1"/></material>
+    </visual>
+    <collision>
+      <geometry><box size="${body_length} ${body_width} ${body_height}"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="20.0"/>
+      <inertia ixx="0.2" ixy="0" ixz="0" iyy="0.3" iyz="0" izz="0.3"/>
+    </inertial>
+  </link>
+
+  <!-- One leg: hip (roll) -> thigh (pitch) -> knee (pitch) -->
+  <xacro:macro name="champ_leg" params="prefix x_sign y_sign">
+    <link name="${prefix}_hip_link">
+      <visual>
+        <geometry><cylinder radius="${leg_radius}" length="0.08"/></geometry>
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+        <material name="black"><color rgba="0 0 0 1"/></material>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${leg_radius}" length="0.08"/></geometry>
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      </collision>
+      <inertial>
+        <mass value="0.6"/>
+        <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      </inertial>
+    </link>
+    <joint name="${prefix}_hip_joint" type="revolute">
+      <parent link="base_link"/>
+      <child link="${prefix}_hip_link"/>
+      <origin xyz="${x_sign*hip_x_offset} ${y_sign*hip_y_offset} 0" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="-0.75" upper="0.75" effort="20" velocity="10"/>
+    </joint>
+
+    <link name="${prefix}_thigh_link">
+      <visual>
+        <geometry><cylinder radius="${leg_radius}" length="${thigh_length}"/></geometry>
+        <origin xyz="0 0 -${thigh_length/2}" rpy="0 0 0"/>
+        <material name="black"><color rgba="0 0 0 1"/></material>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${leg_radius}" length="${thigh_length}"/></geometry>
+        <origin xyz="0 0 -${thigh_length/2}" rpy="0 0 0"/>
+      </collision>
+      <inertial>
+        <mass value="0.8"/>
+        <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.001"/>
+      </inertial>
+    </link>
+    <joint name="${prefix}_thigh_joint" type="revolute">
+      <parent link="${prefix}_hip_link"/>
+      <child link="${prefix}_thigh_link"/>
+      <origin xyz="0 ${y_sign*thigh_y_offset} 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="-1.5" upper="1.5" effort="20" velocity="10"/>
+    </joint>
+
+    <link name="${prefix}_knee_link">
+      <visual>
+        <geometry><cylinder radius="${leg_radius}" length="${shank_length}"/></geometry>
+        <origin xyz="0 0 -${shank_length/2}" rpy="0 0 0"/>
+        <material name="black"><color rgba="0 0 0 1"/></material>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${leg_radius}" length="${shank_length}"/></geometry>
+        <origin xyz="0 0 -${shank_length/2}" rpy="0 0 0"/>
+      </collision>
+      <inertial>
+        <mass value="0.5"/>
+        <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.001"/>
+      </inertial>
+    </link>
+    <joint name="${prefix}_knee_joint" type="revolute">
+      <parent link="${prefix}_thigh_link"/>
+      <child link="${prefix}_knee_link"/>
+      <origin xyz="${thigh_x_offset} 0 -${thigh_length}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="-2.5" upper="0.0" effort="20" velocity="10"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:champ_leg prefix="lf" x_sign="1"  y_sign="1"/>
+  <xacro:champ_leg prefix="rf" x_sign="1"  y_sign="-1"/>
+  <xacro:champ_leg prefix="lh" x_sign="-1" y_sign="1"/>
+  <xacro:champ_leg prefix="rh" x_sign="-1" y_sign="-1"/>
+
+  <!-- Lidar (3D) -->
+  <link name="lidar_link">
+    <visual>
+      <geometry><cylinder radius="0.05" length="0.1"/></geometry>
+      <material name="black"><color rgba="0 0 0 1"/></material>
+    </visual>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0 0 ${body_height/2 + 0.1}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Camera -->
+  <link name="camera_link"/>
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <origin xyz="${body_length/2} 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Gazebo Harmonic (gz-sim) sensors. Same convention as cavex_robot.urdf.xacro:
+       gz-sim's Sensors system publishes over gz-transport with no per-sensor
+       plugin, but every sensor MUST carry <gz_frame_id> — without it gz-sim
+       stamps frame_id with its own scene-graph path instead of the URDF
+       link name, and TF lookups against robot_state_publisher's tree
+       (which uses the URDF link names) silently fail. -->
+  <gazebo reference="lidar_link">
+    <sensor type="gpu_lidar" name="lidar_sensor">
+      <pose>0 0 0 0 0 0</pose>
+      <visualize>false</visualize>
+      <update_rate>10</update_rate>
+      <topic>lidar/points</topic>
+      <gz_frame_id>lidar_link</gz_frame_id>
+      <ray>
+        <scan>
+          <horizontal><samples>360</samples><resolution>1</resolution><min_angle>-3.14</min_angle><max_angle>3.14</max_angle></horizontal>
+          <vertical><samples>16</samples><resolution>1</resolution><min_angle>-0.2618</min_angle><max_angle>0.2618</max_angle></vertical>
+        </scan>
+        <range><min>0.3</min><max>12.0</max></range>
+      </ray>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="camera_link">
+    <sensor type="camera" name="camera_sensor">
+      <update_rate>30.0</update_rate>
+      <topic>camera/color</topic>
+      <gz_frame_id>camera_link</gz_frame_id>
+      <camera>
+        <horizontal_fov>1.3962634</horizontal_fov>
+        <image><width>800</width><height>800</height><format>R8G8B8</format></image>
+        <clip><near>0.02</near><far>300</far></clip>
+      </camera>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="base_link">
+    <sensor type="imu" name="imu_sensor">
+      <update_rate>50</update_rate>
+      <topic>imu</topic>
+      <gz_frame_id>base_link</gz_frame_id>
+    </sensor>
+  </gazebo>
+
+  <!-- Real joints driven by ros2_control, not a free body: gz_ros2_control
+       bridges the joint_state_broadcaster / champ_controller (see
+       cavex_walker_ros2_control.yaml) to Gazebo, replacing cavex_robot's
+       VelocityControl/OdometryPublisher plugins used for its wheeled base.
+       filename/class verified against the installed package:
+       `ros2 pkg prefix gz_ros2_control` -> lib/libgz_ros2_control-system.so,
+       class gz_ros2_control::GazeboSimROS2ControlPlugin (gz_ros2_control_plugin.hpp). -->
+  <gazebo>
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(find cavex_slam_nav)/config/cavex_walker_ros2_control.yaml</parameters>
+    </plugin>
+  </gazebo>
+</robot>
