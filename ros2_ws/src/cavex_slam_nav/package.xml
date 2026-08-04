@@ -19,6 +19,9 @@
   <depend>nav2_bringup</depend>
   <depend>ros_gz_sim</depend>
   <depend>ros_gz_bridge</depend>
+  <depend>ros2_control</depend>
+  <depend>ros2_controllers</depend>
+  <depend>gz_ros2_control</depend>
   <depend>xacro</depend>
   <depend>robot_state_publisher</depend>
   <depend>tf2_ros</depend>
