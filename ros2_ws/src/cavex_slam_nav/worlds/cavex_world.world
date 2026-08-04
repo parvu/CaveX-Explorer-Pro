@@ -44,7 +44,7 @@
       <pose>-22 0 1 0 0 0</pose>
       <link name="link">
         <collision name="col"><geometry><box><size>34 12 2</size></box></geometry></collision>
-        <visual name="vis"><geometry><box><size>34 12 2</size></box></geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual>
+        <visual name="vis"><geometry><box><size>34 12 2</size></box></geometry><material><ambient>0.3 0.3 0.3 1</ambient></material><transparency>0.5</transparency></visual>
       </link>
     </model>
 
