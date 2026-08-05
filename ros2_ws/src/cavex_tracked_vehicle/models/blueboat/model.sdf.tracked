@@ -2,35 +2,63 @@
      Derived from ArduPilot's real vendored `blueboat` Gazebo model (author Rhys Mainwaring,
      meshes sourced from Blue Robotics' published CAD). This is NOT an official Blue Robotics
      tracked-vehicle product -- it is this project's own modification, replacing the boat's
-     motor/prop assemblies with retractable track assemblies for cave-floor locomotion. -->
+     motor/prop assemblies with retractable track assemblies for cave-floor locomotion.
+     NOTE: model.config in this dir still only declares model.sdf (the untouched vendored
+     original); it does not point at this file. Whichever later task actually spawns the
+     tracked variant (Task 5/6) needs its own model.config (or a launch-time SDF path override)
+     pointing at model.sdf.tracked instead. -->
 <sdf version="1.9">
   <model name="cavex_tracked_blueboat">
     <link name="base_link">
       <inertial>
         <!-- Re-derived via the parallel-axis theorem after removing the motor/prop assemblies
-             (~0.4kg total) and grafting on two 1.5kg retractable track assemblies. The hull's
-             own tuned inertia (ixx/iyy/izz below, minus the small motor contribution) is kept
-             as the baseline "hull point mass at its original center" per this project's
-             derivation method; each 1.5kg track assembly then adds m*d^2 per axis at its mount
-             offset relative to base_link's origin:
-               left_track  center @ (-0.05,  0.35, -0.35)
-               right_track center @ (-0.05, -0.35, -0.35)
-             base_link origin/CoM reference point: (-0.05, 0, -0.15)
-             track contribution: dIxx=2*1.5*(0.35^2+0.20^2)=0.4875, dIyy=2*1.5*(0.20^2)=0.12,
-                                  dIzz=2*1.5*(0.35^2)=0.3675 (approx, symmetric left/right)
-             ixx: 2.42369 + 0.4875   = 2.91119
-             iyy: 3.9235025 + 0.12   = 4.0435025
-             izz: 5.6403125 + 0.3675 = 6.0078125
+             (~0.4kg total) and grafting on two 1.5kg retractable track assemblies.
+
+             STEP 1 -- true combined CoM (weighted average of component CoMs, not the old
+             hull-only CoM):
+               hull:        29.6 kg @ (-0.05,  0,     -0.15)
+               left_track:   1.5 kg @ (-0.05,  0.35,  -0.35)
+               right_track:  1.5 kg @ (-0.05, -0.35,  -0.35)
+               total mass = 32.6 kg
+               x_com = -0.05 (all components share x=-0.05)
+               y_com = (29.6*0 + 1.5*0.35 + 1.5*(-0.35)) / 32.6 = 0  (left/right cancel)
+               z_com = (29.6*(-0.15) + 1.5*(-0.35) + 1.5*(-0.35)) / 32.6
+                     = (-4.44 - 0.525 - 0.525) / 32.6 = -5.49 / 32.6 = -0.168405
+             -> new combined CoM: (-0.05, 0, -0.168405), an 0.0184m / ~12% shift from the old
+                -0.15 hull-only pose declared here previously.
+
+             STEP 2 -- parallel-axis theorem about this NEW combined CoM (not the old one).
+             Shift hull by d_hull = new_com - hull_com = (0, 0, -0.018405):
+               dIxx_hull = 29.6*(0^2 + 0.018405^2) = 29.6*0.00033874 = 0.010027
+               dIyy_hull = 29.6*(0^2 + 0.018405^2) = 0.010027
+               dIzz_hull = 29.6*(0^2 + 0^2)         = 0
+               ixx_hull' = 2.42369  + 0.010027 = 2.433717
+               iyy_hull' = 3.9235025 + 0.010027 = 3.933530
+               izz_hull' = 5.6403125 + 0        = 5.640313
+             Shift each track (own local inertia ixx=0.02/iyy=0.05/izz=0.05 from the track link
+             below) by d_track = new_com - track_com = (0, +/-0.35, +0.181595):
+               dIxx_track = 1.5*(0.35^2 + 0.181595^2) = 1.5*(0.1225+0.032977) = 0.233215
+               dIyy_track = 1.5*(0^2    + 0.181595^2) = 1.5*0.032977          = 0.049465
+               dIzz_track = 1.5*(0^2    + 0.35^2)     = 1.5*0.1225            = 0.18375
+               ixx_track' = 0.02 + 0.233215 = 0.253215  (x2 tracks = 0.506430)
+               iyy_track' = 0.05 + 0.049465 = 0.099465  (x2 tracks = 0.198930)
+               izz_track' = 0.05 + 0.18375  = 0.23375   (x2 tracks = 0.4675)
+             Sum (hull' + left_track' + right_track'):
+               ixx: 2.433717 + 0.506430 = 2.940147
+               iyy: 3.933530 + 0.198930 = 4.132460
+               izz: 5.640313 + 0.467500 = 6.107813
+             Off-diagonal terms stay 0: x is uniform across all components, and the left/right
+             track y-offsets are equal and opposite so any xy/yz cross terms cancel.
              mass: 29.6 (hull, motors/props removed) + 2*1.5 (tracks) = 32.6 kg -->
-        <pose>-0.05 0 -0.15 0 0 0</pose>
+        <pose>-0.05 0 -0.168405 0 0 0</pose>
         <mass>32.6</mass>
         <inertia>
-          <ixx>2.91119</ixx>
+          <ixx>2.940147</ixx>
           <ixy>0</ixy>
           <ixz>0</ixz>
-          <iyy>4.0435025</iyy>
+          <iyy>4.132460</iyy>
           <iyz>0</iyz>
-          <izz>6.0078125</izz>
+          <izz>6.107813</izz>
         </inertia>
       </inertial>
       <collision name="hull_collision">
@@ -417,56 +445,27 @@
     </plugin>
 
       <!-- ardupilot plugin
-        NOTE: the <control> channels below still reference motor_port_joint/motor_stbd_joint,
-        which no longer exist in this tracked variant (removed above). Left as-is here --
-        this task only vendors the model and grafts on the track hardware; rewiring
-        ArduPilot's servo output channels to drive left_track_retract_joint/
-        right_track_retract_joint (or the track-controller plugin's velocity inputs) is a
-        later task's job, same as attaching gz-sim-tracked-vehicle-system itself. -->
+        The original BlueBoat's <control channel="..."> blocks (motor_port_joint /
+        motor_stbd_joint, twin-thruster COMMAND channels) have been removed entirely: those
+        joints no longer exist in this tracked variant (deleted above), and ArduPilotPlugin
+        hard-fails at load ("Couldn't find specified joint") if a <control> block names a
+        missing joint -- confirmed via a real spawn with libArduPilotPlugin.so. This is not a
+        twin-motor boat anymore, so there is no physically-equivalent per-joint servo channel
+        to repoint these at: skid-steer track velocity isn't a servo-angle/thrust output.
+        ArduPilot itself still runs (IMU/NavSat in, no actuator commands out) so autopilot
+        modes/estimation/telemetry keep working; actually driving the vehicle is Task 6's job,
+        which relays ArduPilot's DDS cmd_vel output to the TrackedVehicle plugin's cmd_vel
+        topic -- a separate control path that bypasses ArduPilotPlugin's servo channels
+        entirely, so no <control> block is needed here at all. -->
     <plugin name="ArduPilotPlugin"
       filename="ArduPilotPlugin">
       <fdm_addr>127.0.0.1</fdm_addr>
-      <fdm_port_in>9002</fdm_port_in>        
+      <fdm_port_in>9002</fdm_port_in>
       <connectionTimeoutMaxCount>5</connectionTimeoutMaxCount>
       <lock_step>1</lock_step>
       <gazeboXYZToNED degrees="true">0 0 0 180 0 90</gazeboXYZToNED>
       <modelXYZToAirplaneXForwardZDown degrees="true">0 0 0 180 0 0</modelXYZToAirplaneXForwardZDown>
       <imuName>imu_link::imu_sensor</imuName>
-      
-
-      <!--
-        port motor cw
-
-        SERVO1_FUNCTION 73 (ThrottleLeft)
-        SERVO1_MAX 2000
-        SERVO1_MIN 1000
-      -->
-      <control channel="0">
-        <jointName>motor_port_joint</jointName>
-        <multiplier>70</multiplier>
-        <offset>-0.5</offset>
-        <servo_min>1000</servo_min>
-        <servo_max>2000</servo_max>
-        <type>COMMAND</type>
-        <cmd_topic>/model/blueboat/joint/motor_port_joint/cmd_thrust</cmd_topic>
-      </control>
-
-      <!--
-        stbd motor ccw
-
-        SERVO3_FUNCTION 74 (ThrottleRight)
-        SERVO3_MAX 2000
-        SERVO3_MIN 1000
-      -->
-      <control channel="2">
-        <jointName>motor_stbd_joint</jointName>
-        <multiplier>70</multiplier>
-        <offset>-0.5</offset>
-        <servo_min>1000</servo_min>
-        <servo_max>2000</servo_max>
-        <type>COMMAND</type>
-        <cmd_topic>/model/blueboat/joint/motor_stbd_joint/cmd_thrust</cmd_topic>
-      </control>
     </plugin>
 
   </model>
