@@ -204,17 +204,22 @@ collision_monitor:
     # past 'unconfigured'). Tried leaving polygons/observation_sources
     # empty next -- that made the node abort with SIGABRT on startup
     # instead (verified live: process exit code -6). So this section is
-    # nav2_bringup's own default collision_monitor block verbatim (its
-    # "scan" observation source is a LaserScan on topic "scan", which this
-    # 3D-lidar-only robot never publishes -- same limitation as the
-    # costmaps' missing LaserScan-based obstacle_layer, see the top-of-file
-    # comment). With no /scan publisher the source just never receives
-    # data, exactly like icp_odometry's harmless "did not receive data on
-    # /scan" warning elsewhere in this stack -- it does not crash or block
-    # bringup.
+    # nav2_bringup's own default collision_monitor block, including
+    # cmd_vel_in_topic (kept as stock's "cmd_vel_smoothed", not changed --
+    # an earlier version of this file had this pointed at "cmd_vel_nav"
+    # instead, silently bypassing navigation_launch.py's velocity_smoother
+    # node; reverted, since this robot's own /cmd_vel path should go
+    # through the same smoothing stock Nav2 does, even though the node is
+    # currently inert here). Its "scan" observation source is a LaserScan
+    # on topic "scan", which this 3D-lidar-only robot never publishes --
+    # same limitation as the costmaps' missing LaserScan-based
+    # obstacle_layer, see the top-of-file comment. With no /scan publisher
+    # the source just never receives data, exactly like icp_odometry's
+    # harmless "did not receive data on /scan" warning elsewhere in this
+    # stack -- it does not crash or block bringup.
     base_frame_id: "base_footprint"
     odom_frame_id: "odom"
-    cmd_vel_in_topic: "cmd_vel_nav"
+    cmd_vel_in_topic: "cmd_vel_smoothed"
     cmd_vel_out_topic: "cmd_vel"
     state_topic: "collision_monitor_state"
     transform_tolerance: 0.2
@@ -269,9 +274,11 @@ behavior_server:
 # hard-codes as managed (same story as collision_monitor above): with no
 # dock_plugins configured it errored "Charging dock plugins not given!"
 # and aborted the whole Nav2 bringup. This robot has no docking station or
-# charging dock, so docking is unused -- this is nav2_bringup's own
-# default docking_server block verbatim, kept only so the lifecycle
-# manager has something valid to configure.
+# charging dock, so docking is unused -- functionally this is stock
+# nav2_bringup's default docking_server params (values match; the
+# controller: sub-block and some comments present in stock are omitted
+# here since this node stays inert), kept only so the lifecycle manager
+# has something valid to configure.
 docking_server:
   ros__parameters:
     use_sim_time: true
