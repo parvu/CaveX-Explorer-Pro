@@ -209,20 +209,6 @@
        `cat /opt/ros/jazzy/share/gz_ros2_control/gz_hardware_plugins.xml`
        -> pluginlib class name "gz_ros2_control/GazeboSimSystem". Command
        interface limits match each joint's own <limit> above. -->
-  <!-- gz_ros2_control's GazeboSimSystem drives a "position" command
-       interface as a proportional controller on top of Gazebo's underlying
-       velocity/effort actuation, gain read from a joint-level
-       "position_proportional_gain" <param> (confirmed by `strings` on the
-       installed /opt/ros/jazzy/lib/libgz_ros2_control-system.so, which
-       declares/reads that exact parameter name, not the p/i/d-under-
-       command_interface scheme documented for some other gz_ros2_control
-       plugin versions, which this installed build does not read at all).
-       Absent this param it defaults to a value far too weak to move a
-       20kg legged body's joints against gravity, so the walker never
-       actually translates despite receiving valid trajectory commands
-       (confirmed empirically: driving /cmd_vel for 10s moved the body
-       ~0.00001m). 50.0 sized to comfortably saturate each joint's own
-       effort=20 limit for a fast, stable step response. -->
   <xacro:macro name="champ_ros2_control_joint" params="name lower upper">
     <joint name="${name}">
       <command_interface name="position">
@@ -231,7 +217,6 @@
       </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
-      <param name="position_proportional_gain">300.0</param>
     </joint>
   </xacro:macro>
 
@@ -325,9 +310,27 @@
        filename/class verified against the installed package:
        `ros2 pkg prefix gz_ros2_control` -> lib/libgz_ros2_control-system.so,
        class gz_ros2_control::GazeboSimROS2ControlPlugin (gz_ros2_control_plugin.hpp). -->
+  <!-- position_proportional_gain: this is a GazeboSimSystem-wide SDF
+       <plugin> child element (parsed via sdfPtr->HasElement(...) in
+       gz_ros2_control_plugin.cpp), NOT a per-joint <ros2_control>/<param>
+       (an earlier fix round placed it there - silently ignored, since
+       ros2_control's own URDF parser and gz_ros2_control's SDF-plugin gain
+       parser are two unrelated mechanisms). Confirmed via the real
+       upstream source (ros-controls/gz_ros2_control, gz_system.cpp's
+       write()): a "position" command_interface is implemented as
+       target_velocity = -gain * (current_position - commanded_position) *
+       update_rate - i.e. velocity-mode control, not position or effort -
+       and the unset default is 0.1 (confirmed in this project's own
+       launch logs: "The position_proportional_gain has been set to: 0.1").
+       At the real per-joint amplitudes CHAMP's gait commands (~0.3-0.6 rad
+       swings), 0.1 turned out to still be too weak for the legs to track
+       the trajectory at all (measured joint state stayed within ~0.05 rad
+       of standing regardless of commanded target, confirmed empirically
+       with a real, single, uncontaminated launch instance). -->
   <gazebo>
     <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
       <parameters>$(find cavex_slam_nav)/config/cavex_walker_ros2_control.yaml</parameters>
+      <position_proportional_gain>20.0</position_proportional_gain>
     </plugin>
   </gazebo>
 

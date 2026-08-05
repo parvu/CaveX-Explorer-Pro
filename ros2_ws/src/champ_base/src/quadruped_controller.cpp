@@ -156,7 +156,23 @@ void QuadrupedController::publishJoints_(float target_joints[12])
         trajectory_msgs::msg::JointTrajectoryPoint point;
         point.positions.resize(12);
 
-        point.time_from_start = rclcpp::Duration::from_seconds(1.0 / 60.0);
+        // Was rclcpp::Duration::from_seconds(1.0 / 60.0) (~16.7ms). This
+        // node re-publishes a fresh single-point trajectory continuously at
+        // its own loop_rate (default 200Hz here, ~5ms), so joint_trajectory_
+        // controller almost always replaces this message before that 16.7ms
+        // elapses. joint_trajectory_controller's Trajectory::sample() holds
+        // the pre-trajectory state (not the target) for any sample time
+        // before a point's time_from_start is reached (confirmed against
+        // ros2_controllers' trajectory.cpp source) - so with the original
+        // duration, the commanded joint angle it actually applies barely
+        // ever advances toward the real target at all (found empirically:
+        // legs never tracked the gait's real ~0.3-0.6rad swings, stayed
+        // pinned within ~0.05rad of standing, regardless of ros2_control
+        // gain tuning - a joint_trajectory_controller interpolation issue,
+        // not a gain issue). 0 makes each point due immediately, which
+        // fits this node's actual behavior (continuous position streaming,
+        // not discrete waypoint execution with a real time budget).
+        point.time_from_start = rclcpp::Duration::from_seconds(0.0);
         for(size_t i = 0; i < 12; i++)
         {
             point.positions[i] = target_joints[i];

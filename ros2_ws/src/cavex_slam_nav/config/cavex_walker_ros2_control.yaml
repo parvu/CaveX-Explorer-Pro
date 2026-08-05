@@ -32,6 +32,21 @@ controller_manager:
 
 joint_group_position_controller:
   ros__parameters:
+    # champ_base streams a fresh single-point JointTrajectory (no
+    # velocities/accelerations set) at its ~200Hz gait loop rate, each with
+    # a ~17ms time_from_start. The controller's default "splines"
+    # interpolation fits a cubic/quintic spline with zero-velocity boundary
+    # conditions between the current state and that single point - which
+    # starts (and, at this streaming rate, stays) near-zero slope, so each
+    # trajectory gets replaced by the next before ever tracking meaningfully
+    # toward its target. Confirmed empirically: measured /joint_states
+    # stayed pinned near a small standing offset (~0.015 rad) while
+    # commanded targets cycled through the real gait amplitude (~0.3-0.6
+    # rad). "none" interpolation steps directly to each point's target
+    # instead of spline-fitting, which is the correct mode for a
+    # continuous position-streaming source like this (verified valid value
+    # via `strings` on the installed libjoint_trajectory_controller.so).
+    interpolation_method: "none"
     joints:
       - lf_hip_joint
       - lf_thigh_joint
