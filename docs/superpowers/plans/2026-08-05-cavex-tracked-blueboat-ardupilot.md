@@ -1,23 +1,25 @@
-# CaveX Tracked BlueBoat-like Vehicle (ArduPilot) Implementation Plan
+# CaveX Tracked BlueBoat + Water-Triggered BlueROV2 (ArduPilot) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A twin-pontoon, BlueBoat-like tracked vehicle — real ArduPilot Rover SITL as its control law, real Gazebo Harmonic continuous-track physics, retractable track assemblies — autonomously explores the dry-cave section of `CaveX-Explorer-Pro`'s Gazebo world via Nav2 frontier exploration, builds a real 3D map (RTAB-Map), and is evaluated with ATE, with live telemetry on the existing dashboard.
+**Goal:** A tracked vehicle built on ArduPilot's real vendored `blueboat` hull — real ArduPilot Rover SITL as its control law, real Gazebo Harmonic continuous-track physics, retractable track assemblies — autonomously explores the dry-cave section of `CaveX-Explorer-Pro`'s Gazebo world via Nav2 frontier exploration, builds a real 3D map (RTAB-Map), and is evaluated with ATE, with live telemetry on the existing dashboard. A flooded section of the world, with real buoyancy physics, houses a real BlueROV2 (vendored `bluerov2_gz` model, ArduSub SITL); a water-boundary trigger hands control off between the two vehicles automatically as the tracked vehicle approaches and crosses into the water.
 
-**Architecture:** New ROS2 package `cavex_tracked_vehicle` (parallel to `cavex_slam_nav`, which stays untouched). Vendor and build `ardupilot_gazebo` (the Gazebo-side plugin) and ArduPilot itself (Rover firmware SITL binary) plus its native ROS2/DDS bridge (`ardupilot_sitl`, `Micro-XRCE-DDS-Gen`, `micro-ROS-Agent`) from source — none of this is packaged via apt. Build the vehicle as a twin-pontoon hull with two independently retractable continuous-track assemblies, driven by Gazebo Harmonic's own `gz-sim-tracked-vehicle-system`/`track-controller-system` plugins (confirmed installed, real SDF parameters extracted via `strings` on the installed `.so`s during planning — not guessed). ArduPilot's real velocity-control output (its `AP_DDS` `cmd_vel` topic) drives the tracks through two small adapter nodes. Reuse `cavex_slam_nav`'s RTAB-Map/Nav2/`explore_lite`/ATE/dashboard patterns, ported and re-verified against this vehicle rather than assumed to carry over unmodified.
+**Architecture:** New ROS2 package `cavex_tracked_vehicle` (parallel to `cavex_slam_nav`, which stays untouched). Vendor and build `ardupilot_gazebo` (the Gazebo-side plugin, shared by both vehicles) and ArduPilot itself (Rover + Sub firmware SITL binaries) plus its native ROS2/DDS bridge (`ardupilot_sitl`, `Micro-XRCE-DDS-Gen`, `micro-ROS-Agent`) from source — none of this is packaged via apt. Vendor the real `blueboat` model (ArduPilot's own `SITL_Models`) and graft on two independently retractable continuous-track assemblies, driven by Gazebo Harmonic's own `gz-sim-tracked-vehicle-system`/`track-controller-system` plugins (confirmed installed, real SDF parameters extracted via `strings` on the installed `.so`s during planning — not guessed). ArduPilot's real velocity-control output (its `AP_DDS` `cmd_vel` topic) drives the tracks through two small adapter nodes. Vendor the real `bluerov2` model (`clydemcqueen/bluerov2_gz`, real `Buoyancy`/`Hydrodynamics`/`Thruster` plugins) and a second ArduSub SITL instance for the water side. A `vehicle_switch_node` watches the tracked vehicle's ground-truth pose against the water region's boundary and (de)spawns/arms the two vehicles on crossing. Reuse `cavex_slam_nav`'s RTAB-Map/Nav2/`explore_lite`/ATE/dashboard patterns for the tracked vehicle's dry-cave run, ported and re-verified rather than assumed to carry over unmodified.
 
-**Tech Stack:** ROS2 Jazzy, Gazebo Harmonic (gz-sim, `gz-sim-tracked-vehicle-system`, `gz-sim-track-controller-system`), ArduPilot Rover SITL + `ardupilot_gazebo` (`ArduPilotPlugin`), ArduPilot's native `AP_DDS`/`micro-ROS-Agent` ROS2 bridge, RTAB-Map (3D/ICP mode), Nav2, `explore_lite` (`m-explore-ros2` — reused from the abandoned branch's vendoring, still valid), existing `web_telemetry_bridge.py`/React dashboard pattern.
+**Tech Stack:** ROS2 Jazzy, Gazebo Harmonic (gz-sim, `gz-sim-tracked-vehicle-system`, `gz-sim-track-controller-system`, `gz-sim-buoyancy-system`, `gz-sim-hydrodynamics-system`, `gz-sim-thruster-system`), ArduPilot Rover SITL + ArduSub SITL + `ardupilot_gazebo` (`ArduPilotPlugin`), ArduPilot's native `AP_DDS`/`micro-ROS-Agent` ROS2 bridge (two instances), RTAB-Map (3D/ICP mode), Nav2, `explore_lite` (`m-explore-ros2` — reused from the abandoned branch's vendoring, still valid), existing `web_telemetry_bridge.py`/React dashboard pattern.
 
 ## Global Constraints
 
-- Spec: `docs/superpowers/specs/2026-08-05-cavex-tracked-blueboat-ardupilot-design.md` — every task below implements a section of it.
+- Spec: `docs/superpowers/specs/2026-08-05-cavex-tracked-blueboat-ardupilot-design.md` — every task below implements a section of it. Read the spec's second revision (BlueBoat model correction + water/BlueROV2 scope) before starting Task 4 or any task numbered 15+.
 - This replaces the abandoned `cavex-legged-walker-phase1` branch's approach (CHAMP/ros2_control). That branch is left as-is, not touched, not merged.
-- No sonar in this phase (no water present). No `sic_slam_node.py` / "SIC-SLAM" labeling (no current to compensate for).
-- No claim of an official BlueBoat Gazebo model — always label the vehicle "BlueBoat-like tracked vehicle" in code comments, launch descriptions, and dashboard UI text. No claim of real marine/floating capability.
-- Track retraction is manually/topic-commanded only this phase — no water-detection or automatic trigger logic (there's no water simulation to trigger from).
-- Build the ROS2 workspace with `colcon build --symlink-install` from `/home/parvu/CaveX-Explorer-Pro/ros2_ws`, sourcing `/opt/ros/jazzy/setup.bash` first, matching every other package in this workspace. `ardupilot_gazebo` and ArduPilot itself are built separately (not colcon packages in the traditional sense for the SITL binary; `ardupilot_sitl`/`ardupilot_dds_tests`/`micro-ROS-Agent` ARE colcon packages and go through the same workspace build).
+- No sonar, no water-current modeling, no "SIC-SLAM" labeling this phase (real, cited techniques only, still not attempted).
+- No full Nav2/RTAB-Map autonomy underwater for the BlueROV2 this phase — verification for it stops at "real, armed, moves correctly under buoyancy" (see Task 17). Only the tracked vehicle gets the full SLAM/Nav2/ATE treatment.
+- The tracked hull is the real vendored `blueboat` model (ArduPilot's own `SITL_Models`, not a Blue Robotics-published asset) — label it "BlueBoat tracked-vehicle variant" in code comments, launch descriptions, and dashboard UI text, never claim Blue Robotics endorsement or real marine/floating capability for the tracked vehicle itself (it never enters water under its own power — the water-boundary trigger hands off to the BlueROV2 instead).
+- Track retraction is topic-commanded, either manually or by the new `vehicle_switch_node` (Task 18) at the water boundary — no perception-based water-detection sensor model.
+- Build the ROS2 workspace with `colcon build --symlink-install` from `/home/parvu/CaveX-Explorer-Pro/ros2_ws`, sourcing `/opt/ros/jazzy/setup.bash` first, matching every other package in this workspace. `ardupilot_gazebo` and ArduPilot itself are built separately (not colcon packages in the traditional sense for the SITL binaries; `ardupilot_sitl`/`ardupilot_dds_tests`/`micro-ROS-Agent` ARE colcon packages and go through the same workspace build).
 - Verification in this codebase has consistently meant real `ros2`/`gz` CLI checks (`topic list`, `topic hz`, `topic echo`), not a pytest suite. Follow that established pattern.
-- Process hygiene: this environment has repeatedly shown severe flakiness from duplicate/orphaned Gazebo (and now potentially ArduPilot SITL / micro-ROS-Agent) processes surviving across test launches. Before and after every live test in every task below: `ps aux | grep -iE "gz sim|ardupilot|sim_vehicle|micro_ros_agent|MicroXRCEAgent"` and kill any stragglers with explicit `kill -9 <pid>` (not `pkill -f`, confirmed unreliable in this environment).
+- Process hygiene: this environment has repeatedly shown severe flakiness from duplicate/orphaned Gazebo (and now potentially ArduPilot SITL / micro-ROS-Agent) processes surviving across test launches — now doubly true with two SITL instances. Before and after every live test in every task below: `ps aux | grep -iE "gz sim|ardupilot|sim_vehicle|micro_ros_agent|MicroXRCEAgent"` and kill any stragglers with explicit `kill -9 <pid>` (not `pkill -f`, confirmed unreliable in this environment).
+- The two ArduPilot SITL instances (Rover for the tracked vehicle, Sub for the BlueROV2) must never both be armed/controlling their vehicle simultaneously — the `vehicle_switch_node` (Task 18) owns this invariant.
 - Work happens in a new git worktree, isolated from `main` (created via the `superpowers:using-git-worktrees` skill at execution time — not part of this plan's tasks, a pre-step before Task 1 starts).
 
 ---
@@ -337,216 +339,103 @@ git commit -m "Add cavex_tracked_vehicle package skeleton + throwaway track/Ardu
 
 ---
 
-### Task 4: Compose the twin-pontoon BlueBoat-like hull with retractable track assemblies and sensors
+### Task 4: Vendor the real `blueboat` model and graft on retractable track assemblies
 
 **Files:**
-- Create: `ros2_ws/src/cavex_tracked_vehicle/urdf/cavex_tracked_vehicle.urdf.xacro`
+- Create: `ros2_ws/src/cavex_tracked_vehicle/models/blueboat/` (vendored, real meshes + `model.sdf`/`model.config`, from `markusbuchholz/gazebosim_blueboat_ardupilot_sitl`'s `SITL_Models/Gazebo/models/blueboat/` — itself a real mirror of ArduPilot's own `SITL_Models` repo, author Rhys Mainwaring, meshes sourced from Blue Robotics' published CAD)
+- Create: `ros2_ws/src/cavex_tracked_vehicle/models/blueboat/model.sdf.tracked` — the vendored `model.sdf` copied and modified: `motor_port_link`/`motor_stbd_link`/their joints and the `Thruster` plugins removed, two new track assemblies (`left_track`, `right_track`) added behind retraction joints, inertia re-derived for the new mass distribution.
 
 **Interfaces:**
-- Produces: a spawnable robot description (`robot_description` topic, same pattern as `cavex_robot.urdf.xacro`), with `left_track_retract_joint`/`right_track_retract_joint` (revolute) and `left_track`/`right_track` links positioned below them, `<gz_frame_id>` set on every sensor (this project's established gotcha).
+- Produces: a spawnable SDF model named `cavex_tracked_blueboat` with `base_link` (real vendored hull), `left_track_retract_joint`/`right_track_retract_joint` (revolute) and `left_track`/`right_track` links positioned below them, `imu_link`/`navsat_link` (real, from the vendored model, reused as-is).
 
-- [ ] **Step 1: Twin-pontoon hull**
-
-Per Blue Robotics' published BlueBoat spec (confirmed during planning: 120 x 93 x 46 cm deployed, 14.5 kg bare vessel, twin catamaran hulls ~93cm apart joined by a crossmember frame, one motor per hull): two elongated hull boxes plus a crossmember deck box.
-
-```xml
-<?xml version="1.0"?>
-<!--
-  BlueBoat-like twin-pontoon hull, tracked-vehicle variant -- NOT an
-  official Blue Robotics simulation model (none exists on Gazebo Fuel or
-  GitHub, checked during design). Dimensions from Blue Robotics' own
-  published BlueBoat spec (120 x 93 x 46 cm deployed, 14.5 kg bare
-  vessel, twin LDPE hulls ~93cm apart joined by a crossmember frame, one
-  motor per hull for differential thrust) -- reused here as a chassis:
-  two pontoon boxes standing in for the real hulls, a crossmember deck
-  box joining them (BlueBoat's real flat payload area, where our sensors
-  mount), and one retractable continuous-track assembly per pontoon
-  (replacing BlueBoat's real per-hull motor/prop with a track drive,
-  matching the real per-side differential-thrust layout).
--->
-<robot name="cavex_tracked_vehicle" xmlns:xacro="http://ros.org/wiki/xacro">
-
-  <xacro:property name="pontoon_length" value="1.2"/>
-  <xacro:property name="pontoon_width" value="0.2"/>
-  <xacro:property name="pontoon_height" value="0.3"/>
-  <xacro:property name="pontoon_separation" value="0.93"/> <!-- BlueBoat deployed width spec -->
-  <xacro:property name="deck_length" value="0.9"/>
-  <xacro:property name="deck_width" value="${pontoon_separation - pontoon_width}"/>
-  <xacro:property name="deck_height" value="0.08"/>
-  <xacro:property name="deck_z" value="0.15"/> <!-- deck sits above the pontoons -->
-
-  <xacro:property name="track_length" value="0.6"/>
-  <xacro:property name="track_width" value="0.12"/>
-  <xacro:property name="track_height" value="0.15"/>
-
-  <link name="base_link">
-    <inertial>
-      <mass value="14.5"/> <!-- BlueBoat bare-vessel spec mass -->
-      <inertia ixx="0.6" ixy="0" ixz="0" iyy="1.8" iyz="0" izz="1.8"/>
-    </inertial>
-  </link>
-
-  <!-- Crossmember deck (payload area / sensor mount, matches BlueBoat's real flat deck between hulls) -->
-  <link name="deck_link">
-    <visual>
-      <geometry><box size="${deck_length} ${deck_width} ${deck_height}"/></geometry>
-      <material name="deck_grey"><color rgba="0.5 0.5 0.5 1"/></material>
-    </visual>
-    <collision>
-      <geometry><box size="${deck_length} ${deck_width} ${deck_height}"/></geometry>
-    </collision>
-    <inertial>
-      <mass value="2.0"/>
-      <inertia ixx="0.05" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
-    </inertial>
-  </link>
-  <joint name="deck_joint" type="fixed">
-    <parent link="base_link"/>
-    <child link="deck_link"/>
-    <origin xyz="0 0 ${deck_z}" rpy="0 0 0"/>
-  </joint>
-
-  <xacro:macro name="pontoon" params="prefix y_sign">
-    <link name="${prefix}_pontoon_link">
-      <visual>
-        <geometry><box size="${pontoon_length} ${pontoon_width} ${pontoon_height}"/></geometry>
-        <material name="hull_yellow"><color rgba="1 0.8 0 1"/></material>
-      </visual>
-      <collision>
-        <geometry><box size="${pontoon_length} ${pontoon_width} ${pontoon_height}"/></geometry>
-      </collision>
-      <inertial>
-        <mass value="5.0"/>
-        <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.6" iyz="0" izz="0.6"/>
-      </inertial>
-    </link>
-    <joint name="${prefix}_pontoon_joint" type="fixed">
-      <parent link="base_link"/>
-      <child link="${prefix}_pontoon_link"/>
-      <origin xyz="0 ${y_sign * pontoon_separation/2} 0" rpy="0 0 0"/>
-    </joint>
-
-    <!-- Retraction joint: hinges the track assembly up against the pontoon.
-         Revolute (not prismatic) -- a fold-up motion, matching how real
-         retractable-track/wheel mechanisms on small ground vehicles
-         typically work (a hinge, not a telescoping slide). 0 rad =
-         deployed (track hangs below the pontoon, touching the ground);
-         limit upper bound = retracted (track folded flush against the
-         pontoon's side). Real limit angle verified against actual
-         geometry at Task 5's control-verification step, not assumed
-         precisely here -- 1.4 rad (~80 deg) is a reasonable starting
-         point for a fold that clears the ground. -->
-    <link name="${prefix}_track_link">
-      <visual>
-        <geometry><box size="${track_length} ${track_width} ${track_height}"/></geometry>
-        <material name="track_black"><color rgba="0.1 0.1 0.1 1"/></material>
-      </visual>
-      <collision>
-        <geometry><box size="${track_length} ${track_width} ${track_height}"/></geometry>
-      </collision>
-      <inertial>
-        <mass value="1.5"/>
-        <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.05" iyz="0" izz="0.05"/>
-      </inertial>
-    </link>
-    <joint name="${prefix}_track_retract_joint" type="revolute">
-      <parent link="${prefix}_pontoon_link"/>
-      <child link="${prefix}_track_link"/>
-      <origin xyz="0 0 -${pontoon_height/2 + track_height/2}" rpy="0 0 0"/>
-      <axis xyz="1 0 0"/>
-      <limit lower="0.0" upper="1.4" effort="50" velocity="1.0"/>
-    </joint>
-  </xacro:macro>
-
-  <xacro:pontoon prefix="left" y_sign="1"/>
-  <xacro:pontoon prefix="right" y_sign="-1"/>
-
-  <!-- Sensors mounted on the deck (matches BlueBoat's real flat payload area) -->
-  <link name="lidar_link">
-    <visual><geometry><cylinder radius="0.05" length="0.08"/></geometry></visual>
-  </link>
-  <joint name="lidar_joint" type="fixed">
-    <parent link="deck_link"/>
-    <child link="lidar_link"/>
-    <origin xyz="0 0 ${deck_height/2 + 0.05}" rpy="0 0 0"/>
-  </joint>
-
-  <link name="camera_link"/>
-  <joint name="camera_joint" type="fixed">
-    <parent link="deck_link"/>
-    <child link="camera_link"/>
-    <origin xyz="${deck_length/2} 0 0" rpy="0 0 0"/>
-  </joint>
-
-  <gazebo reference="lidar_link">
-    <sensor type="gpu_lidar" name="lidar_sensor">
-      <pose>0 0 0 0 0 0</pose>
-      <visualize>false</visualize>
-      <update_rate>10</update_rate>
-      <topic>lidar/points</topic>
-      <gz_frame_id>lidar_link</gz_frame_id>
-      <ray>
-        <scan>
-          <horizontal><samples>360</samples><resolution>1</resolution><min_angle>-3.14</min_angle><max_angle>3.14</max_angle></horizontal>
-          <vertical><samples>16</samples><resolution>1</resolution><min_angle>-0.2618</min_angle><max_angle>0.2618</max_angle></vertical>
-        </scan>
-        <range><min>0.3</min><max>12.0</max></range>
-      </ray>
-    </sensor>
-  </gazebo>
-
-  <gazebo reference="camera_link">
-    <sensor type="camera" name="camera_sensor">
-      <update_rate>30.0</update_rate>
-      <topic>camera/color</topic>
-      <gz_frame_id>camera_link</gz_frame_id>
-      <camera>
-        <horizontal_fov>1.3962634</horizontal_fov>
-        <image><width>800</width><height>800</height><format>R8G8B8</format></image>
-        <clip><near>0.02</near><far>300</far></clip>
-      </camera>
-    </sensor>
-  </gazebo>
-
-  <gazebo reference="base_link">
-    <sensor type="imu" name="imu_sensor">
-      <update_rate>50</update_rate>
-      <topic>imu</topic>
-      <gz_frame_id>base_link</gz_frame_id>
-    </sensor>
-  </gazebo>
-
-</robot>
-```
-
-(`<gz_frame_id>` set on every sensor per this project's established gotcha: without it, gz-sim stamps `frame_id` with its own scene-graph path instead of the URDF link name, breaking TF lookups against `robot_state_publisher`'s tree.)
-
-- [ ] **Step 2: Verify the xacro parses**
+- [ ] **Step 1: Vendor the real model**
 
 ```bash
-cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
-source /opt/ros/jazzy/setup.bash
-xacro src/cavex_tracked_vehicle/urdf/cavex_tracked_vehicle.urdf.xacro > /tmp/cavex_tracked_vehicle.urdf
-echo "xacro exit code: $?"
-grep -c "<joint" /tmp/cavex_tracked_vehicle.urdf
+cd /tmp
+git clone --depth 1 https://github.com/markusbuchholz/gazebosim_blueboat_ardupilot_sitl.git blueboat_src
+mkdir -p /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models
+cp -r blueboat_src/SITL_Models/Gazebo/models/blueboat \
+      /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/blueboat
+rm -rf blueboat_src
+find /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/blueboat -iname "*.dae" -o -iname "*.stl" | wc -l
 ```
 
-Expected: exit code 0, joint count includes `deck_joint`, `left_pontoon_joint`, `right_pontoon_joint`, `left_track_retract_joint`, `right_track_retract_joint`, `lidar_joint`, `camera_joint` (7 total).
+Expected: real Collada/STL mesh files present (confirmed during planning: `blueboat_hull.dae`, `blueboat_hull_collision.stl`, `blueboat_crosstube.dae`, `blueboat_motor_port.dae`/`blueboat_motor_stbd.dae`, `blueboat_prop_port.dae`/`blueboat_prop_stbd.dae`, `blueboat_hatch_asm_port.dae`/`blueboat_hatch_asm_stbd.dae`, `blueboat_frame_asm_fore.dae`/`blueboat_frame_asm_aft.dae`, `blueboat_flag.dae`, `blueboat_aerial.dae`). Read `model.sdf`'s `<mesh><uri>` values — they use `models://blueboat/meshes/...` — confirm this `models://` URI scheme resolves once `GZ_SIM_RESOURCE_PATH` includes this package's `models/` directory as a resource root (add `ros2_ws/src/cavex_tracked_vehicle/models` to the resource path env var used by later launch files if `models://` doesn't resolve as `model://blueboat/...` — verify empirically, don't assume the scheme is interchangeable).
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 2: Read the real vendored `model.sdf` in full**
+
+```bash
+cat /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/blueboat/model.sdf
+```
+
+Confirms (per this session's own research during planning): `base_link` (mass 30.0 kg, real inertia, hull/crosstube/flag/frame/hatch visual meshes, `hull_collision.stl` collision), `motor_port_link`/`motor_stbd_link` (each a small mass-0.2kg prop link, joined to `base_link` via a revolute `motor_*_joint`), `imu_link` (real `imu` sensor), `navsat_link` (real `navsat` sensor, child of `imu_link`), and plugins `JointStatePublisher`, `OdometryPublisher`, two `Thruster` plugins (one per `motor_*_joint`).
+
+- [ ] **Step 3: Write `model.sdf.tracked` — the tracked-vehicle variant**
+
+Copy `model.sdf` to `model.sdf.tracked`, then, per the spec's Component 1 (the tracked variant doesn't drive props):
+
+- Delete `motor_port_link`, `motor_stbd_link`, `motor_port_joint`, `motor_stbd_joint`, and their two `<visual name="motor_*_visual">` blocks under `base_link` (keep the mesh visuals for hull/crosstube/hatches/frames/flag/aerial — those stay, they're the real hull detail).
+- Delete the two `Thruster` plugin blocks (a tracked vehicle isn't driven by props).
+- At the same mount points the real motor links used (`-0.488 -0.295 -0.272` / `-0.488 0.295 -0.272`, per the vendored model's own real pose values), add two new links and retraction joints:
+
+```xml
+<link name="left_track_retract_mount">
+  <pose>-0.05 0.35 -0.2 0 0 0</pose>
+  <inertial><mass>0.1</mass><inertia><ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+</link>
+<joint name="left_track_retract_joint" type="revolute">
+  <parent>base_link</parent>
+  <child>left_track_retract_mount</child>
+  <axis>
+    <xyz>1 0 0</xyz>
+    <limit><lower>0.0</lower><upper>1.4</upper><effort>50</effort><velocity>1.0</velocity></limit>
+  </axis>
+</joint>
+<link name="left_track">
+  <pose relative_to="left_track_retract_mount">0 0 -0.15 0 0 0</pose>
+  <inertial><mass>1.5</mass><inertia><ixx>0.02</ixx><iyy>0.05</iyy><izz>0.05</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+  <collision name="col"><geometry><box><size>0.6 0.12 0.15</size></box></geometry></collision>
+  <visual name="vis"><geometry><box><size>0.6 0.12 0.15</size></box></geometry><material><diffuse>0.1 0.1 0.1 1</diffuse></material></visual>
+</link>
+<joint name="left_track_fixed" type="fixed">
+  <parent>left_track_retract_mount</parent>
+  <child>left_track</child>
+</joint>
+```
+
+Mirror for `right_track_retract_mount`/`right_track_retract_joint`/`right_track` at `y=-0.35`. (Track links stay simple boxes — this project's box-primitive track geometry, from the earlier design pass, is still the right call for a part that doesn't exist on the real BlueBoat; only the hull needed the real-model upgrade.)
+
+- [ ] **Step 4: Re-derive `base_link` inertia for the new mass distribution**
+
+The vendored `base_link` inertia (`ixx=2.42369`, `iyy=3.9235025`, `izz=5.6403125`, mass 30.0) was tuned for the real motorized BlueBoat. Removing ~0.4kg of motor/prop mass and adding two 1.5kg track assemblies (3.0kg total, mounted lower and further out than the motors were) shifts this meaningfully. Compute new principal moments treating the hull as an unchanged 29.6kg point mass at its original center plus two 1.5kg point masses at the track mount offsets (parallel-axis theorem: `I = I_hull + m*d²` per new mass, `d` = distance from `base_link` origin to each track's center). Update `base_link`'s `<inertia>` block in `model.sdf.tracked` with the recomputed values — do not leave the original motorized-hull inertia in place unexamined (this is the spec's explicit risk-list item).
+
+- [ ] **Step 5: Verify the SDF parses and inspect it in Gazebo**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/blueboat
+cp model.sdf.tracked /tmp/check.sdf
+gz sdf --check /tmp/check.sdf
+echo "check exit code: $?"
+```
+
+Expected: exit code 0, no schema errors. If `gz sdf --check` flags anything about the new track links/joints, fix it here before Task 5 tries to attach the track-controller plugins to them.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 cd /home/parvu/CaveX-Explorer-Pro
-git add ros2_ws/src/cavex_tracked_vehicle/urdf/cavex_tracked_vehicle.urdf.xacro
-git commit -m "Add twin-pontoon BlueBoat-like hull with retractable tracks and sensors"
+git add ros2_ws/src/cavex_tracked_vehicle/models/blueboat
+git commit -m "Vendor real blueboat model, graft retractable track assemblies onto it"
 ```
+
+(Same large-vendored-asset situation as Tasks 1-2 — this commit's diff is mostly binary mesh files; use the scoped-review-package approach from Task 1 rather than a full diff.)
 
 ---
 
 ### Task 5: Wire the real track-drive and retraction-control plugins to the hull
 
 **Files:**
-- Modify: `ros2_ws/src/cavex_tracked_vehicle/urdf/cavex_tracked_vehicle.urdf.xacro`
+- Modify: `ros2_ws/src/cavex_tracked_vehicle/models/blueboat/model.sdf.tracked` (Task 4's SDF, not a xacro — this is a native SDF model, not URDF, so `<ros2_control>`/`<gazebo>` plugin blocks go directly inside `<model>`)
 - Create: `ros2_ws/src/cavex_tracked_vehicle/config/cavex_tracked_vehicle_ros2_control.yaml` (retraction-joint controller config)
 
 **Interfaces:**
@@ -555,29 +444,29 @@ git commit -m "Add twin-pontoon BlueBoat-like hull with retractable tracks and s
 
 - [ ] **Step 1: Add the `TrackController`/`TrackedVehicle` plugin blocks to the real hull, using Task 3's verified parameter names**
 
+These go directly inside `model.sdf.tracked`'s top-level `<model>` element (no `<gazebo>` wrapper needed — that wrapper is a URDF-to-SDF extension mechanism; this file is already native SDF):
+
 ```xml
-<gazebo>
-  <plugin filename="gz-sim-track-controller-system" name="gz::sim::systems::TrackController">
-    <link>left_track</link>
-    <track_orientation>1 0 0</track_orientation>
-    <max_velocity>2.0</max_velocity>
-    <max_acceleration>2.0</max_acceleration>
-  </plugin>
-  <plugin filename="gz-sim-track-controller-system" name="gz::sim::systems::TrackController">
-    <link>right_track</link>
-    <track_orientation>1 0 0</track_orientation>
-    <max_velocity>2.0</max_velocity>
-    <max_acceleration>2.0</max_acceleration>
-  </plugin>
-  <plugin filename="gz-sim-tracked-vehicle-system" name="gz::sim::systems::TrackedVehicle">
-    <body_link>base_link</body_link>
-    <left_track>left_track</left_track>
-    <right_track>right_track</right_track>
-    <tracks_separation>${pontoon_separation}</tracks_separation>
-    <max_velocity>2.0</max_velocity>
-    <max_acceleration>2.0</max_acceleration>
-  </plugin>
-</gazebo>
+<plugin filename="gz-sim-track-controller-system" name="gz::sim::systems::TrackController">
+  <link>left_track</link>
+  <track_orientation>1 0 0</track_orientation>
+  <max_velocity>2.0</max_velocity>
+  <max_acceleration>2.0</max_acceleration>
+</plugin>
+<plugin filename="gz-sim-track-controller-system" name="gz::sim::systems::TrackController">
+  <link>right_track</link>
+  <track_orientation>1 0 0</track_orientation>
+  <max_velocity>2.0</max_velocity>
+  <max_acceleration>2.0</max_acceleration>
+</plugin>
+<plugin filename="gz-sim-tracked-vehicle-system" name="gz::sim::systems::TrackedVehicle">
+  <body_link>base_link</body_link>
+  <left_track>left_track</left_track>
+  <right_track>right_track</right_track>
+  <tracks_separation>0.7</tracks_separation> <!-- left/right track mount y=+-0.35 per Task 4 -->
+  <max_velocity>2.0</max_velocity>
+  <max_acceleration>2.0</max_acceleration>
+</plugin>
 ```
 
 (Same real parameter names verified in Task 3's throwaway rig — `max_velocity`/`max_acceleration` values here are starting points, not final tuning; Task 7's real-motion verification step is where these actually get checked against real behavior, same as every other numeric parameter in this project's history.)
@@ -609,18 +498,18 @@ The retraction joints need real actuation, same `<ros2_control>` + `gz_ros2_cont
   </joint>
 </ros2_control>
 
-<gazebo>
-  <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
-    <parameters>$(find cavex_tracked_vehicle)/config/cavex_tracked_vehicle_ros2_control.yaml</parameters>
-    <!-- position_proportional_gain is a GazeboSimSystem-wide SDF <plugin>
-         child element, NOT a per-joint <ros2_control>/<param> -- confirmed
-         the hard way on the abandoned legged-walker branch (its Task 7
-         fix history) by reading gz_ros2_control's real upstream source.
-         Reused directly here rather than rediscovering it. -->
-    <position_proportional_gain>20.0</position_proportional_gain>
-  </plugin>
-</gazebo>
+<plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+  <parameters>$(find cavex_tracked_vehicle)/config/cavex_tracked_vehicle_ros2_control.yaml</parameters>
+  <!-- position_proportional_gain is a GazeboSimSystem-wide SDF <plugin>
+       child element, NOT a per-joint <ros2_control>/<param> -- confirmed
+       the hard way on the abandoned legged-walker branch (its Task 7
+       fix history) by reading gz_ros2_control's real upstream source.
+       Reused directly here rather than rediscovered. -->
+  <position_proportional_gain>20.0</position_proportional_gain>
+</plugin>
 ```
+
+(Both `<ros2_control>` and the `<plugin>` block above go as direct children of `model.sdf.tracked`'s top-level `<model>` element, same as Step 1's plugins — no `<gazebo>` wrapper, since this file is native SDF, not URDF.)
 
 Write `cavex_tracked_vehicle_ros2_control.yaml`:
 
@@ -733,7 +622,7 @@ Expected: `left_track_retract_joint`/`right_track_retract_joint` positions move 
 
 ```bash
 cd /home/parvu/CaveX-Explorer-Pro
-git add ros2_ws/src/cavex_tracked_vehicle/urdf/cavex_tracked_vehicle.urdf.xacro \
+git add ros2_ws/src/cavex_tracked_vehicle/models/blueboat/model.sdf.tracked \
         ros2_ws/src/cavex_tracked_vehicle/config/cavex_tracked_vehicle_ros2_control.yaml \
         ros2_ws/src/cavex_tracked_vehicle/cavex_tracked_vehicle/track_retract_control.py \
         ros2_ws/src/cavex_tracked_vehicle/CMakeLists.txt
@@ -908,12 +797,12 @@ git commit -m "Add cmd_vel<->ArduPilot<->track adapter nodes"
 - Create: `ros2_ws/src/cavex_tracked_vehicle/launch/gazebo_tracked_vehicle.launch.py`
 
 **Interfaces:**
-- Consumes: Task 4's URDF, Task 5's plugins, Task 6's adapter nodes, Task 1-2's ArduPilot/Gazebo binaries.
+- Consumes: Task 4/5's `model.sdf.tracked`, Task 6's adapter nodes, Task 1-2's ArduPilot/Gazebo binaries.
 - Produces: `/lidar/points`, `/camera/color/image_raw`, `/camera/color/camera_info`, `/imu`, `/model/cavex_tracked_vehicle/pose` (ground truth, same `PoseArray` pattern as the abandoned branch), and — the actual deliverable of this task — a vehicle that demonstrably translates in Gazebo under real ArduPilot control.
 
 - [ ] **Step 1: Compose the launch file**
 
-Structure copied from `cavex_slam_nav/launch/gazebo_walker.launch.py` (read it first): `gz_sim` `IncludeLaunchDescription` (this time also sourcing `ardupilot_gazebo_env.sh`'s env vars — either export them before `ros2 launch` runs, or set them as `SetEnvironmentVariable` launch actions inside this file, matching how the two env vars need to reach the `gz sim` subprocess), `robot_state_publisher`, `spawn_entity` (Task 4's URDF, spawned at a real clear point in the dry-cave section, e.g. `-x -30 -y 0 -z 0.3`), `gz_bridge` (lidar/camera/imu/pose, same bridge pattern as the abandoned branch's `gazebo_walker.launch.py`, real topic names re-verified rather than assumed), plus:
+Structure copied from `cavex_slam_nav/launch/gazebo_walker.launch.py` (read it first): `gz_sim` `IncludeLaunchDescription` (this time also sourcing `ardupilot_gazebo_env.sh`'s env vars — either export them before `ros2 launch` runs, or set them as `SetEnvironmentVariable` launch actions inside this file, matching how the two env vars need to reach the `gz sim` subprocess), `spawn_entity` (spawning Task 4/5's `model.sdf.tracked` directly — a native-SDF model, no `robot_state_publisher`/xacro step needed the way a URDF-based robot requires; spawned at a real clear point in the dry-cave section, e.g. `-x -30 -y 0 -z 0.3`), `gz_bridge` (lidar/camera/imu/pose, same bridge pattern as the abandoned branch's `gazebo_walker.launch.py`, real topic names re-verified rather than assumed), plus:
 
 ```python
 ardupilot_sitl_launch = IncludeLaunchDescription(
@@ -1410,12 +1299,12 @@ git commit -m "Extend live telemetry + dashboard for the tracked BlueBoat-like v
 
 ---
 
-### Task 14: Full end-to-end verification and README update
+### Task 14: Tracked-vehicle end-to-end verification (dry cave, ArduPilot Rover only)
 
 **Files:**
 - Modify: `README.md`
 
-**Interfaces:** none (verification + documentation only).
+**Interfaces:** none (verification + documentation only). This checkpoint covers the tracked vehicle's dry-cave loop only — the BlueROV2/water-boundary side is verified separately in Tasks 15-18, and Task 19 does the combined README pass and final two-vehicle check.
 
 - [ ] **Step 1: Clean full-stack launch**
 
@@ -1448,12 +1337,441 @@ Cross-check ground-truth position over a run against Task 8's obstacle positions
 
 Add a "Phase 1 (revised): Tracked BlueBoat-like Vehicle" section to `README.md` covering: build/launch commands for `ardupilot_gazebo`/ArduPilot SITL/`gazebo_tracked_vehicle.launch.py`/`tracked_vehicle_slam.launch.py`, `run_tracked_vehicle_ate_eval.py` usage, track retraction control (`ros2 topic pub /cavex/tracks/command std_msgs/msg/String "{data: 'retracted'}"`), and the same honesty caveats already established project-wide (ground truth is simulator-internal and noiseless; label the vehicle "BlueBoat-like tracked vehicle," never claim an official model or real marine capability). Note that the earlier CHAMP legged-walker approach was abandoned (link to its design doc) in favor of this one.
 
-- [ ] **Step 5: Final commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 cd /home/parvu/CaveX-Explorer-Pro
 git add README.md
-git commit -m "Document Phase 1 (revised) tracked BlueBoat-like vehicle build/launch/eval in README"
+git commit -m "Document tracked BlueBoat vehicle build/launch/eval in README (dry-cave checkpoint)"
+```
+
+---
+
+### Task 15: Vendor the real `bluerov2` model and a flooded water region in `cavex_world.world`
+
+**Files:**
+- Create: `ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/` (vendored, real meshes + `model.sdf`/`model.config`, from `clydemcqueen/bluerov2_gz`'s `models/bluerov2/`, used as-is — no modification needed, unlike the tracked hull)
+- Modify: `ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world` (add the water region — same file Task 8 already added dry-cave obstacles to)
+
+**Interfaces:**
+- Produces: a spawnable `bluerov2` SDF model (real `Buoyancy`/`Hydrodynamics`/`Thruster` plugins, unmodified from upstream); a real water volume in `cavex_world.world` with known geometric bounds (Task 18's `vehicle_switch_node` reads these bounds directly, don't leave them undocumented).
+
+- [ ] **Step 1: Vendor the real BlueROV2 model**
+
+```bash
+cd /tmp
+git clone --depth 1 https://github.com/clydemcqueen/bluerov2_gz.git bluerov2_src
+cp -r bluerov2_src/models/bluerov2 \
+      /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/bluerov2
+rm -rf bluerov2_src
+grep -c "<plugin" /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/model.sdf
+```
+
+Expected: the real vendored `model.sdf` parses with its `Hydrodynamics` plugin plus 6 `Thruster` plugins (base BlueROV2 config, real vectored 6-thruster layout — confirmed during planning via `grep -iE "plugin|buoyancy|hydro|thruster"` on this exact file) and, per the real upstream `bluerov2_gz` model, a `Buoyancy` plugin driven by the model's collision-volume geometry (verify its presence — `grep -i buoyancy model.sdf` — since only `Hydrodynamics` was directly visible in this session's earlier grep and `Buoyancy` may be declared at the world level in `bluerov2_underwater.world` instead of the model; check that real upstream world file too, `cat bluerov2_src/worlds/bluerov2_underwater.world` before deleting it above, to confirm where the real `Buoyancy` plugin actually lives — don't assume it's in the model file just because `Hydrodynamics` is).
+
+- [ ] **Step 2: Add a flooded water region to `cavex_world.world`**
+
+Read `cavex_world.world`'s existing bounds (the dry-cave section is documented as x between -39 and -5). Add a new region, geometrically separate, at real, chosen-during-implementation coordinates — e.g. `x` between 5 and 30 — with:
+
+```xml
+<model name="water_surface">
+  <static>true</static>
+  <pose>17.5 0 0 0 0 0</pose>
+  <link name="surface">
+    <visual name="water_visual">
+      <geometry><plane><size>25 15</size></plane></geometry>
+      <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
+    </visual>
+  </link>
+</model>
+
+<plugin filename="gz-sim-buoyancy-system" name="gz::sim::systems::Buoyancy">
+  <graded_buoyancy>
+    <default_density>1000</default_density> <!-- real fresh-water density kg/m^3, matches bluerov2_gz's own convention -->
+  </graded_buoyancy>
+  <enable>bluerov2</enable>
+</plugin>
+```
+
+(The `Buoyancy` plugin element names/nesting — `<graded_buoyancy>`, `<default_density>`, `<enable>` — are Gazebo Harmonic's real, documented `Buoyancy` system parameters; cross-check them against whatever real config Step 1 found `bluerov2_underwater.world` actually uses, and match that exactly rather than guessing independently — the two should agree since it's the same real plugin.) Record the water region's real bounding box (center + size) in this task's report — Task 18 depends on these exact numbers.
+
+- [ ] **Step 3: Verify the world still loads with both regions present**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
+source /opt/ros/jazzy/setup.bash
+timeout 20 gz sim -s -r install/cavex_slam_nav/share/cavex_slam_nav/worlds/cavex_world.world &
+sleep 10
+gz topic -t /world/cavex_world/scene/info -e -n1 2>&1 | grep -iE "water_surface|obstacle_1"
+ps aux | grep -iE "gz sim" | grep -v grep
+```
+
+Kill stragglers (`kill -9`). Expected: no SDF parse errors, both the dry-cave obstacles (Task 8) and `water_surface` appear in the scene.
+
+- [ ] **Step 4: Spawn the vendored `bluerov2` standalone in the water region and confirm real buoyancy**
+
+```bash
+gz service -s /world/cavex_world/create --reqtype gz.msgs.EntityFactory --reptype gz.msgs.Boolean --timeout 3000 \
+  --req 'sdf_filename: "/home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/model.sdf", name: "bluerov2_test", pose: {position: {x: 17.5, y: 0, z: -2}}'
+sleep 5
+gz topic -e -t /model/bluerov2_test/pose -n 1
+```
+
+Expected: the model settles (holds roughly stable buoyant depth, doesn't sink through the world or rocket upward through the surface) — confirms `Buoyancy` is really acting on it. Clean up (`kill -9` all gz processes).
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro
+git add ros2_ws/src/cavex_tracked_vehicle/models/bluerov2 ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world
+git commit -m "Vendor real bluerov2 model, add flooded water region with real buoyancy to cavex_world.world"
+```
+
+(Same scoped-review-package treatment as Task 4/1/2 for the vendored-mesh portion of this diff.)
+
+---
+
+### Task 16: Build ArduSub SITL (second firmware target, same vendored `ardupilot` checkout)
+
+**Files:**
+- Modify: none new — this task builds a second firmware target from Task 2's already-vendored `ardupilot/` checkout.
+
+**Interfaces:**
+- Produces: `ardupilot/build/sitl/bin/ardusub` (real ArduPilot Sub firmware SITL binary), runnable alongside `ardurover` on a distinct instance number/port set.
+
+- [ ] **Step 1: Build Sub for SITL**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro/ardupilot
+./waf configure --board sitl   # idempotent if Task 2 already configured this board
+./waf sub
+ls -la build/sitl/bin/ardusub
+```
+
+Expected: `'sub' finished successfully`, `ardusub` binary present (mirrors Task 2 Step 2's real `./waf rover` pattern for the Rover binary).
+
+- [ ] **Step 2: Verify it starts standalone and picks a distinct instance**
+
+Per ArduPilot's own documented multi-instance mechanism (`-I <n>` on `sim_vehicle.py`/the SITL binary offsets all its ports by `n * 10`, avoiding collision with Task 2/3's Rover instance which uses instance 0):
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro/ardupilot
+Tools/autotest/sim_vehicle.py -v ArduSub -f vectored --model=JSON -I 1 --no-mavproxy &
+sleep 15
+ps aux | grep -iE "ardusub" | grep -v grep
+```
+
+Expected: a real running `ardusub` process. Kill it (`kill -9`) once confirmed — this step only verifies the binary starts, the real Gazebo-connected verification happens in Task 17.
+
+- [ ] **Step 3: Commit**
+
+Nothing new to commit from this task alone (the `ardusub` binary lives inside the already-committed `ardupilot/build/` — gitignored per Task 2's `.gitignore` entry, same as `ardurover`). If Task 2's `.gitignore` scoping somehow excluded this binary's specific build path, fix `.gitignore` and commit that one-line change; otherwise this task has no commit of its own — note that explicitly in the SDD report rather than leaving Step 3 silently skipped.
+
+---
+
+### Task 17: `cmd_vel_to_ardusub` adapter node + standalone BlueROV2 verification
+
+**Files:**
+- Create: `ros2_ws/src/cavex_tracked_vehicle/cavex_tracked_vehicle/cmd_vel_to_ardusub.py`
+- Modify: `ros2_ws/src/cavex_tracked_vehicle/CMakeLists.txt`
+
+**Interfaces:**
+- Consumes: `/cmd_vel_rov` (`geometry_msgs/msg/Twist`, manual teleop input this phase — no Nav2/explore_lite for the BlueROV2, per the spec's non-goal).
+- Produces: the second ArduSub SITL instance's real `TwistStamped` cmd_vel input topic (namespace distinct from the Rover instance's `/ap/cmd_vel` — real namespace confirmed empirically here, same "verify don't guess" discipline as Task 3).
+
+- [ ] **Step 1: Launch the second SITL instance + its DDS bridge and find its real topic namespace**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
+source /opt/ros/jazzy/setup.bash && source install/setup.bash
+ros2 launch ardupilot_sitl sitl_dds_udp.launch.py instance:=1 &
+sleep 10
+ros2 topic list | grep -iE "^/ap"
+```
+
+(Real launch argument for instance selection — check `ros2 launch ardupilot_sitl sitl_dds_udp.launch.py --show-args` first, same as Task 3 Step 4; if the launch file doesn't expose a namespace/instance remapping argument directly, the fallback is running it inside a ROS2 launch group with a `PushRosNamespace` action — decide and document which one actually works here.) Record the real topic names found — this task's node is written against them.
+
+- [ ] **Step 2: Write `cmd_vel_to_ardusub.py`**
+
+Same shape as `cmd_vel_to_ardupilot.py` (Task 6), aimed at the second instance's real namespace found in Step 1, arming into ArduSub's real GUIDED (or DEPTH_HOLD, whichever this task's empirical check in Step 1 shows is the correct mode for accepting velocity commands underwater — verify against ArduSub's real mode enum, don't reuse the Rover GUIDED-mode integer unexamined):
+
+```python
+#!/usr/bin/env python3
+"""
+cmd_vel_to_ardusub.py
+
+Relays /cmd_vel_rov (manual teleop, geometry_msgs/Twist) into the second
+ArduSub SITL instance's real AP_DDS cmd_vel input. Arms + sets GUIDED (or
+DEPTH_HOLD, whichever Task 17 Step 1 confirms is correct for ArduSub) on
+first command. Real topic/service names filled in per Step 1's findings,
+not guessed.
+"""
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Twist, TwistStamped
+from ardupilot_msgs.srv import ArmMotors, ModeSwitch
+
+
+class CmdVelToArduSub(Node):
+    def __init__(self):
+        super().__init__('cmd_vel_to_ardusub')
+        # Topic names below assume Step 1 found the second instance
+        # namespaced under /ap2 -- correct to the real found namespace.
+        self.pub = self.create_publisher(TwistStamped, '/ap2/cmd_vel', 10)
+        self.create_subscription(Twist, '/cmd_vel_rov', self._cb, 10)
+        self._armed = False
+        self.arm_client = self.create_client(ArmMotors, '/ap2/arm_motors')
+        self.mode_client = self.create_client(ModeSwitch, '/ap2/mode_switch')
+
+    def _ensure_armed_and_guided(self):
+        if self._armed:
+            return
+        if self.mode_client.wait_for_service(timeout_sec=1.0):
+            req = ModeSwitch.Request()
+            req.mode = 0  # placeholder -- replace with ArduSub's real GUIDED
+                           # mode number, verified against Tools/autotest/
+                           # pysim/vehicle.py or AP_Sub's mode enum, not
+                           # assumed to match Rover's mode number.
+            self.mode_client.call_async(req)
+        if self.arm_client.wait_for_service(timeout_sec=1.0):
+            req = ArmMotors.Request()
+            req.arm = True
+            self.arm_client.call_async(req)
+        self._armed = True
+
+    def _cb(self, msg: Twist):
+        self._ensure_armed_and_guided()
+        out = TwistStamped()
+        out.header.stamp = self.get_clock().now().to_msg()
+        out.header.frame_id = 'base_link'
+        out.twist = msg
+        self.pub.publish(out)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = CmdVelToArduSub()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+Fix the placeholder `/ap2/...` names and the mode-number comment against Step 1's real findings before proceeding — this is exactly the kind of value this project's discipline requires verifying, not the kind of placeholder the plan is allowed to leave unresolved (the *code structure* is complete and real; only the two real names/numbers need substituting from Step 1's empirical output).
+
+- [ ] **Step 3: Full standalone verification — BlueROV2 in the water region, under real ArduSub control**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
+source /opt/ros/jazzy/setup.bash && source install/setup.bash && source ardupilot_gazebo_env.sh
+timeout 60 gz sim -r install/cavex_slam_nav/share/cavex_slam_nav/worlds/cavex_world.world &
+sleep 10
+# spawn bluerov2 in the water region (Task 15's coordinates)
+ros2 launch ardupilot_sitl sitl_dds_udp.launch.py instance:=1 &
+sleep 10
+ros2 run cavex_tracked_vehicle cmd_vel_to_ardusub.py &
+sleep 3
+ros2 topic pub -r 10 /cmd_vel_rov geometry_msgs/msg/Twist "{linear: {x: 0.3}}" &
+PUBPID=$!
+sleep 10
+kill -9 $PUBPID
+gz topic -e -t /model/bluerov2/pose -n 1
+```
+
+Expected: real position delta (same go/no-go bar as Task 7's tracked-vehicle checkpoint). Clean up all processes (`ps aux | grep -iE "gz sim|ardusub|MicroXRCEAgent"`, `kill -9` each).
+
+- [ ] **Step 4: Commit**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro
+git add ros2_ws/src/cavex_tracked_vehicle/cavex_tracked_vehicle/cmd_vel_to_ardusub.py \
+        ros2_ws/src/cavex_tracked_vehicle/CMakeLists.txt
+git commit -m "Add cmd_vel_to_ardusub adapter node, verify BlueROV2 real motion under buoyancy"
+```
+
+---
+
+### Task 18: `vehicle_switch_node` — water-boundary handoff between the tracked vehicle and the BlueROV2
+
+**Files:**
+- Create: `ros2_ws/src/cavex_tracked_vehicle/cavex_tracked_vehicle/vehicle_switch_node.py`
+- Modify: `ros2_ws/src/cavex_tracked_vehicle/CMakeLists.txt`
+
+**Interfaces:**
+- Consumes: the tracked vehicle's `/odom_ground_truth` (Task 12), the BlueROV2's ground-truth pose (same `PosePublisher` pattern, added to `bluerov2/model.sdf` if not already present — check first, Task 15's vendored model may already publish this via its real `OdometryPublisher`-equivalent), Task 15's recorded water-region bounds.
+- Produces: calls to Task 5's track-retraction command topic (`/cavex/tracks/command`), real `gz service /world/cavex_world/create`/`remove` calls (or the parked-pose fallback, per the spec's documented risk), and arm/disarm calls to both ArduPilot instances' real services.
+
+- [ ] **Step 1: Write the state machine**
+
+```python
+#!/usr/bin/env python3
+"""
+vehicle_switch_node.py
+
+Watches the tracked vehicle's ground-truth pose against the water
+region's real bounds (Task 15) and hands control off to/from the
+BlueROV2 on crossing. This is the one place in this design with any
+"automatic" trigger logic -- a single boundary-crossing state machine,
+not a general water-detection sensor.
+
+State machine (two states: TRACKED_ACTIVE, ROV_ACTIVE):
+  TRACKED_ACTIVE, tracked vehicle's x > WATER_BOUNDARY_X:
+    -> retract tracks, park/remove tracked vehicle, spawn+arm bluerov2
+       at the crossing pose, switch to ROV_ACTIVE
+  ROV_ACTIVE, bluerov2's x < WATER_BOUNDARY_X:
+    -> disarm/remove bluerov2, respawn tracked vehicle at the crossing
+       pose, deploy tracks, switch to TRACKED_ACTIVE
+"""
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseArray
+from std_msgs.msg import String
+
+# Task 15's real recorded water-region boundary -- replace with the exact
+# value from that task's report (this plan's Task 15 example used a
+# region starting at x=5; the boundary itself, not the region's center,
+# is what this node compares against).
+WATER_BOUNDARY_X = 5.0
+
+TRACKED_ACTIVE = 'tracked_active'
+ROV_ACTIVE = 'rov_active'
+
+
+class VehicleSwitchNode(Node):
+    def __init__(self):
+        super().__init__('vehicle_switch_node')
+        self.state = TRACKED_ACTIVE
+        self.track_cmd_pub = self.create_publisher(String, '/cavex/tracks/command', 10)
+        self.create_subscription(PoseArray, '/odom_ground_truth', self._tracked_pose_cb, 10)
+        self.create_subscription(PoseArray, '/bluerov2/odom_ground_truth', self._rov_pose_cb, 10)
+
+    def _tracked_pose_cb(self, msg: PoseArray):
+        if self.state != TRACKED_ACTIVE or not msg.poses:
+            return
+        x = msg.poses[0].position.x
+        if x > WATER_BOUNDARY_X:
+            self._switch_to_rov(msg.poses[0])
+
+    def _rov_pose_cb(self, msg: PoseArray):
+        if self.state != ROV_ACTIVE or not msg.poses:
+            return
+        x = msg.poses[0].position.x
+        if x < WATER_BOUNDARY_X:
+            self._switch_to_tracked(msg.poses[0])
+
+    def _switch_to_rov(self, crossing_pose):
+        self.get_logger().info(f"Crossing into water at x={crossing_pose.position.x:.2f} -- handing off to BlueROV2")
+        self.track_cmd_pub.publish(String(data='retracted'))
+        # TODO (filled in against Task 15/17's real, verified mechanisms):
+        # 1. gz service model-removal (or parked-pose fallback) call for
+        #    the tracked vehicle
+        # 2. gz service /world/cavex_world/create call spawning bluerov2
+        #    at crossing_pose
+        # 3. arm+GUIDED call to the second ArduSub instance (Task 17's
+        #    real service names)
+        self.state = ROV_ACTIVE
+
+    def _switch_to_tracked(self, crossing_pose):
+        self.get_logger().info(f"Crossing out of water at x={crossing_pose.position.x:.2f} -- handing off to tracked vehicle")
+        # TODO (mirror of _switch_to_rov, reversed): disarm+remove
+        # bluerov2, respawn tracked vehicle at crossing_pose, then:
+        self.track_cmd_pub.publish(String(data='deployed'))
+        self.state = TRACKED_ACTIVE
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = VehicleSwitchNode()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+The two `TODO` blocks are real, required work, not permitted placeholders — fill them in with the exact `gz service` request strings (same shape as Task 15 Step 4's manual spawn call) and the exact arm/mode-switch service calls (same shape as Task 17's `cmd_vel_to_ardusub.py`), using the real command/response formats confirmed in those tasks. Do not leave a `TODO` in the committed version of this file.
+
+- [ ] **Step 2: Add a `/bluerov2/odom_ground_truth` publisher if the vendored model doesn't already have one**
+
+```bash
+grep -iE "PosePublisher|Odometry" /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/model.sdf
+```
+
+If a real ground-truth pose topic already exists on the vendored model (it may — `bluerov2_gz`'s README doesn't mention one directly, verify here), bridge/remap it to `/bluerov2/odom_ground_truth`. If not, add the same `gz-sim-pose-publisher-system` plugin the tracked vehicle's Task 12 uses, targeting `bluerov2`'s `base_link`.
+
+- [ ] **Step 3: Full go/no-go verification — drive the boundary crossing both directions**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
+source /opt/ros/jazzy/setup.bash && source install/setup.bash && source ardupilot_gazebo_env.sh
+ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py &
+sleep 25
+ros2 run cavex_tracked_vehicle vehicle_switch_node.py &
+sleep 3
+ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}}" &
+PUBPID=$!
+sleep 40
+kill -9 $PUBPID
+ros2 topic list | grep -iE "ap2/|bluerov2"
+ps aux | grep -iE "gz sim|ardurover|ardusub|MicroXRCEAgent" | grep -v grep
+```
+
+Expected: the tracked vehicle drives toward the water boundary, tracks retract, the tracked vehicle disappears/parks, `bluerov2` appears armed under the second ArduSub instance. Then drive the BlueROV2 back out (`/cmd_vel_rov` in the negative-x direction) and confirm the reverse handoff. Confirm at no point are both `/ap/arm_motors` and `/ap2/arm_motors` simultaneously reporting armed (`ros2 service call` their real status-check equivalents, or check `/joint_states`/pose topics for both vehicles being live at once — pick whichever real check this task's implementer finds actually reflects arm state, and document which one was used). Clean up all processes.
+
+- [ ] **Step 4: Commit**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro
+git add ros2_ws/src/cavex_tracked_vehicle/cavex_tracked_vehicle/vehicle_switch_node.py \
+        ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/model.sdf \
+        ros2_ws/src/cavex_tracked_vehicle/CMakeLists.txt
+git commit -m "Add vehicle_switch_node: automatic water-boundary handoff between tracked vehicle and BlueROV2"
+```
+
+---
+
+### Task 19: Full two-vehicle end-to-end verification and final README update
+
+**Files:**
+- Modify: `README.md`
+
+**Interfaces:** none (verification + documentation only).
+
+- [ ] **Step 1: Full-stack launch, both vehicles' subsystems**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
+source /opt/ros/jazzy/setup.bash && source install/setup.bash && source ardupilot_gazebo_env.sh
+ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py &
+sleep 25
+ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py &
+sleep 15
+ros2 run cavex_tracked_vehicle vehicle_switch_node.py &
+sleep 3
+ros2 topic list | grep -iE "lidar|costmap|frontier|odom_ground_truth|ap/|ap2/|bluerov2"
+```
+
+Expected: the full dry-cave SLAM/Nav2/explore_lite stack alive, plus `vehicle_switch_node` running and ready for a boundary crossing.
+
+- [ ] **Step 2: Re-confirm the water-boundary handoff with the full stack running (not just Task 18's isolated rig)**
+
+Same crossing check as Task 18 Step 3, but with Nav2/explore_lite also active — confirm nothing in the full stack (e.g. Nav2's costmap still expecting the tracked vehicle's TF tree after it's despawned) throws persistent errors during/after the handoff. A transient warning during the ~1-2s handoff window is acceptable; a stack that never recovers is not — decide and document which was observed.
+
+- [ ] **Step 3: Final README update**
+
+Extend Task 14's README section into a combined "Phase 1 (revised): Tracked BlueBoat + Water-Triggered BlueROV2" section covering: everything Task 14 documented, plus BlueROV2 build/launch (`./waf sub`, `cmd_vel_to_ardusub.py`, manual `/cmd_vel_rov` teleop), the water-boundary handoff (`vehicle_switch_node.py`, real trigger behavior, real limitation that the BlueROV2 has no autonomous exploration this phase), and the same honesty caveats already established project-wide: ground truth is simulator-internal and noiseless; the tracked hull is the real vendored `blueboat` model but not a Blue Robotics-endorsed product; the BlueROV2 is the real vendored `bluerov2_gz` model; neither vehicle claim exceeds what Tasks 1-18 actually built and verified.
+
+- [ ] **Step 4: Final commit**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro
+git add README.md
+git commit -m "Document full two-vehicle (tracked BlueBoat + BlueROV2) Phase 1 build/launch/eval in README"
 ```
 
 (Real merge to `main` happens via `superpowers:finishing-a-development-branch` after the whole-branch review, not a direct `git push origin main` mid-plan — this deliberately deviates from the abandoned branch's plan, which had this step push directly to `main`, an oversight from before that branch's worktree-isolation decision was made.)
