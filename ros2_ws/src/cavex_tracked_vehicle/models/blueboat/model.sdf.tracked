@@ -1,0 +1,473 @@
+<!-- CaveX-Explorer-Pro: BlueBoat tracked-vehicle variant.
+     Derived from ArduPilot's real vendored `blueboat` Gazebo model (author Rhys Mainwaring,
+     meshes sourced from Blue Robotics' published CAD). This is NOT an official Blue Robotics
+     tracked-vehicle product -- it is this project's own modification, replacing the boat's
+     motor/prop assemblies with retractable track assemblies for cave-floor locomotion. -->
+<sdf version="1.9">
+  <model name="cavex_tracked_blueboat">
+    <link name="base_link">
+      <inertial>
+        <!-- Re-derived via the parallel-axis theorem after removing the motor/prop assemblies
+             (~0.4kg total) and grafting on two 1.5kg retractable track assemblies. The hull's
+             own tuned inertia (ixx/iyy/izz below, minus the small motor contribution) is kept
+             as the baseline "hull point mass at its original center" per this project's
+             derivation method; each 1.5kg track assembly then adds m*d^2 per axis at its mount
+             offset relative to base_link's origin:
+               left_track  center @ (-0.05,  0.35, -0.35)
+               right_track center @ (-0.05, -0.35, -0.35)
+             base_link origin/CoM reference point: (-0.05, 0, -0.15)
+             track contribution: dIxx=2*1.5*(0.35^2+0.20^2)=0.4875, dIyy=2*1.5*(0.20^2)=0.12,
+                                  dIzz=2*1.5*(0.35^2)=0.3675 (approx, symmetric left/right)
+             ixx: 2.42369 + 0.4875   = 2.91119
+             iyy: 3.9235025 + 0.12   = 4.0435025
+             izz: 5.6403125 + 0.3675 = 6.0078125
+             mass: 29.6 (hull, motors/props removed) + 2*1.5 (tracks) = 32.6 kg -->
+        <pose>-0.05 0 -0.15 0 0 0</pose>
+        <mass>32.6</mass>
+        <inertia>
+          <ixx>2.91119</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>4.0435025</iyy>
+          <iyz>0</iyz>
+          <izz>6.0078125</izz>
+        </inertia>
+      </inertial>
+      <collision name="hull_collision">
+        <geometry>
+          <mesh>
+            <uri>models://blueboat/meshes/blueboat_hull_collision.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name="hull_visual">
+        <geometry>
+          <mesh>
+            <uri>models://blueboat/meshes/blueboat_hull.dae</uri>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0 0 1 1</diffuse>
+          <ambient>1 0 1 1</ambient>
+          <specular>0.7 0.7 0.7 1</specular>
+          <pbr>
+            <metal>
+              <metalness>0.5</metalness>
+              <roughness>0.5</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+      <visual name="aerial_visual">
+        <geometry>
+          <mesh>
+            <uri>models://blueboat/meshes/blueboat_aerial.dae</uri>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.01 0.01 0.01 1</diffuse>
+          <ambient>0.01 0.01 0.01 1</ambient>
+          <specular>0.7 0.7 0.7 1</specular>
+          <pbr>
+            <metal>
+              <metalness>0.5</metalness>
+              <roughness>0.5</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+      <visual name="crosstube_visual">
+        <geometry>
+          <mesh>
+            <uri>models://blueboat/meshes/blueboat_crosstube.dae</uri>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.01 0.01 0.01 1</diffuse>
+          <ambient>0.01 0.01 0.01 1</ambient>
+          <specular>0.7 0.7 0.7 1</specular>
+          <pbr>
+            <metal>
+              <metalness>0.5</metalness>
+              <roughness>0.5</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+      <visual name="flag_visual">
+        <geometry>
+          <mesh>
+            <uri>models://blueboat/meshes/blueboat_flag.dae</uri>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>1 1 0 1</diffuse>
+          <ambient>1 1 0 1</ambient>
+          <specular>0.7 0.7 0.7 1</specular>
+          <pbr>
+            <metal>
+              <metalness>0.5</metalness>
+              <roughness>0.5</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+      <visual name="frame_asm_fore_visual">
+        <geometry>
+          <mesh>
+            <uri>models://blueboat/meshes/blueboat_frame_asm_fore.dae</uri>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.01 0.01 0.01 1</diffuse>
+          <ambient>0.01 0.01 0.01 1</ambient>
+          <specular>0.7 0.7 0.7 1</specular>
+          <pbr>
+            <metal>
+              <metalness>0.9</metalness>
+              <roughness>0.1</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+      <visual name="frame_asm_aft_visual">
+        <geometry>
+          <mesh>
+            <uri>models://blueboat/meshes/blueboat_frame_asm_aft.dae</uri>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.01 0.01 0.01 1</diffuse>
+          <ambient>0.01 0.01 0.01 1</ambient>
+          <specular>0.7 0.7 0.7 1</specular>
+          <pbr>
+            <metal>
+              <metalness>0.9</metalness>
+              <roughness>0.1</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+      <visual name="hatch_asm_stbd">
+        <geometry>
+          <mesh>
+            <uri>models://blueboat/meshes/blueboat_hatch_asm_stbd.dae</uri>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.01 0.01 0.01 1</diffuse>
+          <ambient>0.01 0.01 0.01 1</ambient>
+          <specular>0.7 0.7 0.7 1</specular>
+          <pbr>
+            <metal>
+              <metalness>0.5</metalness>
+              <roughness>0.5</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+      <visual name="hatch_asm_port">
+        <geometry>
+          <mesh>
+            <uri>models://blueboat/meshes/blueboat_hatch_asm_port.dae</uri>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.01 0.01 0.01 1</diffuse>
+          <ambient>0.01 0.01 0.01 1</ambient>
+          <specular>0.7 0.7 0.7 1</specular>
+          <pbr>
+            <metal>
+              <metalness>0.5</metalness>
+              <roughness>0.5</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+    </link>
+    <!-- motor_stbd_visual / motor_port_visual (real motor housing meshes) removed here:
+         tracked variant has no props/motors, replaced below by track assemblies. -->
+
+    <!-- motor_stbd_link / motor_port_link / motor_*_joint (real prop-driven motor assemblies)
+         removed here: tracked variant does not drive props. Replaced with two retractable
+         track assemblies mounted at the same points the real motors used to occupy
+         (-0.488 -0.295 -0.272 / -0.488 0.295 -0.272), per this project's own design pass
+         (box-primitive track geometry -- the real BlueBoat has no track hardware, so there
+         is no real mesh/CAD to vendor for these parts). -->
+
+    <link name="left_track_retract_mount">
+      <pose>-0.05 0.35 -0.2 0 0 0</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.001</ixx>
+          <iyy>0.001</iyy>
+          <izz>0.001</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+    </link>
+    <joint name="left_track_retract_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>left_track_retract_mount</child>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>0.0</lower>
+          <upper>1.4</upper>
+          <effort>50</effort>
+          <velocity>1.0</velocity>
+        </limit>
+      </axis>
+    </joint>
+    <link name="left_track">
+      <pose relative_to="left_track_retract_mount">0 0 -0.15 0 0 0</pose>
+      <inertial>
+        <mass>1.5</mass>
+        <inertia>
+          <ixx>0.02</ixx>
+          <iyy>0.05</iyy>
+          <izz>0.05</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name="col">
+        <geometry>
+          <box>
+            <size>0.6 0.12 0.15</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <box>
+            <size>0.6 0.12 0.15</size>
+          </box>
+        </geometry>
+        <material>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+    </link>
+    <joint name="left_track_fixed" type="fixed">
+      <parent>left_track_retract_mount</parent>
+      <child>left_track</child>
+    </joint>
+
+    <link name="right_track_retract_mount">
+      <pose>-0.05 -0.35 -0.2 0 0 0</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.001</ixx>
+          <iyy>0.001</iyy>
+          <izz>0.001</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+    </link>
+    <joint name="right_track_retract_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>right_track_retract_mount</child>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>0.0</lower>
+          <upper>1.4</upper>
+          <effort>50</effort>
+          <velocity>1.0</velocity>
+        </limit>
+      </axis>
+    </joint>
+    <link name="right_track">
+      <pose relative_to="right_track_retract_mount">0 0 -0.15 0 0 0</pose>
+      <inertial>
+        <mass>1.5</mass>
+        <inertia>
+          <ixx>0.02</ixx>
+          <iyy>0.05</iyy>
+          <izz>0.05</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name="col">
+        <geometry>
+          <box>
+            <size>0.6 0.12 0.15</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <box>
+            <size>0.6 0.12 0.15</size>
+          </box>
+        </geometry>
+        <material>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+    </link>
+    <joint name="right_track_fixed" type="fixed">
+      <parent>right_track_retract_mount</parent>
+      <child>right_track</child>
+    </joint>
+
+    <!-- sensors -->
+    <link name="imu_link">
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <sensor name="imu_sensor" type="imu">
+        <pose degrees="true">0 0 0 180 0 0</pose>
+        <always_on>1</always_on>
+        <update_rate>1000.0</update_rate>
+      </sensor>
+    </link>
+    <joint name="imu_joint" type="revolute">
+      <child>imu_link</child>
+      <parent>base_link</parent>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>0</upper>
+        </limit>
+        <dynamics>
+          <damping>1.0</damping>
+        </dynamics>
+      </axis>
+    </joint>
+
+
+    <!-- NavSat -->
+
+    <link name="navsat_link">
+      <pose>0 0 0.05 0 0 0</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <sensor name="navsat_sensor" type="navsat">
+        <pose>0 0 0 0 0 0</pose>
+        <always_on>1</always_on>
+        <update_rate>1.0</update_rate>
+        <topic>navsat</topic>
+        <gps>
+          <fix>
+            <service>1</service>
+            <status>0</status>
+          </fix>
+        </gps>
+      </sensor>
+    </link>
+    <joint name="navsat_joint" type="fixed">
+      <parent>imu_link</parent>
+      <child>navsat_link</child>
+    </joint>
+
+    <!-- plugins -->
+    <plugin name="gz::sim::systems::JointStatePublisher"
+      filename="gz-sim-joint-state-publisher-system">
+    </plugin>
+    <plugin name="gz::sim::systems::OdometryPublisher"
+      filename="gz-sim-odometry-publisher-system">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <dimensions>3</dimensions>
+    </plugin>
+
+    <!-- left/right motor Thruster plugins removed here: tracked variant isn't driven by props.
+         Track-drive control (gz-sim-tracked-vehicle-system / track-controller-system, per this
+         project's Task 3 verification rig) is wired up in a later task. -->
+
+    <!-- hydrodynamics plugin -->
+    <plugin name="gz::sim::systems::Hydrodynamics" 
+        filename="gz-waves1-hydrodynamics-system">
+        <enable>cavex_tracked_blueboat::base_link</enable>
+        <hydrodynamics>
+          <damping_on>1</damping_on>
+          <viscous_drag_on>1</viscous_drag_on>
+          <pressure_drag_on>1</pressure_drag_on>
+        </hydrodynamics>
+    </plugin>
+
+      <!-- ardupilot plugin
+        NOTE: the <control> channels below still reference motor_port_joint/motor_stbd_joint,
+        which no longer exist in this tracked variant (removed above). Left as-is here --
+        this task only vendors the model and grafts on the track hardware; rewiring
+        ArduPilot's servo output channels to drive left_track_retract_joint/
+        right_track_retract_joint (or the track-controller plugin's velocity inputs) is a
+        later task's job, same as attaching gz-sim-tracked-vehicle-system itself. -->
+    <plugin name="ArduPilotPlugin"
+      filename="ArduPilotPlugin">
+      <fdm_addr>127.0.0.1</fdm_addr>
+      <fdm_port_in>9002</fdm_port_in>        
+      <connectionTimeoutMaxCount>5</connectionTimeoutMaxCount>
+      <lock_step>1</lock_step>
+      <gazeboXYZToNED degrees="true">0 0 0 180 0 90</gazeboXYZToNED>
+      <modelXYZToAirplaneXForwardZDown degrees="true">0 0 0 180 0 0</modelXYZToAirplaneXForwardZDown>
+      <imuName>imu_link::imu_sensor</imuName>
+      
+
+      <!--
+        port motor cw
+
+        SERVO1_FUNCTION 73 (ThrottleLeft)
+        SERVO1_MAX 2000
+        SERVO1_MIN 1000
+      -->
+      <control channel="0">
+        <jointName>motor_port_joint</jointName>
+        <multiplier>70</multiplier>
+        <offset>-0.5</offset>
+        <servo_min>1000</servo_min>
+        <servo_max>2000</servo_max>
+        <type>COMMAND</type>
+        <cmd_topic>/model/blueboat/joint/motor_port_joint/cmd_thrust</cmd_topic>
+      </control>
+
+      <!--
+        stbd motor ccw
+
+        SERVO3_FUNCTION 74 (ThrottleRight)
+        SERVO3_MAX 2000
+        SERVO3_MIN 1000
+      -->
+      <control channel="2">
+        <jointName>motor_stbd_joint</jointName>
+        <multiplier>70</multiplier>
+        <offset>-0.5</offset>
+        <servo_min>1000</servo_min>
+        <servo_max>2000</servo_max>
+        <type>COMMAND</type>
+        <cmd_topic>/model/blueboat/joint/motor_stbd_joint/cmd_thrust</cmd_topic>
+      </control>
+    </plugin>
+
+  </model>
+</sdf>
