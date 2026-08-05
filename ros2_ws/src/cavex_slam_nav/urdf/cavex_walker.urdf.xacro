@@ -184,6 +184,20 @@
        `cat /opt/ros/jazzy/share/gz_ros2_control/gz_hardware_plugins.xml`
        -> pluginlib class name "gz_ros2_control/GazeboSimSystem". Command
        interface limits match each joint's own <limit> above. -->
+  <!-- gz_ros2_control's GazeboSimSystem drives a "position" command
+       interface as a proportional controller on top of Gazebo's underlying
+       velocity/effort actuation, gain read from a joint-level
+       "position_proportional_gain" <param> (confirmed by `strings` on the
+       installed /opt/ros/jazzy/lib/libgz_ros2_control-system.so, which
+       declares/reads that exact parameter name, not the p/i/d-under-
+       command_interface scheme documented for some other gz_ros2_control
+       plugin versions, which this installed build does not read at all).
+       Absent this param it defaults to a value far too weak to move a
+       20kg legged body's joints against gravity, so the walker never
+       actually translates despite receiving valid trajectory commands
+       (confirmed empirically: driving /cmd_vel for 10s moved the body
+       ~0.00001m). 50.0 sized to comfortably saturate each joint's own
+       effort=20 limit for a fast, stable step response. -->
   <xacro:macro name="champ_ros2_control_joint" params="name lower upper">
     <joint name="${name}">
       <command_interface name="position">
@@ -192,6 +206,7 @@
       </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
+      <param name="position_proportional_gain">300.0</param>
     </joint>
   </xacro:macro>
 
