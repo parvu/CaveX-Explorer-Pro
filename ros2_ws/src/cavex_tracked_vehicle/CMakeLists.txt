@@ -15,11 +15,22 @@ find_package(ros_gz_sim REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 
-# Install launch files, URDFs, and Worlds
+# Install Python modules
+ament_python_install_package(${PROJECT_NAME})
+
+# Install launch files, URDFs, Worlds, config, and models
 install(DIRECTORY
   urdf
   worlds
+  config
+  models
   DESTINATION share/${PROJECT_NAME}
+)
+
+# Install Python nodes
+install(PROGRAMS
+  cavex_tracked_vehicle/track_retract_control.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)

@@ -429,9 +429,84 @@
       <dimensions>3</dimensions>
     </plugin>
 
-    <!-- left/right motor Thruster plugins removed here: tracked variant isn't driven by props.
-         Track-drive control (gz-sim-tracked-vehicle-system / track-controller-system, per this
-         project's Task 3 verification rig) is wired up in a later task. -->
+    <!-- left/right motor Thruster plugins removed here: tracked variant isn't driven by props. -->
+
+    <!-- Track-drive plugins: real gz-sim-track-controller-system (per-track belt speed) +
+         gz-sim-tracked-vehicle-system (skid-steer body_link/left_track/right_track ->
+         per-track velocity), parameter names/nesting empirically confirmed against gz-sim8's
+         actual TrackedVehicle.cc source by Task 3's throwaway rig (see task-3-report.md).
+         NOTE: Task 3 found body_link/left_track/right_track are NOT parsed uniformly --
+         body_link is read as element TEXT content (_sdf->Get<std::string>("body_link")), but
+         left_track/right_track are read from a `link` XML ATTRIBUTE
+         (sdfElem->Get<std::string>("link")), not element text. Using text content for
+         left_track/right_track (as an early attempt did) parses with no SDF-schema error and
+         loads silently, but at runtime builds a malformed topic
+         (.../link//track_cmd_vel -> sanitized to .../linktrack_cmd_vel) that nothing
+         subscribes to -- commands are silently dropped. Fixed form below, verified via -v 4
+         debug logs showing no "Failed to find left/right track" warnings. -->
+    <plugin filename="gz-sim-track-controller-system" name="gz::sim::systems::TrackController">
+      <link>left_track</link>
+      <track_orientation>1 0 0</track_orientation>
+      <max_velocity>2.0</max_velocity>
+      <max_acceleration>2.0</max_acceleration>
+    </plugin>
+    <plugin filename="gz-sim-track-controller-system" name="gz::sim::systems::TrackController">
+      <link>right_track</link>
+      <track_orientation>1 0 0</track_orientation>
+      <max_velocity>2.0</max_velocity>
+      <max_acceleration>2.0</max_acceleration>
+    </plugin>
+    <plugin filename="gz-sim-tracked-vehicle-system" name="gz::sim::systems::TrackedVehicle">
+      <body_link>base_link</body_link>
+      <left_track link="left_track"/>
+      <right_track link="right_track"/>
+      <tracks_separation>0.7</tracks_separation> <!-- left/right track mount y=+-0.35 per Task 4 -->
+      <max_velocity>2.0</max_velocity>
+      <max_acceleration>2.0</max_acceleration>
+    </plugin>
+
+    <!-- Retraction-joint actuation: real ros2_control + gz_ros2_control bridge, same pattern
+         already proven on the abandoned legged-walker branch (its Task 7 fix history).
+         position_proportional_gain is a GazeboSimSystem-wide SDF <plugin> child element, NOT a
+         per-joint <ros2_control>/<param> -- confirmed the hard way there by reading
+         gz_ros2_control's real upstream source. Reused directly here rather than
+         rediscovered. -->
+    <ros2_control name="GazeboSimSystem" type="system">
+      <hardware>
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      </hardware>
+      <joint name="left_track_retract_joint">
+        <command_interface name="position">
+          <param name="min">0.0</param>
+          <param name="max">1.4</param>
+        </command_interface>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="right_track_retract_joint">
+        <command_interface name="position">
+          <param name="min">0.0</param>
+          <param name="max">1.4</param>
+        </command_interface>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </ros2_control>
+
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <!-- $(find pkg) is a xacro macro, not something gz_ros2_control expands: this is native
+           SDF (no xacro preprocessing step), so gz_ros2_control::GazeboSimROS2ControlPlugin's
+           Configure() passes <parameters> straight to rclcpp as a literal --params-file path.
+           Confirmed the hard way -- `$(find cavex_tracked_vehicle)/config/...yaml` verbatim
+           aborts the whole gz-sim process at model load (rclcpp::exceptions::RCLInvalidROSArgsError,
+           "Error opening YAML file"). Using a real filesystem path instead, matching this
+           project's existing convention of worktree-absolute paths (see ardupilot_gazebo_env.sh).
+           ponytail: hardcoded to this worktree, not portable across machines/CI -- if this ever
+           needs to run outside this checkout, template it (e.g. a launch file substituting
+           FindPackageShare('cavex_tracked_vehicle') before spawning) instead of a literal path. -->
+      <parameters>/home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/ros2_ws/src/cavex_tracked_vehicle/config/cavex_tracked_vehicle_ros2_control.yaml</parameters>
+      <position_proportional_gain>20.0</position_proportional_gain>
+    </plugin>
 
     <!-- hydrodynamics plugin -->
     <plugin name="gz::sim::systems::Hydrodynamics" 
