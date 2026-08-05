@@ -1,4 +1,9 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -106,8 +111,39 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
+    # Nav2 bringup, costmap-only (Task 8). navigation_launch.py -- not
+    # bringup_launch.py -- because bringup_launch.py also pulls in
+    # localization_launch.py (map_server + amcl), which we don't want:
+    # RTAB-Map (above) already owns localization+mapping (map -> odom ->
+    # base_footprint TF, and the /map OccupancyGrid it publishes -- verified
+    # live via `ros2 topic info /map`: nav_msgs/msg/OccupancyGrid,
+    # published by node /rtabmap, TRANSIENT_LOCAL durability). Nav2 only
+    # needs controller_server, planner_server, behavior_server,
+    # bt_navigator and their costmaps, all configured in
+    # config/walker_nav2_params.yaml with a static_layer subscribed to
+    # /map (transient_local, matching the QoS just verified) instead of
+    # amcl/map_server.
+    nav2_bringup_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('nav2_bringup'),
+                'launch',
+                'navigation_launch.py',
+            )
+        ),
+        launch_arguments={
+            'use_sim_time': 'true',
+            'params_file': os.path.join(
+                get_package_share_directory('cavex_slam_nav'),
+                'config',
+                'walker_nav2_params.yaml',
+            ),
+        }.items(),
+    )
+
     return LaunchDescription([
         icp_odometry,
         rtabmap,
         slam_pose_publisher,
+        nav2_bringup_launch,
     ])
