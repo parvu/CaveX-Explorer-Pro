@@ -10,16 +10,16 @@
 
 ## Global Constraints
 
-- Spec: `docs/superpowers/specs/2026-08-05-cavex-tracked-blueboat-ardupilot-design.md` — every task below implements a section of it. Read the spec's second revision (BlueBoat model correction + water/BlueROV2 scope) before starting Task 4 or any task numbered 15+.
+- Spec: `docs/superpowers/specs/2026-08-05-cavex-tracked-blueboat-ardupilot-design.md` — every task below implements a section of it. Read the spec's second revision (BlueBoat model correction + water/BlueROV2 scope) before starting Task 4 or any task numbered 16+.
 - This replaces the abandoned `cavex-legged-walker-phase1` branch's approach (CHAMP/ros2_control). That branch is left as-is, not touched, not merged.
 - No sonar, no water-current modeling, no "SIC-SLAM" labeling this phase (real, cited techniques only, still not attempted).
-- No full Nav2/RTAB-Map autonomy underwater for the BlueROV2 this phase — verification for it stops at "real, armed, moves correctly under buoyancy" (see Task 17). Only the tracked vehicle gets the full SLAM/Nav2/ATE treatment.
+- No full Nav2/RTAB-Map autonomy underwater for the BlueROV2 this phase — verification for it stops at "real, armed, moves correctly under buoyancy" (see Task 18). Only the tracked vehicle gets the full SLAM/Nav2/ATE treatment.
 - The tracked hull is the real vendored `blueboat` model (ArduPilot's own `SITL_Models`, not a Blue Robotics-published asset) — label it "BlueBoat tracked-vehicle variant" in code comments, launch descriptions, and dashboard UI text, never claim Blue Robotics endorsement or real marine/floating capability for the tracked vehicle itself (it never enters water under its own power — the water-boundary trigger hands off to the BlueROV2 instead).
-- Track retraction is topic-commanded, either manually or by the new `vehicle_switch_node` (Task 18) at the water boundary — no perception-based water-detection sensor model.
+- Track retraction is topic-commanded, either manually or by the new `vehicle_switch_node` (Task 19) at the water boundary — no perception-based water-detection sensor model.
 - Build the ROS2 workspace with `colcon build --symlink-install` from `/home/parvu/CaveX-Explorer-Pro/ros2_ws`, sourcing `/opt/ros/jazzy/setup.bash` first, matching every other package in this workspace. `ardupilot_gazebo` and ArduPilot itself are built separately (not colcon packages in the traditional sense for the SITL binaries; `ardupilot_sitl`/`ardupilot_dds_tests`/`micro-ROS-Agent` ARE colcon packages and go through the same workspace build).
 - Verification in this codebase has consistently meant real `ros2`/`gz` CLI checks (`topic list`, `topic hz`, `topic echo`), not a pytest suite. Follow that established pattern.
 - Process hygiene: this environment has repeatedly shown severe flakiness from duplicate/orphaned Gazebo (and now potentially ArduPilot SITL / micro-ROS-Agent) processes surviving across test launches — now doubly true with two SITL instances. Before and after every live test in every task below: `ps aux | grep -iE "gz sim|ardupilot|sim_vehicle|micro_ros_agent|MicroXRCEAgent"` and kill any stragglers with explicit `kill -9 <pid>` (not `pkill -f`, confirmed unreliable in this environment).
-- The two ArduPilot SITL instances (Rover for the tracked vehicle, Sub for the BlueROV2) must never both be armed/controlling their vehicle simultaneously — the `vehicle_switch_node` (Task 18) owns this invariant.
+- The two ArduPilot SITL instances (Rover for the tracked vehicle, Sub for the BlueROV2) must never both be armed/controlling their vehicle simultaneously — the `vehicle_switch_node` (Task 19) owns this invariant.
 - Work happens in a new git worktree, isolated from `main` (created via the `superpowers:using-git-worktrees` skill at execution time — not part of this plan's tasks, a pre-step before Task 1 starts).
 
 ---
@@ -802,7 +802,7 @@ git commit -m "Add cmd_vel<->ArduPilot<->track adapter nodes"
 
 - [ ] **Step 1: Compose the launch file**
 
-Structure copied from `cavex_slam_nav/launch/gazebo_walker.launch.py` (read it first): `gz_sim` `IncludeLaunchDescription` (this time also sourcing `ardupilot_gazebo_env.sh`'s env vars — either export them before `ros2 launch` runs, or set them as `SetEnvironmentVariable` launch actions inside this file, matching how the two env vars need to reach the `gz sim` subprocess), `spawn_entity` (spawning Task 4/5's `model.sdf.tracked` directly — a native-SDF model, no `robot_state_publisher`/xacro step needed the way a URDF-based robot requires; spawned at a real clear point in the dry-cave section, e.g. `-x -30 -y 0 -z 0.3`), `gz_bridge` (lidar/camera/imu/pose, same bridge pattern as the abandoned branch's `gazebo_walker.launch.py`, real topic names re-verified rather than assumed), plus:
+Structure copied from `cavex_slam_nav/launch/gazebo_walker.launch.py` (read it first): `gz_sim` `IncludeLaunchDescription` (this time also sourcing `ardupilot_gazebo_env.sh`'s env vars — either export them before `ros2 launch` runs, or set them as `SetEnvironmentVariable` launch actions inside this file, matching how the two env vars need to reach the `gz sim` subprocess), `spawn_entity` (spawning Task 4/5's `model.sdf.tracked` directly — a native-SDF model, no `robot_state_publisher`/xacro step needed the way a URDF-based robot requires; spawned at `-x -30 -y 0 -z 0.3`, a clear point in the world *as it stands at this task* — `cavex_world.world` still has the flat placeholder `dry_cave` box here, and Task 8 replaces it with the real cave mesh and updates this spawn point to the mesh-derived one it records), `gz_bridge` (lidar/camera/imu/pose, same bridge pattern as the abandoned branch's `gazebo_walker.launch.py`, real topic names re-verified rather than assumed), plus:
 
 ```python
 ardupilot_sitl_launch = IncludeLaunchDescription(
@@ -881,13 +881,246 @@ git commit -m "Add full launch file: spawn + bridge the tracked vehicle, real Ar
 
 ---
 
-### Task 8: Add Fuel-sourced obstacles to the dry cave section
+### Task 8: Replace the placeholder cave boxes with the real LTU-RAI `gazebo_cave_world` mesh
 
 **Files:**
-- Modify: `ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world` (shared world file — the abandoned branch's Task 6 obstacles never reached `main`; this world file currently has zero `<include>` blocks, confirmed during planning)
+- Create: `ros2_ws/src/cavex_slam_nav/models/cave_world/` (vendored third-party asset: `model.config`, `model.sdf`, `meshes/cave_world.obj`, `meshes/cave_world.mtl`, `meshes/*.png` textures — extracted from `LTU-RAI/gazebo_cave_world`, MIT licensed)
+- Modify: `ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world` (delete the `dry_cave` and `flooded_cave_water` placeholder boxes, `<include>` the real mesh model instead)
+- Modify: `ros2_ws/src/cavex_slam_nav/CMakeLists.txt` (its `install(DIRECTORY ...)` block currently has `models` commented out — `#  models` — uncomment it so the vendored mesh reaches `share/cavex_slam_nav/models/`)
+- Modify: `ros2_ws/ardupilot_gazebo_env.sh` (Task 1's env snippet — add the new models directory to `GZ_SIM_RESOURCE_PATH` so `model://cave_world/...` URIs resolve)
+- Modify: `ros2_ws/src/cavex_tracked_vehicle/launch/gazebo_tracked_vehicle.launch.py` (Task 7's launch file — its `spawn_entity` pose was `-x -30 -y 0 -z 0.3`, chosen against the flat placeholder box this task deletes; Step 7 re-points it at the real mesh floor)
+- Modify: `README.md` (third-party asset provenance/attribution section — the MIT license and citation must live in the repo, not only in this plan)
 
 **Interfaces:**
-- Produces: real collidable geometry in the dry-cave section (x between -39 and -5, per the existing `dry_cave` model's documented bounds) for Nav2's costmap and `explore_lite`'s frontiers to react to.
+- Produces: a real, static, textured cave mesh in `cavex_world.world` with **documented world-frame bounds x ∈ [-75, +75], y ∈ [-51, +51], z ∈ [0, +33]** (the mesh's real 150 m length × 102 m width × 33 m height, placed by the deterministic rule in Step 4). Every later task's coordinates derive from these bounds:
+  - **Dry section (tracked vehicle): x ∈ [-70, 0], y ∈ [-45, +45]** — Task 9's obstacles and Task 7's vehicle spawn live here.
+  - **Transition passage: x ∈ [0, +10]** — the tracked vehicle can approach but not enter the water.
+  - **Water section (BlueROV2): x ∈ [+10, +70], y ∈ [-45, +45]**, water surface at **z = 4.0** — Task 16's water region and Task 19's `WATER_BOUNDARY_X = 10.0`.
+- Consumes: Task 1's `ardupilot_gazebo_env.sh` and Task 7's `gazebo_tracked_vehicle.launch.py` (both edited here, not just read).
+
+**Provenance (required, not optional):** the mesh is *A Subterranean Virtual Cave World for Gazebo based on the DARPA SubT Challenge* — Anton Koval, Christoforos Kanellakis, Emil Vidmark, Jakub Haluska, George Nikolakopoulos, Control Engineering Group, Luleå University of Technology, arXiv:2004.08452. MIT licensed. It is vendored, not authored here. The upstream repo also ships prop models (backpack, extinguisher, survivor, jersey_barrier, tunnel_entrance, AprilTags) — those are **explicitly out of scope this phase**; vendor the cave geometry only.
+
+- [ ] **Step 1: Shallow-clone the upstream repo into scratch and locate the real mesh directory**
+
+```bash
+cd /tmp
+rm -rf cave_world_src
+git clone --depth 1 https://github.com/LTU-RAI/gazebo_cave_world.git cave_world_src
+find /tmp/cave_world_src -iname "*.obj" -o -iname "*.mtl" | head
+du -sh /tmp/cave_world_src
+```
+
+Expected: a `cave_world.obj` (~24 MB) plus a `.mtl` and PNG textures, under `worlds/models/cave_world/` (that is the path this session's research recorded; if `find` shows a different real directory, use the real one — do not assume). Also confirm the license file is really MIT:
+
+```bash
+head -3 /tmp/cave_world_src/LICENSE
+```
+
+- [ ] **Step 2: Vendor the mesh + textures + license (cave geometry only, no props)**
+
+```bash
+CAVE_SRC=$(dirname $(find /tmp/cave_world_src -iname "cave_world.obj" | head -1))
+mkdir -p /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models/cave_world/meshes
+cp "$CAVE_SRC"/*.obj "$CAVE_SRC"/*.mtl \
+   /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models/cave_world/meshes/
+cp "$CAVE_SRC"/*.png \
+   /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models/cave_world/meshes/ 2>/dev/null || \
+  find "$CAVE_SRC" -iname "*.png" -exec cp {} /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models/cave_world/meshes/ \;
+cp /tmp/cave_world_src/LICENSE \
+   /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models/cave_world/LICENSE
+ls -la /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models/cave_world/meshes/
+grep -i "^map_" /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models/cave_world/meshes/*.mtl
+```
+
+Expected: the `.obj`, the `.mtl`, and every PNG the `.mtl`'s `map_*` lines reference, all sitting in the same `meshes/` directory (the `.mtl` references textures by bare filename relative to itself — if any `map_*` filename is missing from the `ls` output, copy it too; a missing texture makes ogre2 render the mesh untextured without erroring, so check this by filename, not by looking at the render). Do **not** copy `backpack`, `extinguisher`, `survivor`, `jersey_barrier`, `tunnel_entrance`, or any AprilTag model — out of scope this phase.
+
+- [ ] **Step 3: Write `model.config` with the real attribution**
+
+`ros2_ws/src/cavex_slam_nav/models/cave_world/model.config`:
+
+```xml
+<?xml version="1.0"?>
+<model>
+  <name>cave_world</name>
+  <version>1.0</version>
+  <sdf version="1.9">model.sdf</sdf>
+  <author>
+    <name>Anton Koval, Christoforos Kanellakis, Emil Vidmark, Jakub Haluska, George Nikolakopoulos</name>
+    <email>Control Engineering Group, Lulea University of Technology</email>
+  </author>
+  <description>
+    Vendored, unmodified cave mesh from https://github.com/LTU-RAI/gazebo_cave_world (MIT).
+    Cite: "A Subterranean Virtual Cave World for Gazebo based on the DARPA SubT Challenge",
+    arXiv:2004.08452. Re-wrapped here as a Gazebo Harmonic SDF 1.9 static model; the mesh
+    itself is unmodified. Not authored by this project.
+  </description>
+</model>
+```
+
+- [ ] **Step 4: Compute the real mesh AABB and derive the exact `<include>` pose**
+
+The upstream README gives 33 m (height) × 102 m (width) × 150 m (length), but not the mesh's local origin or which local axis is the long one. Both are needed and both are computable directly from the OBJ's vertex lines. Run this real script:
+
+```bash
+python3 - <<'EOF'
+import math
+p = "/home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models/cave_world/meshes/cave_world.obj"
+lo = [math.inf]*3; hi = [-math.inf]*3
+with open(p) as f:
+    for line in f:
+        if line.startswith("v "):
+            xyz = [float(t) for t in line.split()[1:4]]
+            for i in range(3):
+                lo[i] = min(lo[i], xyz[i]); hi[i] = max(hi[i], xyz[i])
+size = [hi[i]-lo[i] for i in range(3)]
+ctr  = [(hi[i]+lo[i])/2 for i in range(3)]
+print("min", lo); print("max", hi); print("size", size)
+# Long axis must land on world X; Z is up (Gazebo convention).
+yaw = 0.0 if size[0] >= size[1] else math.pi/2
+if yaw == 0.0:
+    pose = (-ctr[0], -ctr[1], -lo[2])
+else:  # 90 deg yaw maps local (x,y) -> world (-y, x)
+    pose = (ctr[1], -ctr[0], -lo[2])
+print("<pose>%.4f %.4f %.4f 0 0 %.4f</pose>" % (pose[0], pose[1], pose[2], yaw))
+EOF
+```
+
+This rule centres the mesh on the world origin in X/Y, puts its lowest vertex at `z = 0`, and rotates it so the ~150 m axis is world X. **After this pose is applied the world-frame bounds are exactly `x ∈ [-75, +75]`, `y ∈ [-51, +51]`, `z ∈ [0, +33]`** (± the mesh's real size, which the script prints — if the printed size differs from 150/102/33 by more than 1 m, use the printed numbers and update this task's report and Tasks 9/16/19's coordinates proportionally rather than silently keeping these). Record the exact printed `<pose>` line — Step 6 uses it verbatim.
+
+- [ ] **Step 5: Write `model.sdf` — static mesh, same OBJ for visual and collision**
+
+`ros2_ws/src/cavex_slam_nav/models/cave_world/model.sdf`:
+
+```xml
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="cave_world">
+    <static>true</static>
+    <link name="cave_link">
+      <collision name="collision">
+        <geometry>
+          <mesh><uri>model://cave_world/meshes/cave_world.obj</uri></mesh>
+        </geometry>
+        <surface>
+          <contact><ode><max_vel>0.01</max_vel></ode></contact>
+          <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <mesh><uri>model://cave_world/meshes/cave_world.obj</uri></mesh>
+        </geometry>
+      </visual>
+    </link>
+  </model>
+</sdf>
+```
+
+The same OBJ serves as both visual and collision geometry. That is the deliberate, chosen approach: the model is `<static>true</static>`, so ODE only ever evaluates static-trimesh-vs-vehicle contacts (never trimesh-vs-trimesh), which is the cheap case, and it guarantees the collision surface matches exactly what the lidar sees — important because RTAB-Map's map is scored against ground truth in Task 13. Do **not** substitute a simplified/convex-decomposed collision here; Step 7 measures the real cost instead of guessing at it.
+
+- [ ] **Step 6: Replace the placeholder boxes in `cavex_world.world`**
+
+Delete both placeholder models entirely — the whole `<model name="dry_cave">…</model>` block (the 34×12×2 box at `-22 0 1`) and the whole `<model name="flooded_cave_water">…</model>` block (the 34×12×0.1 box at `12 0 0.6`), including their `<!-- Dry Cave Section Box (-39 to -5) -->` and `<!-- Water Section (Raised) ( -5 to 29 ) -->` comments. They were geometric zone placeholders, not real cave shape; nothing else in the world references them. Keep `ground_plane`, the `<physics>`/`<light>`/`<plugin>` blocks untouched. In their place:
+
+```xml
+<!-- Real cave geometry: vendored from LTU-RAI/gazebo_cave_world (MIT).
+     Koval, Kanellakis, Vidmark, Haluska, Nikolakopoulos, "A Subterranean
+     Virtual Cave World for Gazebo based on the DARPA SubT Challenge",
+     arXiv:2004.08452, Lulea University of Technology. Not authored here.
+     World-frame bounds after this pose: x [-75,75], y [-51,51], z [0,33].
+     Dry section x [-70,0]; transition x [0,10]; water section x [10,70]. -->
+<include>
+  <uri>model://cave_world</uri>
+  <name>cave_world</name>
+  <pose>0 0 0 0 0 0</pose>   <!-- replace with Step 4's exact printed pose line -->
+</include>
+```
+
+Then extend Task 1's env snippet so the `model://` URI resolves, and uncomment the `models` line in `cavex_slam_nav`'s install block:
+
+```bash
+cat >> /home/parvu/CaveX-Explorer-Pro/ros2_ws/ardupilot_gazebo_env.sh <<'EOF'
+export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models:$GZ_SIM_RESOURCE_PATH
+EOF
+sed -i 's|^#  models$|  models|' /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/CMakeLists.txt
+cd /home/parvu/CaveX-Explorer-Pro/ros2_ws && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install --packages-select cavex_slam_nav
+```
+
+- [ ] **Step 7: Verify — the mesh really parses, really loads, really collides**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
+source /opt/ros/jazzy/setup.bash && source install/setup.bash && source ardupilot_gazebo_env.sh
+gz sdf --check install/cavex_slam_nav/share/cavex_slam_nav/worlds/cavex_world.world; echo "sdf check exit: $?"
+timeout 60 gz sim -s -r install/cavex_slam_nav/share/cavex_slam_nav/worlds/cavex_world.world 2>&1 | tee /tmp/cave_load.log &
+sleep 25
+grep -iE "error|unable to find|failed to load|could not|invalid" /tmp/cave_load.log
+gz topic -t /world/cavex_world/scene/info -e -n1 2>&1 | grep -iE "cave_world|dry_cave|flooded_cave_water"
+gz topic -t /world/cavex_world/stats -e -n1
+```
+
+Expected: `gz sdf --check` exit 0; **no** mesh-not-found / parse errors in the log (a missing OBJ or unresolvable `model://` URI shows as "Unable to find file" — that is the exact failure this step exists to catch, since loading an OBJ mesh in gz-sim/ogre2 has not been done before in this project); `cave_world` present in the scene graph and `dry_cave`/`flooded_cave_water` **absent**; `/stats` showing sim time advancing. Record the `real_time_factor` from `/stats` in this task's report — a 24 MB collision trimesh is the heaviest geometry this project has loaded, and later tasks' timing expectations depend on knowing it.
+
+Then confirm the mesh really collides (not just renders) by dropping a probe box onto the dry-section floor and checking it stops:
+
+```bash
+gz service -s /world/cavex_world/create --reqtype gz.msgs.EntityFactory --reptype gz.msgs.Boolean --timeout 5000 \
+  --req 'sdf: "<?xml version=\"1.0\"?><sdf version=\"1.9\"><model name=\"probe\"><link name=\"l\"><inertial><mass>5</mass><inertia><ixx>0.1</ixx><iyy>0.1</iyy><izz>0.1</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial><collision name=\"c\"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision><visual name=\"v\"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></visual></link></model></sdf>, pose: {position: {x: -60, y: 0, z: 12}}'
+sleep 8
+gz topic -e -t /world/cavex_world/pose/info -n 1 2>&1 | grep -A6 'name: "probe"'
+```
+
+Expected: the probe's `z` has stopped at a finite, positive value (resting on the cave floor), **not** continuing toward `-inf` (mesh not colliding) and not stuck at 12 (spawned inside rock). This also establishes the real free-floor height at the tracked vehicle's spawn point.
+
+If the probe lands inside rock (its `z` never moves off 12) or falls through open air at `x=-60, y=0`, walk the probe: retry at `y = ±5, ±10, ±15, ±20` (same `x`), then at `x = -50, -40, -30` with `y = 0`, until one settles. **Record the first settling `(x, y, z)` as the tracked vehicle's real spawn point**, then edit Task 7's `gazebo_tracked_vehicle.launch.py` `spawn_entity` pose from its placeholder-era `-x -30 -y 0 -z 0.3` to `-x <recorded x> -y <recorded y> -z <recorded z + 0.5>` (nominally `-x -60 -y 0`). Re-run Task 7 Step 3's drive check (publish `/cmd_vel` for 15 s, compare `/model/cavex_tracked_vehicle/pose` before and after) against the real mesh to confirm the vehicle still gets a real net translation on the real cave floor — the placeholder box was flat, this floor is not, and that is a genuine behavioural difference worth catching here rather than in Task 15. Clean up:
+
+```bash
+ps aux | grep -iE "gz sim" | grep -v grep   # kill -9 each PID found
+```
+
+- [ ] **Step 8: Add the attribution to `README.md`**
+
+Add a `## Third-party assets` section to `README.md` (or extend one if it already exists — read the file first) listing, in the same honest-provenance tone the project already uses for the vendored `blueboat`/`bluerov2` models:
+
+> **Cave geometry** — `ros2_ws/src/cavex_slam_nav/models/cave_world/` is vendored, unmodified, from [LTU-RAI/gazebo_cave_world](https://github.com/LTU-RAI/gazebo_cave_world) (MIT license, copy retained alongside the mesh). Cite: Anton Koval, Christoforos Kanellakis, Emil Vidmark, Jakub Haluska, George Nikolakopoulos, "A Subterranean Virtual Cave World for Gazebo based on the DARPA SubT Challenge," arXiv:2004.08452, Control Engineering Group, Luleå University of Technology. This project re-wrapped the OBJ as a Gazebo Harmonic SDF 1.9 static model; the mesh itself is not our work. The upstream repo's prop models (backpack, extinguisher, survivor, jersey barrier, tunnel entrance, AprilTags) are not used in this phase.
+
+- [ ] **Step 9: Commit**
+
+```bash
+cd /home/parvu/CaveX-Explorer-Pro
+rm -rf /tmp/cave_world_src
+git add ros2_ws/src/cavex_slam_nav/models/cave_world \
+        ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world \
+        ros2_ws/src/cavex_slam_nav/CMakeLists.txt \
+        ros2_ws/ardupilot_gazebo_env.sh \
+        ros2_ws/src/cavex_tracked_vehicle/launch/gazebo_tracked_vehicle.launch.py \
+        README.md
+git commit -m "Replace placeholder cave boxes with the real LTU-RAI cave mesh
+
+Vendors worlds/models/cave_world (OBJ + MTL + textures) from
+https://github.com/LTU-RAI/gazebo_cave_world, MIT licensed, re-wrapped as a
+Gazebo Harmonic SDF 1.9 static model. Mesh not authored here.
+
+Cite: Anton Koval, Christoforos Kanellakis, Emil Vidmark, Jakub Haluska,
+George Nikolakopoulos, \"A Subterranean Virtual Cave World for Gazebo based
+on the DARPA SubT Challenge\", arXiv:2004.08452, Control Engineering Group,
+Lulea University of Technology.
+
+World-frame bounds: x [-75,75], y [-51,51], z [0,33]. Dry section x [-70,0],
+transition x [0,10], water section x [10,70], water surface z=4.0."
+```
+
+(This commit's diff is ~24 MB of mesh plus textures — use the same scoped-review-package approach as Tasks 1/2/4, not a full diff.)
+
+---
+
+### Task 9: Add Fuel-sourced obstacles to the dry cave section
+
+**Files:**
+- Modify: `ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world` (shared world file — the abandoned branch's Task 6 obstacles never reached `main`; Task 8 replaced its placeholder boxes with the real cave mesh, this task adds the first `<include>` blocks beyond that)
+
+**Interfaces:**
+- Produces: real collidable geometry in the dry-cave section (x ∈ [-70, 0], y ∈ [-45, +45], per Task 8's re-derived real mesh bounds) for Nav2's costmap and `explore_lite`'s frontiers to react to.
 
 - [ ] **Step 1: Pick real Fuel models**
 
@@ -903,11 +1136,11 @@ If empty/rate-limited, use `https://app.gazebosim.org/fuel/models` search for "r
 <include>
   <uri>https://fuel.gazebosim.org/1.0/<owner>/models/<model_name></uri>
   <name>obstacle_1</name>
-  <pose>-25 2 0.5 0 0 0</pose>
+  <pose>-45 3 8 0 0 0</pose>
 </include>
 ```
 
-3-4 of these, real owner/model names from Step 1, spread through the dry section (x between -35 and -10, y between -5 and 5), avoiding the vehicle's Task 7 spawn point.
+4 of these, real owner/model names from Step 1, spread through the dry section (x between -55 and -10, y between -12 and 12) — e.g. `-45 3 8`, `-32 -5 8`, `-22 6 8`, `-12 -3 8`. Keep them at least 8 m clear of the tracked vehicle's spawn point (Task 8 Step 7's recorded free-floor point, nominally `x=-60, y=0`). The `z=8` in each pose is deliberate: the real cave floor is an undulating mesh, not a flat plane, so these (non-static) Fuel models are spawned above the floor and left to fall onto it under gravity rather than being hand-placed at a floor height that varies per model. Confirm in Step 3 that each one has actually come to rest.
 
 - [ ] **Step 3: Verify the world still loads**
 
@@ -917,9 +1150,11 @@ source /opt/ros/jazzy/setup.bash
 timeout 20 gz sim -s -r install/cavex_slam_nav/share/cavex_slam_nav/worlds/cavex_world.world &
 sleep 10
 gz topic -t /world/cavex_world/scene/info -e -n1 2>&1 | grep -iE "obstacle_1|obstacle_2"
+sleep 10
+gz topic -e -t /world/cavex_world/pose/info -n 1 2>&1 | grep -A6 -iE 'name: "obstacle_'
 ```
 
-Expected: no SDF parse errors, obstacle names appear in the scene graph.
+Expected: no SDF parse errors, obstacle names appear in the scene graph, and after the settling `sleep` each obstacle's `z` is a finite value well below its spawned `8` (it fell onto the real cave floor) and not falling toward `-inf` (which would mean it spawned outside the mesh's tunnel volume — move that obstacle's x/y toward the cave's long axis and retry). Record each obstacle's real settled pose — Task 15 Step 3 cross-checks exploration paths against these positions.
 
 - [ ] **Step 4: Commit**
 
@@ -931,7 +1166,7 @@ git commit -m "Add Fuel-sourced obstacle models to the dry cave section"
 
 ---
 
-### Task 9: RTAB-Map in 3D lidar mode
+### Task 10: RTAB-Map in 3D lidar mode
 
 **Files:**
 - Create: `ros2_ws/src/cavex_tracked_vehicle/launch/tracked_vehicle_slam.launch.py`
@@ -972,19 +1207,19 @@ git commit -m "Add tracked_vehicle_slam.launch.py: RTAB-Map in 3D lidar/ICP mode
 
 ---
 
-### Task 10: Nav2 bringup with a costmap from the 3D lidar
+### Task 11: Nav2 bringup with a costmap from the 3D lidar
 
 **Files:**
 - Create: `ros2_ws/src/cavex_tracked_vehicle/config/tracked_vehicle_nav2_params.yaml`
 - Modify: `ros2_ws/src/cavex_tracked_vehicle/launch/tracked_vehicle_slam.launch.py`
 
 **Interfaces:**
-- Consumes: `map`/`odom` TF (Task 9), RTAB-Map's `/map` occupancy grid.
+- Consumes: `map`/`odom` TF (Task 10), RTAB-Map's `/map` occupancy grid.
 - Produces: `/cmd_vel`, costmaps, `NavigateToPose` action server.
 
 - [ ] **Step 1: Port the abandoned branch's Nav2 params approach**
 
-The abandoned branch already worked out and fixed a real set of gotchas here (reachable via `git show cavex-legged-walker-phase1:ros2_ws/src/cavex_slam_nav/config/walker_nav2_params.yaml`): no `amcl`/`map_server` (RTAB-Map owns SLAM), a `static_layer` on `/map` instead of a LaserScan-based `obstacle_layer` (this vehicle also has no `/scan`, only 3D lidar — same situation), and `navigation_launch.py`'s lifecycle manager hard-coding `collision_monitor`/`docking_server` as managed nodes even when unused (that branch's fix: minimal functionally-inert param blocks for both, stock values, not fabricated — copy that fix's *final*, reviewed version, i.e. after its own fix-round correction of a `cmd_vel_in_topic` mislabeling, not the version before that correction). `robot_base_frame` should be `base_link` (or whatever Task 9 established as this vehicle's real root frame).
+The abandoned branch already worked out and fixed a real set of gotchas here (reachable via `git show cavex-legged-walker-phase1:ros2_ws/src/cavex_slam_nav/config/walker_nav2_params.yaml`): no `amcl`/`map_server` (RTAB-Map owns SLAM), a `static_layer` on `/map` instead of a LaserScan-based `obstacle_layer` (this vehicle also has no `/scan`, only 3D lidar — same situation), and `navigation_launch.py`'s lifecycle manager hard-coding `collision_monitor`/`docking_server` as managed nodes even when unused (that branch's fix: minimal functionally-inert param blocks for both, stock values, not fabricated — copy that fix's *final*, reviewed version, i.e. after its own fix-round correction of a `cmd_vel_in_topic` mislabeling, not the version before that correction). `robot_base_frame` should be `base_link` (or whatever Task 10 established as this vehicle's real root frame).
 
 - [ ] **Step 2: Add the bringup to the launch file**
 
@@ -1020,13 +1255,13 @@ git commit -m "Add Nav2 bringup (costmap-only, RTAB-Map owns SLAM) for the track
 
 ---
 
-### Task 11: Wire explore_lite against the Nav2 costmap
+### Task 12: Wire explore_lite against the Nav2 costmap
 
 **Files:**
 - Modify: `ros2_ws/src/cavex_tracked_vehicle/launch/tracked_vehicle_slam.launch.py`
 
 **Interfaces:**
-- Consumes: `/global_costmap/costmap`, `NavigateToPose` (Task 10).
+- Consumes: `/global_costmap/costmap`, `NavigateToPose` (Task 11).
 - Produces: `explore/frontiers`, autonomous `/cmd_vel` motion.
 
 - [ ] **Step 1: Vendor `m-explore-ros2` (if not already available from the abandoned branch's checkout — it's a separate git clone, independent of any CHAMP-specific code, safe to reuse verbatim)**
@@ -1084,7 +1319,7 @@ git commit -m "Wire explore_lite frontier exploration into the tracked vehicle s
 
 ---
 
-### Task 12: Ground-truth Odometry republisher + ATE for the tracked vehicle
+### Task 13: Ground-truth Odometry republisher + ATE for the tracked vehicle
 
 **Files:**
 - Create: `ros2_ws/src/cavex_tracked_vehicle/cavex_tracked_vehicle/tracked_vehicle_ground_truth_odom.py`
@@ -1255,14 +1490,14 @@ git commit -m "Add ground-truth odom republisher and fixed-time-budget ATE runne
 
 ---
 
-### Task 13: Extend the live dashboard for the tracked vehicle
+### Task 14: Extend the live dashboard for the tracked vehicle
 
 **Files:**
 - Modify: `ros2_ws/src/cavex_slam_nav/cavex_slam_nav/web_telemetry_bridge.py` (shared telemetry bridge, cross-package — reads this vehicle's real topics too)
 - Modify: `src/components/SICSlamVisualizer.tsx` (or a new small panel component, judge at implementation time per file size, same as the abandoned branch's Task 11 did)
 
 **Interfaces:**
-- Consumes: `/odom_ground_truth`, `explore/frontiers`, `/cavex/eval/ate_rmse` (Tasks 11-12), `left_track_retract_joint`/`right_track_retract_joint` positions (Task 5, via `/joint_states`).
+- Consumes: `/odom_ground_truth`, `explore/frontiers`, `/cavex/eval/ate_rmse` (Tasks 12-13), `left_track_retract_joint`/`right_track_retract_joint` positions (Task 5, via `/joint_states`).
 - Produces: extended `/api/telemetry` payload.
 
 - [ ] **Step 1: Add subscriptions to `web_telemetry_bridge.py`**
@@ -1299,12 +1534,12 @@ git commit -m "Extend live telemetry + dashboard for the tracked BlueBoat-like v
 
 ---
 
-### Task 14: Tracked-vehicle end-to-end verification (dry cave, ArduPilot Rover only)
+### Task 15: Tracked-vehicle end-to-end verification (dry cave, ArduPilot Rover only)
 
 **Files:**
 - Modify: `README.md`
 
-**Interfaces:** none (verification + documentation only). This checkpoint covers the tracked vehicle's dry-cave loop only — the BlueROV2/water-boundary side is verified separately in Tasks 15-18, and Task 19 does the combined README pass and final two-vehicle check.
+**Interfaces:** none (verification + documentation only). This checkpoint covers the tracked vehicle's dry-cave loop only — the BlueROV2/water-boundary side is verified separately in Tasks 16-19, and Task 20 does the combined README pass and final two-vehicle check.
 
 - [ ] **Step 1: Clean full-stack launch**
 
@@ -1331,7 +1566,7 @@ Expected: 10 rows, sane (non-NaN, non-degenerate-zero, `n_samples` roughly consi
 
 - [ ] **Step 3: Confirm autonomous, obstacle-aware exploration + retraction control, both empirically**
 
-Cross-check ground-truth position over a run against Task 8's obstacle positions (min-distance-to-obstacle-centers check, real Python script against a `ros2 bag record /odom_ground_truth` capture — same technique the abandoned branch's Task 12 used). Separately, command track retraction mid-run and confirm (via `/joint_states`) the joints actually move and (per Task 5's documented decision) the vehicle behaves as designed while retracted.
+Cross-check ground-truth position over a run against Task 9's obstacle positions (min-distance-to-obstacle-centers check, real Python script against a `ros2 bag record /odom_ground_truth` capture — same technique the abandoned branch's Task 12 used). Separately, command track retraction mid-run and confirm (via `/joint_states`) the joints actually move and (per Task 5's documented decision) the vehicle behaves as designed while retracted.
 
 - [ ] **Step 4: Update README**
 
@@ -1347,14 +1582,14 @@ git commit -m "Document tracked BlueBoat vehicle build/launch/eval in README (dr
 
 ---
 
-### Task 15: Vendor the real `bluerov2` model and a flooded water region in `cavex_world.world`
+### Task 16: Vendor the real `bluerov2` model and a flooded water region in `cavex_world.world`
 
 **Files:**
 - Create: `ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/` (vendored, real meshes + `model.sdf`/`model.config`, from `clydemcqueen/bluerov2_gz`'s `models/bluerov2/`, used as-is — no modification needed, unlike the tracked hull)
-- Modify: `ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world` (add the water region — same file Task 8 already added dry-cave obstacles to)
+- Modify: `ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world` (add the water region — same file Task 9 already added dry-cave obstacles to)
 
 **Interfaces:**
-- Produces: a spawnable `bluerov2` SDF model (real `Buoyancy`/`Hydrodynamics`/`Thruster` plugins, unmodified from upstream); a real water volume in `cavex_world.world` with known geometric bounds (Task 18's `vehicle_switch_node` reads these bounds directly, don't leave them undocumented).
+- Produces: a spawnable `bluerov2` SDF model (real `Buoyancy`/`Hydrodynamics`/`Thruster` plugins, unmodified from upstream); a real water volume in `cavex_world.world` with known geometric bounds (Task 19's `vehicle_switch_node` reads these bounds directly, don't leave them undocumented).
 
 - [ ] **Step 1: Vendor the real BlueROV2 model**
 
@@ -1371,15 +1606,15 @@ Expected: the real vendored `model.sdf` parses with its `Hydrodynamics` plugin p
 
 - [ ] **Step 2: Add a flooded water region to `cavex_world.world`**
 
-Read `cavex_world.world`'s existing bounds (the dry-cave section is documented as x between -39 and -5). Add a new region, geometrically separate, at real, chosen-during-implementation coordinates — e.g. `x` between 5 and 30 — with:
+Use Task 8's re-derived real mesh bounds: the cave occupies `x ∈ [-75, +75]`, `y ∈ [-51, +51]`, `z ∈ [0, +33]`; the dry section is `x ∈ [-70, 0]`; the water section is **`x ∈ [+10, +70]`, `y ∈ [-45, +45]`, water surface at `z = 4.0`** (the `x ∈ [0, +10]` strip between them is the transition passage the tracked vehicle approaches but never enters under its own power). Add the water surface plane centred on that region:
 
 ```xml
 <model name="water_surface">
   <static>true</static>
-  <pose>17.5 0 0 0 0 0</pose>
+  <pose>40 0 4.0 0 0 0</pose>
   <link name="surface">
     <visual name="water_visual">
-      <geometry><plane><size>25 15</size></plane></geometry>
+      <geometry><plane><size>60 90</size></plane></geometry>
       <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
     </visual>
   </link>
@@ -1393,7 +1628,9 @@ Read `cavex_world.world`'s existing bounds (the dry-cave section is documented a
 </plugin>
 ```
 
-(The `Buoyancy` plugin element names/nesting — `<graded_buoyancy>`, `<default_density>`, `<enable>` — are Gazebo Harmonic's real, documented `Buoyancy` system parameters; cross-check them against whatever real config Step 1 found `bluerov2_underwater.world` actually uses, and match that exactly rather than guessing independently — the two should agree since it's the same real plugin.) Record the water region's real bounding box (center + size) in this task's report — Task 18 depends on these exact numbers.
+The graded-buoyancy water/air interface must sit at **`z = 4.0`**, matching the `water_surface` visual above — in Gazebo Harmonic's real `Buoyancy` system that interface is set by the `<graded_buoyancy>` block's surface/density-layer elements, whose exact real element names come from `bluerov2_underwater.world` (Step 1 read it). Copy that real structure and set its surface value to `4.0`; a visual plane at 4.0 with the buoyancy interface left at the default 0 is the silent-failure mode this note exists to prevent.
+
+(The `Buoyancy` plugin element names/nesting — `<graded_buoyancy>`, `<default_density>`, `<enable>` — are Gazebo Harmonic's real, documented `Buoyancy` system parameters; cross-check them against whatever real config Step 1 found `bluerov2_underwater.world` actually uses, and match that exactly rather than guessing independently — the two should agree since it's the same real plugin.) Record the water region's real bounding box (center `40 0 4.0`, size `60 × 90`, water section `x ∈ [+10, +70]`) in this task's report, and confirm it agrees with Task 8's recorded mesh bounds — Task 19's `WATER_BOUNDARY_X = 10.0` is exactly this region's lower `x` edge.
 
 - [ ] **Step 3: Verify the world still loads with both regions present**
 
@@ -1406,13 +1643,13 @@ gz topic -t /world/cavex_world/scene/info -e -n1 2>&1 | grep -iE "water_surface|
 ps aux | grep -iE "gz sim" | grep -v grep
 ```
 
-Kill stragglers (`kill -9`). Expected: no SDF parse errors, both the dry-cave obstacles (Task 8) and `water_surface` appear in the scene.
+Kill stragglers (`kill -9`). Expected: no SDF parse errors, both the dry-cave obstacles (Task 9) and `water_surface` appear in the scene.
 
 - [ ] **Step 4: Spawn the vendored `bluerov2` standalone in the water region and confirm real buoyancy**
 
 ```bash
 gz service -s /world/cavex_world/create --reqtype gz.msgs.EntityFactory --reptype gz.msgs.Boolean --timeout 3000 \
-  --req 'sdf_filename: "/home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/model.sdf", name: "bluerov2_test", pose: {position: {x: 17.5, y: 0, z: -2}}'
+  --req 'sdf_filename: "/home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/model.sdf", name: "bluerov2_test", pose: {position: {x: 40, y: 0, z: 2.0}}'
 sleep 5
 gz topic -e -t /model/bluerov2_test/pose -n 1
 ```
@@ -1431,7 +1668,7 @@ git commit -m "Vendor real bluerov2 model, add flooded water region with real bu
 
 ---
 
-### Task 16: Build ArduSub SITL (second firmware target, same vendored `ardupilot` checkout)
+### Task 17: Build ArduSub SITL (second firmware target, same vendored `ardupilot` checkout)
 
 **Files:**
 - Modify: none new — this task builds a second firmware target from Task 2's already-vendored `ardupilot/` checkout.
@@ -1461,7 +1698,7 @@ sleep 15
 ps aux | grep -iE "ardusub" | grep -v grep
 ```
 
-Expected: a real running `ardusub` process. Kill it (`kill -9`) once confirmed — this step only verifies the binary starts, the real Gazebo-connected verification happens in Task 17.
+Expected: a real running `ardusub` process. Kill it (`kill -9`) once confirmed — this step only verifies the binary starts, the real Gazebo-connected verification happens in Task 18.
 
 - [ ] **Step 3: Commit**
 
@@ -1469,7 +1706,7 @@ Nothing new to commit from this task alone (the `ardusub` binary lives inside th
 
 ---
 
-### Task 17: `cmd_vel_to_ardusub` adapter node + standalone BlueROV2 verification
+### Task 18: `cmd_vel_to_ardusub` adapter node + standalone BlueROV2 verification
 
 **Files:**
 - Create: `ros2_ws/src/cavex_tracked_vehicle/cavex_tracked_vehicle/cmd_vel_to_ardusub.py`
@@ -1502,7 +1739,7 @@ cmd_vel_to_ardusub.py
 
 Relays /cmd_vel_rov (manual teleop, geometry_msgs/Twist) into the second
 ArduSub SITL instance's real AP_DDS cmd_vel input. Arms + sets GUIDED (or
-DEPTH_HOLD, whichever Task 17 Step 1 confirms is correct for ArduSub) on
+DEPTH_HOLD, whichever Task 18 Step 1 confirms is correct for ArduSub) on
 first command. Real topic/service names filled in per Step 1's findings,
 not guessed.
 """
@@ -1569,7 +1806,7 @@ cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
 source /opt/ros/jazzy/setup.bash && source install/setup.bash && source ardupilot_gazebo_env.sh
 timeout 60 gz sim -r install/cavex_slam_nav/share/cavex_slam_nav/worlds/cavex_world.world &
 sleep 10
-# spawn bluerov2 in the water region (Task 15's coordinates)
+# spawn bluerov2 in the water region (Task 16's coordinates)
 ros2 launch ardupilot_sitl sitl_dds_udp.launch.py instance:=1 &
 sleep 10
 ros2 run cavex_tracked_vehicle cmd_vel_to_ardusub.py &
@@ -1594,14 +1831,14 @@ git commit -m "Add cmd_vel_to_ardusub adapter node, verify BlueROV2 real motion 
 
 ---
 
-### Task 18: `vehicle_switch_node` — water-boundary handoff between the tracked vehicle and the BlueROV2
+### Task 19: `vehicle_switch_node` — water-boundary handoff between the tracked vehicle and the BlueROV2
 
 **Files:**
 - Create: `ros2_ws/src/cavex_tracked_vehicle/cavex_tracked_vehicle/vehicle_switch_node.py`
 - Modify: `ros2_ws/src/cavex_tracked_vehicle/CMakeLists.txt`
 
 **Interfaces:**
-- Consumes: the tracked vehicle's `/odom_ground_truth` (Task 12), the BlueROV2's ground-truth pose (same `PosePublisher` pattern, added to `bluerov2/model.sdf` if not already present — check first, Task 15's vendored model may already publish this via its real `OdometryPublisher`-equivalent), Task 15's recorded water-region bounds.
+- Consumes: the tracked vehicle's `/odom_ground_truth` (Task 13), the BlueROV2's ground-truth pose (same `PosePublisher` pattern, added to `bluerov2/model.sdf` if not already present — check first, Task 16's vendored model may already publish this via its real `OdometryPublisher`-equivalent), Task 16's recorded water-region bounds.
 - Produces: calls to Task 5's track-retraction command topic (`/cavex/tracks/command`), real `gz service /world/cavex_world/create`/`remove` calls (or the parked-pose fallback, per the spec's documented risk), and arm/disarm calls to both ArduPilot instances' real services.
 
 - [ ] **Step 1: Write the state machine**
@@ -1612,7 +1849,7 @@ git commit -m "Add cmd_vel_to_ardusub adapter node, verify BlueROV2 real motion 
 vehicle_switch_node.py
 
 Watches the tracked vehicle's ground-truth pose against the water
-region's real bounds (Task 15) and hands control off to/from the
+region's real bounds (Task 16) and hands control off to/from the
 BlueROV2 on crossing. This is the one place in this design with any
 "automatic" trigger logic -- a single boundary-crossing state machine,
 not a general water-detection sensor.
@@ -1630,11 +1867,14 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseArray
 from std_msgs.msg import String
 
-# Task 15's real recorded water-region boundary -- replace with the exact
-# value from that task's report (this plan's Task 15 example used a
-# region starting at x=5; the boundary itself, not the region's center,
-# is what this node compares against).
-WATER_BOUNDARY_X = 5.0
+# The water region's lower x edge, per Task 8's mesh-derived bounds and
+# Task 16's water region: the real cave mesh spans x [-75, 75]; the dry
+# section is x [-70, 0], the transition passage x [0, 10], and the water
+# section x [10, 70] with its surface at z = 4.0. The boundary itself --
+# not the region's center -- is what this node compares against. If Task
+# 8's AABB script printed a mesh size differing from 150 x 102 x 33 by
+# more than 1 m, use the boundary recorded in Task 16's report instead.
+WATER_BOUNDARY_X = 10.0
 
 TRACKED_ACTIVE = 'tracked_active'
 ROV_ACTIVE = 'rov_active'
@@ -1665,12 +1905,12 @@ class VehicleSwitchNode(Node):
     def _switch_to_rov(self, crossing_pose):
         self.get_logger().info(f"Crossing into water at x={crossing_pose.position.x:.2f} -- handing off to BlueROV2")
         self.track_cmd_pub.publish(String(data='retracted'))
-        # TODO (filled in against Task 15/17's real, verified mechanisms):
+        # TODO (filled in against Task 16/18's real, verified mechanisms):
         # 1. gz service model-removal (or parked-pose fallback) call for
         #    the tracked vehicle
         # 2. gz service /world/cavex_world/create call spawning bluerov2
         #    at crossing_pose
-        # 3. arm+GUIDED call to the second ArduSub instance (Task 17's
+        # 3. arm+GUIDED call to the second ArduSub instance (Task 18's
         #    real service names)
         self.state = ROV_ACTIVE
 
@@ -1694,7 +1934,7 @@ if __name__ == '__main__':
     main()
 ```
 
-The two `TODO` blocks are real, required work, not permitted placeholders — fill them in with the exact `gz service` request strings (same shape as Task 15 Step 4's manual spawn call) and the exact arm/mode-switch service calls (same shape as Task 17's `cmd_vel_to_ardusub.py`), using the real command/response formats confirmed in those tasks. Do not leave a `TODO` in the committed version of this file.
+The two `TODO` blocks are real, required work, not permitted placeholders — fill them in with the exact `gz service` request strings (same shape as Task 16 Step 4's manual spawn call) and the exact arm/mode-switch service calls (same shape as Task 18's `cmd_vel_to_ardusub.py`), using the real command/response formats confirmed in those tasks. Do not leave a `TODO` in the committed version of this file.
 
 - [ ] **Step 2: Add a `/bluerov2/odom_ground_truth` publisher if the vendored model doesn't already have one**
 
@@ -1702,7 +1942,7 @@ The two `TODO` blocks are real, required work, not permitted placeholders — fi
 grep -iE "PosePublisher|Odometry" /home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/model.sdf
 ```
 
-If a real ground-truth pose topic already exists on the vendored model (it may — `bluerov2_gz`'s README doesn't mention one directly, verify here), bridge/remap it to `/bluerov2/odom_ground_truth`. If not, add the same `gz-sim-pose-publisher-system` plugin the tracked vehicle's Task 12 uses, targeting `bluerov2`'s `base_link`.
+If a real ground-truth pose topic already exists on the vendored model (it may — `bluerov2_gz`'s README doesn't mention one directly, verify here), bridge/remap it to `/bluerov2/odom_ground_truth`. If not, add the same `gz-sim-pose-publisher-system` plugin the tracked vehicle's Task 13 uses, targeting `bluerov2`'s `base_link`.
 
 - [ ] **Step 3: Full go/no-go verification — drive the boundary crossing both directions**
 
@@ -1735,7 +1975,7 @@ git commit -m "Add vehicle_switch_node: automatic water-boundary handoff between
 
 ---
 
-### Task 19: Full two-vehicle end-to-end verification and final README update
+### Task 20: Full two-vehicle end-to-end verification and final README update
 
 **Files:**
 - Modify: `README.md`
@@ -1758,13 +1998,13 @@ ros2 topic list | grep -iE "lidar|costmap|frontier|odom_ground_truth|ap/|ap2/|bl
 
 Expected: the full dry-cave SLAM/Nav2/explore_lite stack alive, plus `vehicle_switch_node` running and ready for a boundary crossing.
 
-- [ ] **Step 2: Re-confirm the water-boundary handoff with the full stack running (not just Task 18's isolated rig)**
+- [ ] **Step 2: Re-confirm the water-boundary handoff with the full stack running (not just Task 19's isolated rig)**
 
-Same crossing check as Task 18 Step 3, but with Nav2/explore_lite also active — confirm nothing in the full stack (e.g. Nav2's costmap still expecting the tracked vehicle's TF tree after it's despawned) throws persistent errors during/after the handoff. A transient warning during the ~1-2s handoff window is acceptable; a stack that never recovers is not — decide and document which was observed.
+Same crossing check as Task 19 Step 3, but with Nav2/explore_lite also active — confirm nothing in the full stack (e.g. Nav2's costmap still expecting the tracked vehicle's TF tree after it's despawned) throws persistent errors during/after the handoff. A transient warning during the ~1-2s handoff window is acceptable; a stack that never recovers is not — decide and document which was observed.
 
 - [ ] **Step 3: Final README update**
 
-Extend Task 14's README section into a combined "Phase 1 (revised): Tracked BlueBoat + Water-Triggered BlueROV2" section covering: everything Task 14 documented, plus BlueROV2 build/launch (`./waf sub`, `cmd_vel_to_ardusub.py`, manual `/cmd_vel_rov` teleop), the water-boundary handoff (`vehicle_switch_node.py`, real trigger behavior, real limitation that the BlueROV2 has no autonomous exploration this phase), and the same honesty caveats already established project-wide: ground truth is simulator-internal and noiseless; the tracked hull is the real vendored `blueboat` model but not a Blue Robotics-endorsed product; the BlueROV2 is the real vendored `bluerov2_gz` model; neither vehicle claim exceeds what Tasks 1-18 actually built and verified.
+Extend Task 15's README section into a combined "Phase 1 (revised): Tracked BlueBoat + Water-Triggered BlueROV2" section covering: everything Task 15 documented, plus BlueROV2 build/launch (`./waf sub`, `cmd_vel_to_ardusub.py`, manual `/cmd_vel_rov` teleop), the water-boundary handoff (`vehicle_switch_node.py`, real trigger behavior, real limitation that the BlueROV2 has no autonomous exploration this phase), and the same honesty caveats already established project-wide: ground truth is simulator-internal and noiseless; the tracked hull is the real vendored `blueboat` model but not a Blue Robotics-endorsed product; the BlueROV2 is the real vendored `bluerov2_gz` model; neither vehicle claim exceeds what Tasks 1-19 actually built and verified.
 
 - [ ] **Step 4: Final commit**
 
