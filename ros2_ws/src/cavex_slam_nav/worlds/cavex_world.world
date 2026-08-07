@@ -17,6 +17,26 @@
     </plugin>
     <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
 
+    <!-- Buoyancy plugin: vendored from clydemcqueen/bluerov2_gz's
+         worlds/bluerov2_underwater.world (real upstream structure, not
+         guessed -- the bluerov2 model.sdf itself has no Buoyancy plugin,
+         only Hydrodynamics + 6 Thruster plugins; Buoyancy is a world-level
+         plugin in the real upstream repo). above_depth is relative to
+         world-frame z=0, so it's set to 4.0 here (not upstream's 0) to put
+         the water/air interface at this world's real water surface height,
+         matching the water_surface visual pose below and Task 8's re-derived
+         cave-mesh bounds (water section x [10,70], y [-45,45]). -->
+    <plugin filename="gz-sim-buoyancy-system" name="gz::sim::systems::Buoyancy">
+      <graded_buoyancy>
+        <default_density>1000</default_density>
+        <density_change>
+          <above_depth>4.0</above_depth>
+          <density>1</density>
+        </density_change>
+      </graded_buoyancy>
+      <enable>bluerov2</enable>
+    </plugin>
+
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>
       <pose>0 0 10 0 0 0</pose>
@@ -90,5 +110,21 @@
       <name>obstacle_4</name>
       <pose>-12 -3 8 0 0 0</pose>
     </include>
+
+    <!-- Flooded water region: water section x [10,70], y [-45,45], surface
+         z=4.0, per Task 8's real re-derived cave-mesh bounds (dry section
+         x [-70,0], transition x [0,10]). Bounding box center 40 0 4.0,
+         plane size 60x90 -- Task 19's WATER_BOUNDARY_X = 10.0 is exactly
+         this region's lower x edge. -->
+    <model name="water_surface">
+      <static>true</static>
+      <pose>40 0 4.0 0 0 0</pose>
+      <link name="surface">
+        <visual name="water_visual">
+          <geometry><plane><size>60 90</size></plane></geometry>
+          <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
+        </visual>
+      </link>
+    </model>
   </world>
 </sdf>
