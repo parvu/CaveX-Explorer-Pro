@@ -1,4 +1,9 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -130,10 +135,28 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time, 'base_frame': frame_id}],
     )
 
+    # Nav2 bringup (costmap-only: no amcl/map_server, RTAB-Map above already
+    # owns SLAM and publishes /map). Included here rather than as a
+    # separate launch file since Nav2's static_layer needs RTAB-Map's /map
+    # already flowing -- see tracked_vehicle_nav2_params.yaml for the full
+    # rationale (ported from the abandoned cavex-legged-walker-phase1
+    # branch's real, working config for a different vehicle in this
+    # project, same no-/scan situation).
+    nav2_bringup_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(get_package_share_directory('nav2_bringup'), 'launch', 'navigation_launch.py')
+        ),
+        launch_arguments={
+            'use_sim_time': 'true',
+            'params_file': os.path.join(get_package_share_directory('cavex_tracked_vehicle'), 'config', 'tracked_vehicle_nav2_params.yaml'),
+        }.items(),
+    )
+
     return LaunchDescription([
         lidar_static_tf,
         camera_static_tf,
         icp_odometry,
         rtabmap,
         slam_pose_publisher,
+        nav2_bringup_launch,
     ])
