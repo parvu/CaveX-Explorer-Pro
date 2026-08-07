@@ -172,20 +172,45 @@ def generate_launch_description():
     # costmap_updates_topic, robot_base_frame; explore/src/explore.cpp
     # declares planner_frequency, progress_timeout, visualize -- all match
     # the brief's example verbatim, no renames needed.
-    explore_node = Node(
-        package='explore_lite',
-        executable='explore',
-        name='explore_node',
-        output='screen',
-        parameters=[{
-            'use_sim_time': use_sim_time,
-            'costmap_topic': 'global_costmap/costmap',
-            'costmap_updates_topic': 'global_costmap/costmap_updates',
-            'visualize': True,
-            'planner_frequency': 0.5,
-            'progress_timeout': 30.0,
-            'robot_base_frame': frame_id,
-        }],
+    #
+    # Real, live-diagnosed premature-stop bug (found after the /clock and
+    # bootstrap_nudge-duration fixes above, once ArduPilot could finally
+    # stay armed long enough to expose it): explore_node used to start
+    # immediately and connect to Nav2's move_base action server as soon as
+    # it comes up -- which only requires `odom` (Task 11's
+    # initial_transform_timeout fix), NOT the `map` frame. explore_lite's
+    # own costmap_client_ needs the full `map` -> base_link TF chain
+    # (published by RTAB-Map only once it has processed real map data) to
+    # compute the robot's pose for frontier search. Confirmed live: at the
+    # moment explore_node connected and called its first makePlan(),
+    # `map` didn't exist yet ("map" passed to lookupTransform argument
+    # target_frame does not exist), frontier_search found zero frontiers
+    # from a garbage/failed pose, and explore.cpp's stop(true) is
+    # PERMANENT -- no automatic retry once a "No frontiers found" stop
+    # fires (confirmed by reading explore.cpp: stop(finished_exploring=true)
+    # sets a state flag with no self-resume path). This produced a
+    # convincing-looking-but-false "exploration complete" after only ~13
+    # real seconds of connection, with the costmap still ~98% unknown.
+    # Fix: delay explore_node's own start until after bootstrap_nudge's
+    # real driving window has completed and RTAB-Map has had time to
+    # publish a stable `map` frame from that real motion.
+    explore_node = TimerAction(
+        period=320.0,
+        actions=[Node(
+            package='explore_lite',
+            executable='explore',
+            name='explore_node',
+            output='screen',
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'costmap_topic': 'global_costmap/costmap',
+                'costmap_updates_topic': 'global_costmap/costmap_updates',
+                'visualize': True,
+                'planner_frequency': 0.5,
+                'progress_timeout': 30.0,
+                'robot_base_frame': frame_id,
+            }],
+        )],
     )
 
     # Task 12: real, structural cold-start deadlock discovered live -- not a
