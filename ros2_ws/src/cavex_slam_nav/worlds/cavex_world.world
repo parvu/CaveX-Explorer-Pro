@@ -38,26 +38,24 @@
       </link>
     </model>
 
-    <!-- Dry Cave Section Box (-39 to -5) -->
-    <model name="dry_cave">
-      <static>true</static>
-      <pose>-22 0 1 0 0 0</pose>
-      <link name="link">
-        <collision name="col"><geometry><box><size>34 12 2</size></box></geometry></collision>
-        <visual name="vis"><geometry><box><size>34 12 2</size></box></geometry><material><ambient>0.3 0.3 0.3 1</ambient></material><transparency>0.5</transparency></visual>
-      </link>
-    </model>
-
-    <!-- Water Section (Raised) ( -5 to 29 ) -->
-    <model name="flooded_cave_water">
-      <static>true</static>
-      <pose>12 0 0.6 0 0 0</pose>
-      <link name="link">
-        <visual name="water">
-          <geometry><box><size>34 12 0.1</size></box></geometry>
-          <material><ambient>0 0.4 0.8 0.5</ambient></material>
-        </visual>
-      </link>
-    </model>
+    <!-- Real cave geometry: vendored from LTU-RAI/gazebo_cave_world (MIT).
+         Koval, Kanellakis, Vidmark, Haluska, Nikolakopoulos, "A Subterranean
+         Virtual Cave World for Gazebo based on the DARPA SubT Challenge",
+         arXiv:2004.08452, Lulea University of Technology. Not authored here.
+         Pose computed by Task 8's AABB script from the real OBJ vertices --
+         NOT just a Z-axis yaw as originally planned: this OBJ's local up
+         axis is Y, not Z (cross-checked against upstream's own
+         worlds/cave_world.world, which itself applies roll=90 deg to stand
+         the mesh up), so roll=pi/2 fixes local-Y-up -> world-Z-up and an
+         additional yaw=pi/2 puts the ~150m long axis on world X.
+         Real, measured world-frame bounds after this pose: x [-75.17,75.17],
+         y [-51.16,51.16], z [0,36.18] (height is 36.18m, not the nominal
+         33m -- >1m off nominal; x/y match nominal within ~0.2m).
+         Dry section x [-70,0]; transition x [0,10]; water section x [10,70]. -->
+    <include>
+      <uri>model://cave_world</uri>
+      <name>cave_world</name>
+      <pose>18.7830 31.4050 5.9826 1.5708 0.0000 1.5708</pose>
+    </include>
   </world>
 </sdf>

@@ -103,3 +103,28 @@ report that cites it.
 RGB camera, 2D lidar, and IMU only). The frontend's sonar panels and `sonarActive`/
 `sonarDepth`/`sonarEchoStrength` fields are concept-demo values, not backed by
 any real sensor or ROS2 topic — don't wire them up as if they were.
+
+## Third-party assets
+
+**Cave geometry** — `ros2_ws/src/cavex_slam_nav/models/cave_world/` is
+vendored, unmodified, from
+[LTU-RAI/gazebo_cave_world](https://github.com/LTU-RAI/gazebo_cave_world)
+(MIT license, copy retained alongside the mesh). Cite: Anton Koval,
+Christoforos Kanellakis, Emil Vidmark, Jakub Haluska, George Nikolakopoulos,
+"A Subterranean Virtual Cave World for Gazebo based on the DARPA SubT
+Challenge," arXiv:2004.08452, Control Engineering Group, Luleå University of
+Technology. This project re-wrapped the OBJ as a Gazebo Harmonic SDF 1.9
+static model; the mesh itself is not our work. The upstream repo's prop
+models (backpack, extinguisher, survivor, jersey barrier, tunnel entrance,
+AprilTags) are not used in this phase.
+
+**Tracked vehicle hull** — `ros2_ws/src/cavex_tracked_vehicle/models/blueboat/`
+is vendored from
+[markusbuchholz/gazebosim_blueboat_ardupilot_sitl](https://github.com/markusbuchholz/gazebosim_blueboat_ardupilot_sitl)
+(a mirror of ArduPilot's own `SITL_Models`, author Rhys Mainwaring, meshes
+sourced from Blue Robotics' published CAD). This is a real, vendored asset,
+not an official Blue Robotics or ArduPilot product release — the tracked
+variant (`model.sdf.tracked`) is a project-authored modification (motors
+removed, track assemblies added) and is labeled "BlueBoat tracked-vehicle
+variant" throughout; it makes no marine/floating capability claim and no
+Blue Robotics endorsement.

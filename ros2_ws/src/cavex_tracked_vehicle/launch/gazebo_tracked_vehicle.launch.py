@@ -53,6 +53,16 @@ def generate_launch_description():
     # cavex_tracked_vehicle's installed `models` dir to GZ_SIM_RESOURCE_PATH --
     # Task 5's report found this exact directory (not its parent) is required
     # for model.sdf.tracked's `models://blueboat/...` mesh URIs to resolve.
+    #
+    # Task 8 addition: pkg_cavex_slam's installed `models` dir, real, live
+    # necessary fix found running this exact launch file after vendoring the
+    # cave mesh -- cavex_world.world's new `<include><uri>model://cave_world`
+    # failed with "Unable to find uri[model://cave_world]" even though
+    # ardupilot_gazebo_env.sh (sourced manually) already covers this path,
+    # because this launch file builds its own GZ_SIM_RESOURCE_PATH from
+    # scratch (see comment above) rather than inheriting the sourced shell's
+    # env for the `gz sim` subprocess -- this line was simply missing before
+    # cave_world existed for it to need to resolve.
     set_plugin_path = SetEnvironmentVariable(
         'GZ_SIM_SYSTEM_PLUGIN_PATH',
         os.path.join(WORKTREE_ROOT, 'ardupilot_gazebo', 'build') + ':' +
@@ -60,6 +70,7 @@ def generate_launch_description():
     set_resource_path = SetEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
         os.path.join(pkg_cavex_tracked, 'models') + ':' +
+        os.path.join(pkg_cavex_slam, 'models') + ':' +
         os.path.join(WORKTREE_ROOT, 'ardupilot_gazebo', 'models') + ':' +
         os.path.join(WORKTREE_ROOT, 'ardupilot_gazebo', 'worlds') + ':' +
         os.environ.get('GZ_SIM_RESOURCE_PATH', ''))
@@ -99,33 +110,25 @@ def generate_launch_description():
 
     # Spawns the real vehicle: native SDF (the generated/templated copy of
     # model.sdf.tracked, per the path fix above), not the robot_state_publisher
-    # URDF stub above (unrelated -- that stub is launch-time-only). Placeholder
-    # -era spawn point: cavex_world.world still has the flat placeholder
-    # dry_cave box here; Task 8 replaces it with the real cave mesh and updates
-    # this spawn point to the mesh-derived one it records.
+    # URDF stub above (unrelated -- that stub is launch-time-only).
     #
-    # z=2.5, not the brief's literal z=0.3 -- real, live evidence found during
-    # this task's own go/no-go drive test: cavex_world.world's "dry_cave"
-    # placeholder (cavex_slam_nav/worlds/cavex_world.world) is a fully SOLID
-    # box, <pose>-22 0 1 0 0 0</pose> + <size>34 12 2</size>, i.e. solid
-    # collision filling z=[0, 2] across x=[-39, -5] -- not a hollow interior.
-    # Spawning at z=0.3 (inside that solid range) embeds the whole hull in it;
-    # confirmed live via `gz service -s /world/cavex_world/set_pose ...`
-    # teleports and `/world/cavex_world/pose/info` ground-truth pose readings:
-    # at z=0.3 real position was static (delta ~0.001m over 15s of driving);
-    # at z=2.5 (resting on the box's top surface, settles ~z=2.425) the exact
-    # same drive command produced a real, unambiguous position delta (~7.9m
-    # over 15s -- see task-7-report.md). x=-30/y=0 (the dry-cave section) kept
-    # exactly as specified; only z changed, to rest on top of the placeholder
-    # box instead of inside it. Task 8 replacing the placeholder geometry with
-    # the real cave mesh is expected to also fix this and update the spawn
-    # point again, same as the brief already anticipated for other reasons.
+    # Task 8 update: cavex_world.world's placeholder "dry_cave" box (the
+    # z=2.5-on-top-of-a-solid-box spawn point Task 7 recorded, see
+    # task-7-report.md) is gone, replaced by the real vendored
+    # LTU-RAI/gazebo_cave_world mesh. Re-measured live with Task 8's
+    # probe-drop test (a 0.5m box dropped from z=12 at x=-60, y=0): it
+    # settled at z~=0.25 (box half-height, i.e. the real cave floor is at
+    # z~=0 here) and did NOT fall through or spawn embedded in rock -- the
+    # first (x, y) tried already worked, no grid-walk fallback needed. x/y
+    # moved from the placeholder's -30/0 to this real floor point's -60/0;
+    # z = 0.25 (measured floor/box-rest height) + 0.5 clearance, per this
+    # task's own convention.
     spawn_entity = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=['-world', 'cavex_world', '-file', generated_sdf_file,
                    '-name', VEHICLE_MODEL_NAME,
-                   '-x', '-30', '-y', '0', '-z', '2.5'],
+                   '-x', '-60', '-y', '0', '-z', '0.75'],
         output='screen',
     )
 
