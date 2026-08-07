@@ -26,7 +26,7 @@ def generate_launch_description():
     world_file = os.path.join(pkg_cavex_slam, 'worlds', 'cavex_world.world')
     urdf_stub_file = os.path.join(pkg_cavex_tracked, 'urdf', 'cavex_tracked_vehicle.urdf')
     ros2_control_yaml = os.path.join(pkg_cavex_tracked, 'config', 'cavex_tracked_vehicle_ros2_control.yaml')
-    track_cmd_vel_bridge_yaml = os.path.join(pkg_cavex_tracked, 'config', 'track_cmd_vel_bridge.yaml')
+    combined_bridge_yaml = os.path.join(pkg_cavex_tracked, 'config', 'gazebo_tracked_vehicle_bridge.yaml')
     sdf_template_file = os.path.join(pkg_cavex_tracked, 'models', 'blueboat', 'model.sdf.tracked')
 
     # model.sdf.tracked's gz_ros2_control <parameters> tag can't use xacro's
@@ -132,74 +132,29 @@ def generate_launch_description():
         output='screen',
     )
 
-    # gz_bridge: post-Task-7-review Finding 1 fix -- model.sdf.tracked now has
-    # real lidar_link/camera_link <sensor> blocks (added alongside this launch
-    # file change), so their gz-transport topics are bridged here too.
-    #
-    # Topic names below re-verified empirically (Step 2, and again live for
-    # this fix) rather than assumed, per this project's established gz-sim
-    # topic-naming gotcha (<topic> overrides / sensor scoping don't reliably
-    # follow the naive convention). Specifically, gz-sim's gpu_lidar sensor
-    # publishes a gz.msgs.LaserScan on the bare <topic> name (here,
-    # /lidar/points) and auto-appends "/points" for the actual
-    # gz.msgs.PointCloudPacked point cloud -- same real gotcha the abandoned
-    # cavex-legged-walker-phase1 branch's gazebo_walker.launch.py already
-    # documented and worked around; reproduced here rather than assumed.
+    # gz_bridge: ONE combined parameter_bridge process (real, structural fix,
+    # not a Task 7/12 code bug -- see gazebo_tracked_vehicle_bridge.yaml's own
+    # header comment for the full live-diagnosed root cause). This used to be
+    # two separate `parameter_bridge` processes (one for sensors via CLI args,
+    # one for track_cmd_vel via its own config file); ros_gz_bridge's
+    # parameter_bridge auto-bridges /clock by default on EVERY instance it
+    # runs, so running two processes structurally created two independent,
+    # competing /clock publishers -- confirmed live via `ros2 topic info
+    # /clock -v` showing two distinct `ros_gz_bridge` publisher GIDs -- which
+    # produced real timing jitter that broke icp_odometry's frame-to-frame
+    # registration entirely (ratio stuck at 0.000000 even with substantial
+    # real vehicle motion) and, downstream, RTAB-Map's WM staying at 0
+    # forever. Merged into a single config-file-driven bridge so there is
+    # only ever one /clock relay. Topic names re-verified empirically
+    # (Step 2, and again live for this fix) rather than assumed, per this
+    # project's established gz-sim topic-naming gotcha (<topic> overrides /
+    # sensor scoping don't reliably follow the naive convention) -- see
+    # gazebo_tracked_vehicle_bridge.yaml for the real, confirmed topic names.
     gz_bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
-        arguments=[
-            # imu_sensor has no <topic> override in model.sdf.tracked, so it
-            # uses gz-sim's default scoped sensor-topic convention.
-            f'/world/cavex_world/model/{VEHICLE_MODEL_NAME}/link/imu_link/sensor/imu_sensor/imu'
-            '@sensor_msgs/msg/Imu[gz.msgs.IMU',
-            # lidar_sensor/camera_sensor both set an explicit <topic> override
-            # in model.sdf.tracked, so these are the bare override names (plus
-            # the lidar's real auto-appended "/points" suffix), not the
-            # /world/.../sensor/... scoped convention imu_sensor uses above.
-            '/lidar/points/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
-            '/camera/color@sensor_msgs/msg/Image[gz.msgs.Image',
-            '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
-            # World-broadcast pose topic (always present in gz-sim8) -- real
-            # ground truth, world-frame, all models. Pose_V -> PoseArray, same
-            # pattern as the abandoned branch's ground-truth pose bridge;
-            # ros2 topic echo/gz topic -e callers filter by this model's name
-            # within the array. Deliberately NOT bridged/remapped to
-            # /model/<name>/pose: model.sdf.tracked's own OdometryPublisher
-            # plugin already owns that exact gz-transport topic name, and
-            # (real, live-discovered during this task's Step 3) its output is
-            # NOT reliable ground truth for this vehicle -- OdometryPublisher
-            # dead-reckons from wheel/joint velocities, but left_track/
-            # right_track have no rotating joint at all (TrackedVehicle drives
-            # them as velocity-controlled links directly, joined via *_fixed
-            # joints), so it has no real signal to integrate and reports
-            # near-static output regardless of true motion. Bridging our
-            # world-pose topic under that same ROS name would have collided
-            # with and masked that broken topic's name. Task 3's finding that
-            # "there is no [reliable] /model/<name>/pose topic" holds here too
-            # -- use this bridged topic (kept at its real gz-transport name)
-            # instead.
-            '/world/cavex_world/pose/info@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V',
-            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
-        ],
-        remappings=[
-            (f'/world/cavex_world/model/{VEHICLE_MODEL_NAME}/link/imu_link/sensor/imu_sensor/imu', '/imu'),
-            ('/lidar/points/points', '/lidar/points'),
-            ('/camera/color', '/camera/color/image_raw'),
-            ('/camera/camera_info', '/camera/color/camera_info'),
-        ],
-        output='screen',
-    )
-
-    # track_cmd_vel's ROS2<->gz-transport leg (Task 6): carries
-    # track_cmd_vel_bridge.py's /track_cmd_vel (ROS2 Twist) onto the real
-    # gz-transport topic /model/cavex_tracked_blueboat/cmd_vel (gz.msgs.Twist)
-    # that TrackedVehicle actually subscribes to.
-    track_cmd_vel_gz_bridge = Node(
-        package='ros_gz_bridge',
-        executable='parameter_bridge',
-        name='track_cmd_vel_gz_bridge',
-        arguments=['--ros-args', '-p', f'config_file:={track_cmd_vel_bridge_yaml}'],
+        name='gz_bridge',
+        arguments=['--ros-args', '-p', f'config_file:={combined_bridge_yaml}'],
         output='screen',
     )
 
@@ -279,7 +234,6 @@ def generate_launch_description():
         robot_state_publisher,
         spawn_entity,
         gz_bridge,
-        track_cmd_vel_gz_bridge,
         ardupilot_sitl_launch,
         cmd_vel_to_ardupilot,
         track_cmd_vel_bridge_node,

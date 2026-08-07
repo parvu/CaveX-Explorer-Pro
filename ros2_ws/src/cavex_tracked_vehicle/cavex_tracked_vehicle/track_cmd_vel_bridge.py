@@ -28,9 +28,13 @@ autopilot exactly once, not twice.
 /track_cmd_vel is a ROS 2 topic; the real TrackedVehicle input is
 gz-transport, not ROS 2. This node cannot publish to it directly -- getting
 onto /model/cavex_tracked_blueboat/cmd_vel requires a `ros_gz_bridge`
-parameter_bridge (see ../config/track_cmd_vel_bridge.yaml) chained after
-this node's ROS 2 publish. That bridge is committed alongside this node
-(not folded into this node itself, since ros_gz_bridge's parameter_bridge
+parameter_bridge (see ../config/gazebo_tracked_vehicle_bridge.yaml --
+merged with the sensor/pose/clock bridge entries as of a later fix; see
+that file's own header comment for why two separate parameter_bridge
+processes structurally broke icp_odometry via a duplicate /clock relay)
+chained after this node's ROS 2 publish. That bridge is committed
+alongside this node (not folded into this node itself, since
+ros_gz_bridge's parameter_bridge
 is the standard, already-a-dependency mechanism for ROS2<->gz-transport
 topic bridging -- reimplementing that in Python would just be a worse
 version of an existing tool).

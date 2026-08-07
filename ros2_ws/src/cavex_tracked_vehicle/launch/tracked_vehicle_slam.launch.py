@@ -203,18 +203,40 @@ def generate_launch_description():
     # this is exactly why every earlier task's own verification always
     # published a real /cmd_vel before checking icp_odometry's output).
     # Fix: a short, one-time bootstrap nudge, timed to fire after the stack
-    # is up but well before it, publishes a handful of /cmd_vel messages
-    # then stops -- just enough real motion for icp_odometry to observe
-    # parallax and initialize. This is NOT ongoing manual control: it exits
-    # on its own after ~10 real messages, and explore_lite (already running,
-    # just waiting on the costmap) takes over all driving once Nav2 comes
-    # alive as a direct result of this nudge -- same role a human giving a
-    # stalled real robot a manual push-start would play, not a substitute
-    # for autonomous exploration.
+    # is up but well before it, publishes a burst of /cmd_vel messages then
+    # stops -- just enough real motion for icp_odometry to observe parallax
+    # and initialize. This is NOT ongoing manual control: it exits on its
+    # own after a fixed real-time duration, and explore_lite (already
+    # running, just waiting on the costmap) takes over all driving once
+    # Nav2 comes alive as a direct result of this nudge -- same role a
+    # human giving a stalled real robot a manual push-start would play, not
+    # a substitute for autonomous exploration.
+    #
+    # Duration real, live-verified, and RTF-aware: this environment's
+    # real_time_factor under the full stack is consistently very slow and
+    # variable (confirmed repeatedly across Tasks 7/10/11/12, ranging
+    # ~0.017-0.03 typical, occasionally higher) -- `ros2 topic pub -r 5`'s
+    # rate is wall-clock, not sim-time, so what actually matters for
+    # icp_odometry's bootstrap is real (wall-clock) nudge duration divided
+    # by RTF, not message count. Two earlier, shorter versions of this
+    # nudge (first 10 messages/2s, then 150 messages/30s) were both
+    # live-tested and found genuinely insufficient at this environment's
+    # real RTF: icp_odometry's registration ratio stayed at 0.000000 the
+    # entire time in both cases despite the nudge completing and ArduPilot
+    # driving correctly (confirmed via real pose deltas) -- confirming the
+    # earlier "150 messages should be comfortably more than enough" comment
+    # was wrong: it reasoned from sim-time-equivalent distance, not
+    # accounting for how little sim-time 30 *real* seconds actually
+    # advances at RTF~0.03 (roughly 1 sim-second). 1500 messages at 5Hz
+    # (300 real seconds / 5 minutes) is calibrated against this
+    # environment's real, observed worst-case RTF (~0.017) to reliably
+    # cover the ~15 sim-seconds of continuous driving this project's own
+    # manual verification runs needed to get icp_odometry's ratio above
+    # its registration threshold in this same cave section.
     bootstrap_nudge = TimerAction(
         period=5.0,
         actions=[ExecuteProcess(
-            cmd=['ros2', 'topic', 'pub', '-r', '5', '--times', '10',
+            cmd=['ros2', 'topic', 'pub', '-r', '5', '--times', '1500',
                  '/cmd_vel', 'geometry_msgs/msg/Twist',
                  '{linear: {x: 0.3}}'],
             output='screen',
