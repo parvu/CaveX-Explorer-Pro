@@ -57,5 +57,38 @@
       <name>cave_world</name>
       <pose>18.7830 31.4050 5.9826 1.5708 0.0000 1.5708</pose>
     </include>
+
+    <!-- Fuel-sourced obstacles for Nav2 costmap / explore_lite frontiers.
+         Real, confirmed-to-exist OpenRobotics Fuel models. Note: Fuel's
+         literal "rock"/"boulder"/"stone" search results (OpenRobotics'
+         "*Rock Fall*"/"Falling Rock *" and Cole's "Ocean Rock *") are all
+         <static>true</static> scripted terrain decoration -- verified live
+         by downloading and grepping their model.sdf, and confirmed by a
+         first live test run where 3 of 4 included as obstacle_1..4 sat
+         frozen at their spawned z=8 instead of falling. Swapped for real,
+         confirmed-dynamic (no <static> tag, real mass+inertia) OpenRobotics
+         debris/prop models instead, so they actually fall and settle onto
+         the real undulating cave floor mesh as the brief requires. Settled
+         poses recorded in task-9-report.md. -->
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Cinder%20Block%202</uri>
+      <name>obstacle_1</name>
+      <pose>-45 3 8 0 0 0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Cinder%20block%20wide</uri>
+      <name>obstacle_2</name>
+      <pose>-32 -5 8 0 0 0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Wood%20cube%2010cm</uri>
+      <name>obstacle_3</name>
+      <pose>-22 6 8 0 0 0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Construction%20Barrel</uri>
+      <name>obstacle_4</name>
+      <pose>-12 -3 8 0 0 0</pose>
+    </include>
   </world>
 </sdf>
