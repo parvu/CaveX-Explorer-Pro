@@ -221,6 +221,33 @@ def generate_launch_description():
         )],
     )
 
+    # Task 13: ATE measurement harness. tracked_vehicle_ground_truth_odom.py
+    # republishes this vehicle's real ground-truth pose (see that file's own
+    # header comment for why it subscribes via gz-transport directly rather
+    # than the launch file's already-bridged, unlabeled world PoseArray) as
+    # /odom_ground_truth; ate_evaluator_node.py (existing, unmodified, from
+    # cavex_slam_nav -- cross-package reuse) compares it against
+    # /cavex/slam/odom (slam_pose_publisher above) on each
+    # /cavex/eval/finish_run trigger.
+    ate_evaluator = Node(
+        package='cavex_slam_nav',
+        executable='ate_evaluator_node.py',
+        name='ate_evaluator_node',
+        output='screen',
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'ground_truth_topic': '/odom_ground_truth',
+            'estimate_topic': '/cavex/slam/odom',
+        }],
+    )
+    tracked_vehicle_ground_truth_odom = Node(
+        package='cavex_tracked_vehicle',
+        executable='tracked_vehicle_ground_truth_odom.py',
+        name='tracked_vehicle_ground_truth_odom',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
     return LaunchDescription([
         lidar_static_tf,
         camera_static_tf,
@@ -230,4 +257,6 @@ def generate_launch_description():
         nav2_bringup_launch,
         explore_node,
         bootstrap_nudge,
+        ate_evaluator,
+        tracked_vehicle_ground_truth_odom,
     ])

@@ -34,6 +34,8 @@ install(PROGRAMS
   cavex_tracked_vehicle/track_retract_control.py
   cavex_tracked_vehicle/cmd_vel_to_ardupilot.py
   cavex_tracked_vehicle/track_cmd_vel_bridge.py
+  cavex_tracked_vehicle/tracked_vehicle_ground_truth_odom.py
+  cavex_tracked_vehicle/run_tracked_vehicle_ate_eval.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
