@@ -35,15 +35,17 @@ def generate_launch_description():
     # icp_odometry can't look up base_link -> lidar_link and aborts every
     # scan ("TF of received scan cloud ... is not set"), confirmed live too.
     # Fixed offsets copied from model.sdf.tracked's own <pose relative_to=
-    # "base_link"> tags for each link (0 0 0.4 for lidar_link, 0.55 0 0.15
-    # for camera_link) -- static_transform_publisher, not a full URDF/xacro
-    # rewrite, since both mounts are rigid and unactuated.
+    # "base_link"> tags for each link (0 0 0.55 for lidar_link -- raised from
+    # 0.4 by this task's lidar-self-occlusion fix, see model.sdf.tracked's
+    # lidar_link comment -- 0.55 0 0.15 for camera_link) --
+    # static_transform_publisher, not a full URDF/xacro rewrite, since both
+    # mounts are rigid and unactuated.
     lidar_static_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='lidar_static_tf',
         output='screen',
-        arguments=['--x', '0', '--y', '0', '--z', '0.4',
+        arguments=['--x', '0', '--y', '0', '--z', '0.55',
                    '--frame-id', 'base_link', '--child-frame-id', 'lidar_link'],
     )
     camera_static_tf = Node(

@@ -122,24 +122,17 @@
           </pbr>
         </material>
       </visual>
-      <visual name="flag_visual">
-        <geometry>
-          <mesh>
-            <uri>models://blueboat/meshes/blueboat_flag.dae</uri>
-          </mesh>
-        </geometry>
-        <material>
-          <diffuse>1 1 0 1</diffuse>
-          <ambient>1 1 0 1</ambient>
-          <specular>0.7 0.7 0.7 1</specular>
-          <pbr>
-            <metal>
-              <metalness>0.5</metalness>
-              <roughness>0.5</roughness>
-            </metal>
-          </pbr>
-        </material>
-      </visual>
+      <!-- flag_visual (blueboat_flag.dae) removed here: real vertex-transformed bounding-box
+           measurement (Task 10 lidar-self-occlusion fix) shows it's a near-vertical signal-flag
+           pole at x[-0.583,-0.281] y[-0.332,-0.322] z[0.019,1.019] relative to base_link -- a
+           thin near-vertical column ~1m tall at r~0.43m from the lidar mount. Because it spans
+           almost the full 0-1.1m height range at a fixed bearing, virtually any practical lidar
+           mount height between those bounds gets a 0-elevation beam through it regardless of
+           mount x/y, causing guaranteed self-hits. Unlike the aerial mast (cleared by raising
+           the mount, see lidar_link pose below), there is no reasonable mount height that clears
+           this one. It's also a maritime signal flag -- irrelevant hardware for an underground
+           tracked cave-mapping vehicle, same rationale Task 4 used to remove the motor/prop
+           assemblies. -->
       <visual name="frame_asm_fore_visual">
         <geometry>
           <mesh>
@@ -440,7 +433,16 @@
          extent and the +x-is-forward drive convention TrackedVehicle/
          track_cmd_vel_bridge.py already use post-frame-fix). -->
     <link name="lidar_link">
-      <pose relative_to="base_link">0 0 0.4 0 0 0</pose>
+      <!-- Raised from 0.4 to 0.55 (Task 10 lidar-self-occlusion fix): real vertex-transformed
+           bounding box of the aerial/antenna mast (blueboat_aerial.dae) is x[0.170,0.192]
+           y[-0.375,-0.353] z[0.004,0.318] -- r~0.406m from the mount, top at z=0.318. At the
+           old 0.4m mount that top was only 11.4 degrees below horizontal (within the +/-15deg
+           vertical FOV), so it self-hit. At 0.55m the same point is 29.7 degrees below
+           horizontal -- clear, with margin. All other remaining superstructure (hull, frame_asm,
+           crosstube, hatch_asm) tops out at z<=0.091, at r>=0.214m -- angle to those from a
+           0.55m mount is >58 degrees, well outside the cone. (blueboat_flag.dae, the one piece
+           that couldn't be cleared by any reasonable mount height, was removed above instead.) -->
+      <pose relative_to="base_link">0 0 0.55 0 0 0</pose>
       <inertial>
         <mass>0.1</mass>
         <inertia>
@@ -475,7 +477,10 @@
             </vertical>
           </scan>
           <range>
-            <min>0.3</min>
+            <!-- min tightened from 0.3 to 0.4 (Task 10 lidar-self-occlusion fix): filters
+                 remaining close-range self-hit noise without excluding real near-range cave
+                 features (cave walls/obstacles can legitimately be within 1-2m). -->
+            <min>0.4</min>
             <max>12.0</max>
           </range>
         </ray>
