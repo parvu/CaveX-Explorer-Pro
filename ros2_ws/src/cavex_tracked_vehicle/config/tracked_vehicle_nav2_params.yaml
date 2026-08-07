@@ -147,6 +147,23 @@ local_costmap:
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link
+      # Task 11 fix round 1: at bringup, icp_odometry hasn't published `odom`
+      # yet (it only starts once the vehicle has moved and RTAB-Map has
+      # processed a first registered scan), and nav2_costmap_2d's own default
+      # initial_transform_timeout is too short to survive that real gap --
+      # confirmed live: local_costmap failed to activate ("Failed to activate
+      # local_costmap because transform from base_link to odom did not become
+      # available before timeout"), and every downstream lifecycle node stayed
+      # permanently "inactive" (Nav2's lifecycle_manager does not auto-retry
+      # after a failed startup). Manually re-triggering bringup once odom
+      # existed (`ros2 service call /lifecycle_manager_navigation/manage_nodes
+      # nav2_msgs/srv/ManageLifecycleNodes "{command: 0}"`) succeeded
+      # immediately, confirming this is purely a startup-timing race, not a
+      # real config/TF-tree defect. Real, documented nav2_costmap_2d parameter
+      # (see costmap_2d_ros.hpp's initial_transform_timeout_ member) -- 60s
+      # comfortably covers spawn + first real drive command + RTAB-Map's
+      # first processed frame under this environment's real_time_factor.
+      initial_transform_timeout: 60.0
       rolling_window: true
       width: 6
       height: 6
@@ -172,6 +189,8 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
+      # Same real startup-timing race as local_costmap above, same fix.
+      initial_transform_timeout: 60.0
       resolution: 0.05
       robot_radius: 0.3
       track_unknown_space: true

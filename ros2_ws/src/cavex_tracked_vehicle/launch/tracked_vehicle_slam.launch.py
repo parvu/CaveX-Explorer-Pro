@@ -113,6 +113,20 @@ def generate_launch_description():
             'Grid/3D': 'true',
             'Icp/PointToPlane': 'true',
             'Icp/VoxelSize': '0.1',
+            # Task 11 fix round 1: RTAB-Map's WM stayed at 1 forever despite real,
+            # confirmed vehicle travel (15+ m) with healthy icp_odometry ratios
+            # (~0.27). Root cause confirmed live via --udebug: every candidate
+            # frame was rejected with "Ignoring location N because the
+            # displacement is too small! (d=0.100000 a=0.100000)" -- RTAB-Map's
+            # own RGBD/LinearUpdate and RGBD/AngularUpdate defaults (both 0.1),
+            # which skip processing frames below that per-frame linear/angular
+            # displacement. Not Mem/RehearsalSimilarity (rehearsal's own debug
+            # line showed merged=0 -- it was NOT rejecting frames as too similar
+            # -- the displacement gate that runs after rehearsal was the real
+            # blocker). Per RTAB-Map's own documented semantics, 0 explicitly
+            # disables this skip (always process/consider each frame).
+            'RGBD/LinearUpdate': '0.0',
+            'RGBD/AngularUpdate': '0.0',
         }],
         remappings=[
             ('rgb/image', '/camera/color/image_raw'),
