@@ -418,6 +418,112 @@
       <child>navsat_link</child>
     </joint>
 
+    <!-- Lidar/camera (added post-Task-7 review, Finding 1: Task 4 never gave
+         this hull any perception sensors, only imu/navsat -- Task 10's
+         RTAB-Map hard-depends on /lidar/points + /camera/color/*). Native
+         SDF <sensor> blocks directly under a fixed-mounted <link>, no
+         <gazebo reference=...> wrapper -- that wrapper is URDF-to-SDF-xacro
+         syntax only and this file is plain SDF already (same convention
+         this file's own ros2_control/plugin comments already establish).
+         Real values (16-beam 360 deg gpu_lidar @10Hz, range 0.3-12m; camera
+         30Hz 800x800 R8G8B8) and the real proven gz-sim8 gotcha
+         (<gz_frame_id> required or gz-sim stamps frame_id from the scene
+         graph instead of the link name) both carried over from the
+         abandoned cavex-legged-walker-phase1 branch's real, working
+         cavex_walker.urdf.xacro sensor blocks -- same sensor types, same
+         requirement, re-verified live for this hull rather than assumed.
+         Mount heights picked from blueboat_hull_collision.stl's real
+         bounding box (x:[-0.60,0.59] y:[-0.45,0.45] z:[-0.376,0] relative to
+         base_link -- hull collision top sits at z=0): both sensors sit at
+         z>=0.15, clear of the hull collision mesh and the track assemblies
+         below. Camera mounted at the bow (+x, matching the hull's forward
+         extent and the +x-is-forward drive convention TrackedVehicle/
+         track_cmd_vel_bridge.py already use post-frame-fix). -->
+    <link name="lidar_link">
+      <pose relative_to="base_link">0 0 0.4 0 0 0</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <sensor name="lidar_sensor" type="gpu_lidar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>false</visualize>
+        <always_on>1</always_on>
+        <update_rate>10</update_rate>
+        <topic>lidar/points</topic>
+        <gz_frame_id>lidar_link</gz_frame_id>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159</min_angle>
+              <max_angle>3.14159</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>16</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.2618</min_angle>
+              <max_angle>0.2618</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.3</min>
+            <max>12.0</max>
+          </range>
+        </ray>
+      </sensor>
+    </link>
+    <joint name="lidar_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>lidar_link</child>
+    </joint>
+
+    <link name="camera_link">
+      <pose relative_to="base_link">0.55 0 0.15 0 0 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <sensor name="camera_sensor" type="camera">
+        <pose>0 0 0 0 0 0</pose>
+        <always_on>1</always_on>
+        <update_rate>30.0</update_rate>
+        <topic>camera/color</topic>
+        <gz_frame_id>camera_link</gz_frame_id>
+        <camera>
+          <horizontal_fov>1.3962634</horizontal_fov>
+          <image>
+            <width>800</width>
+            <height>800</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.02</near>
+            <far>300</far>
+          </clip>
+        </camera>
+      </sensor>
+    </link>
+    <joint name="camera_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_link</child>
+    </joint>
+
     <!-- plugins -->
     <plugin name="gz::sim::systems::JointStatePublisher"
       filename="gz-sim-joint-state-publisher-system">
@@ -548,6 +654,18 @@
       <fdm_port_in>9002</fdm_port_in>
       <connectionTimeoutMaxCount>5</connectionTimeoutMaxCount>
       <lock_step>1</lock_step>
+      <!-- yaw=90 here is unmodified from the original motored BlueBoat and is
+           WRONG for this ground-rover repurposing (confirmed live in Task 7:
+           commanding /cmd_vel linear.x produced ArduPilot-reported velocity
+           almost entirely on gazebo's y-axis, not x). NOT fixed here on
+           purpose -- changing this term risks breaking the EKF convergence
+           already verified live in Task 3/6, and re-verifying that was out
+           of scope for the fix. Instead compensated downstream with a +90
+           deg yaw rotation in track_cmd_vel_bridge.py
+           (cavex_tracked_vehicle/cavex_tracked_vehicle/track_cmd_vel_bridge.py)
+           before the twist is republished to /track_cmd_vel. If this term
+           is ever touched, track_cmd_vel_bridge.py's rotation must be
+           revisited (and removed/adjusted) in the same change. -->
       <gazeboXYZToNED degrees="true">0 0 0 180 0 90</gazeboXYZToNED>
       <modelXYZToAirplaneXForwardZDown degrees="true">0 0 0 180 0 0</modelXYZToAirplaneXForwardZDown>
       <imuName>imu_link::imu_sensor</imuName>

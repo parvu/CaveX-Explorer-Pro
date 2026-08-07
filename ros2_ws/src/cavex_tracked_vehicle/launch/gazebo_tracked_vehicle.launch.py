@@ -129,23 +129,19 @@ def generate_launch_description():
         output='screen',
     )
 
-    # gz_bridge: only bridges sensors that actually exist on model.sdf.tracked.
-    # NOTE / real gap found during this task: unlike the abandoned legged-walker
-    # branch's URDF, model.sdf.tracked (Task 4) never got camera or lidar
-    # sensors added -- it only carries over the real BlueBoat's imu_sensor and
-    # navsat_sensor. The brief's Interfaces section (and its Step 2 example
-    # `ros2 topic list | grep -iE "lidar|camera|..."`) assumes those sensors
-    # exist; they don't, and adding them is an SDF-authoring change out of
-    # Task 7's scope (its own instructions restrict committed model.sdf.tracked
-    # changes to the URDF/robot_description and absolute-path fixes only).
-    # `ponytail:` deferred -- add camera/lidar <sensor> blocks to
-    # model.sdf.tracked in a follow-up task if/when downstream SLAM/perception
-    # work actually needs them; /lidar/points and /camera/... are NOT bridged
-    # here because there is nothing gz-transport-side to bridge.
+    # gz_bridge: post-Task-7-review Finding 1 fix -- model.sdf.tracked now has
+    # real lidar_link/camera_link <sensor> blocks (added alongside this launch
+    # file change), so their gz-transport topics are bridged here too.
     #
-    # Topic names below re-verified empirically (Step 2) rather than assumed,
-    # per this project's established gz-sim topic-naming gotcha (<topic>
-    # overrides / sensor scoping don't reliably follow the naive convention).
+    # Topic names below re-verified empirically (Step 2, and again live for
+    # this fix) rather than assumed, per this project's established gz-sim
+    # topic-naming gotcha (<topic> overrides / sensor scoping don't reliably
+    # follow the naive convention). Specifically, gz-sim's gpu_lidar sensor
+    # publishes a gz.msgs.LaserScan on the bare <topic> name (here,
+    # /lidar/points) and auto-appends "/points" for the actual
+    # gz.msgs.PointCloudPacked point cloud -- same real gotcha the abandoned
+    # cavex-legged-walker-phase1 branch's gazebo_walker.launch.py already
+    # documented and worked around; reproduced here rather than assumed.
     gz_bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
@@ -154,6 +150,13 @@ def generate_launch_description():
             # uses gz-sim's default scoped sensor-topic convention.
             f'/world/cavex_world/model/{VEHICLE_MODEL_NAME}/link/imu_link/sensor/imu_sensor/imu'
             '@sensor_msgs/msg/Imu[gz.msgs.IMU',
+            # lidar_sensor/camera_sensor both set an explicit <topic> override
+            # in model.sdf.tracked, so these are the bare override names (plus
+            # the lidar's real auto-appended "/points" suffix), not the
+            # /world/.../sensor/... scoped convention imu_sensor uses above.
+            '/lidar/points/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
+            '/camera/color@sensor_msgs/msg/Image[gz.msgs.Image',
+            '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
             # World-broadcast pose topic (always present in gz-sim8) -- real
             # ground truth, world-frame, all models. Pose_V -> PoseArray, same
             # pattern as the abandoned branch's ground-truth pose bridge;
@@ -178,6 +181,9 @@ def generate_launch_description():
         ],
         remappings=[
             (f'/world/cavex_world/model/{VEHICLE_MODEL_NAME}/link/imu_link/sensor/imu_sensor/imu', '/imu'),
+            ('/lidar/points/points', '/lidar/points'),
+            ('/camera/color', '/camera/color/image_raw'),
+            ('/camera/camera_info', '/camera/color/camera_info'),
         ],
         output='screen',
     )
