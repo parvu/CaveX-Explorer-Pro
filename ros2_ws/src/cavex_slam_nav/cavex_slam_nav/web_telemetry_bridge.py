@@ -30,8 +30,17 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float64
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import LaserScan, JointState
 from geometry_msgs.msg import PoseStamped
+from visualization_msgs.msg import MarkerArray
+
+# Task 5's real, established joint limits for the tracked vehicle's
+# retract joints (see model.sdf.tracked): 0.0 rad = tracks deployed,
+# 1.4 rad = tracks fully retracted. Anything meaningfully between the
+# two is a track in motion.
+TRACK_DEPLOYED_POS = 0.0
+TRACK_RETRACTED_POS = 1.4
+TRACK_STATE_TOLERANCE = 0.05
 
 
 def yaw_from_quaternion(q):
@@ -60,6 +69,9 @@ class WebTelemetryBridge(Node):
             'ate_rmse': None,
             'lidar_ranges': None,
             'nav_goal': None,
+            'tracked_vehicle_gt': None,
+            'frontier_count': None,
+            'track_state': None,
         }
 
         self.create_subscription(Odometry, '/odom', self._gt_cb, best_effort)
@@ -69,6 +81,13 @@ class WebTelemetryBridge(Node):
         self.create_subscription(LaserScan, '/lidar/scan', self._scan_cb, best_effort)
         self.create_subscription(Float64, '/cavex/nav/distance_remaining', self._nav_dist_cb, 10)
         self.create_subscription(PoseStamped, '/cavex/nav/goal', self._nav_goal_cb, 10)
+        # Tracked BlueBoat-like vehicle (Tasks 5/12/13): real ground-truth
+        # odom, explore_lite's real frontier markers (computed from Nav2's
+        # costmap, independent of whether ArduPilot ever arms -- see
+        # task-14-report.md), and the two track-retraction joints.
+        self.create_subscription(Odometry, '/odom_ground_truth', self._tracked_vehicle_gt_cb, best_effort)
+        self.create_subscription(MarkerArray, '/explore/frontiers', self._frontiers_cb, 10)
+        self.create_subscription(JointState, '/joint_states', self._track_state_cb, 10)
 
         self.goal_pub = self.create_publisher(PoseStamped, '/cavex/nav/goal', 10)
 
@@ -118,6 +137,30 @@ class WebTelemetryBridge(Node):
         goal = (self._latest['nav_goal'] or {})
         goal['distance_remaining'] = msg.data
         self._latest['nav_goal'] = goal
+
+    def _tracked_vehicle_gt_cb(self, msg: Odometry):
+        self._latest['tracked_vehicle_gt'] = self._pose_dict(msg)
+
+    def _frontiers_cb(self, msg: MarkerArray):
+        # explore_lite republishes this MarkerArray from its own frontier
+        # search over Nav2's costmap -- real frontier count, not derived
+        # from anything ArduPilot-specific.
+        self._latest['frontier_count'] = len(msg.markers)
+
+    def _track_state_cb(self, msg: JointState):
+        try:
+            left = msg.position[msg.name.index('left_track_retract_joint')]
+            right = msg.position[msg.name.index('right_track_retract_joint')]
+        except ValueError:
+            return  # this JointState doesn't include the track joints
+        avg = (left + right) / 2.0
+        if abs(avg - TRACK_DEPLOYED_POS) < TRACK_STATE_TOLERANCE:
+            state = 'deployed'
+        elif abs(avg - TRACK_RETRACTED_POS) < TRACK_STATE_TOLERANCE:
+            state = 'retracted'
+        else:
+            state = 'moving'
+        self._latest['track_state'] = state
 
     def _tick(self):
         self._post_telemetry()
