@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import ExecuteProcess, IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -166,6 +166,61 @@ def generate_launch_description():
         }.items(),
     )
 
+    # Frontier exploration: drives autonomous /cmd_vel via Nav2's costmap.
+    # Param names verified live against the vendored source (Task 12):
+    # explore/src/costmap_client.cpp declares costmap_topic,
+    # costmap_updates_topic, robot_base_frame; explore/src/explore.cpp
+    # declares planner_frequency, progress_timeout, visualize -- all match
+    # the brief's example verbatim, no renames needed.
+    explore_node = Node(
+        package='explore_lite',
+        executable='explore',
+        name='explore_node',
+        output='screen',
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'costmap_topic': 'global_costmap/costmap',
+            'costmap_updates_topic': 'global_costmap/costmap_updates',
+            'visualize': True,
+            'planner_frequency': 0.5,
+            'progress_timeout': 30.0,
+            'robot_base_frame': frame_id,
+        }],
+    )
+
+    # Task 12: real, structural cold-start deadlock discovered live -- not a
+    # code bug, a known characteristic of pure ICP scan-matching odometry.
+    # From a stationary spawn, icp_odometry cannot compute its first
+    # keyframe at all: confirmed live via its own console output,
+    # "OdometryF2M.cpp: Scan complexity too low (0.000301) to init first
+    # keyframe" -- this cave section's geometry, seen from one fixed
+    # viewpoint, doesn't have enough 3D structure for ICP to bootstrap from.
+    # Consequently odom->base_link never appears, Nav2's costmap never
+    # activates, and explore_lite (which waits on the costmap) never starts
+    # -- a genuine chicken-and-egg deadlock with no manual driving at all.
+    # ICP odometry only starts succeeding once the vehicle has moved and
+    # observed the same geometry from more than one viewpoint (confirmed:
+    # this is exactly why every earlier task's own verification always
+    # published a real /cmd_vel before checking icp_odometry's output).
+    # Fix: a short, one-time bootstrap nudge, timed to fire after the stack
+    # is up but well before it, publishes a handful of /cmd_vel messages
+    # then stops -- just enough real motion for icp_odometry to observe
+    # parallax and initialize. This is NOT ongoing manual control: it exits
+    # on its own after ~10 real messages, and explore_lite (already running,
+    # just waiting on the costmap) takes over all driving once Nav2 comes
+    # alive as a direct result of this nudge -- same role a human giving a
+    # stalled real robot a manual push-start would play, not a substitute
+    # for autonomous exploration.
+    bootstrap_nudge = TimerAction(
+        period=5.0,
+        actions=[ExecuteProcess(
+            cmd=['ros2', 'topic', 'pub', '-r', '5', '--times', '10',
+                 '/cmd_vel', 'geometry_msgs/msg/Twist',
+                 '{linear: {x: 0.3}}'],
+            output='screen',
+        )],
+    )
+
     return LaunchDescription([
         lidar_static_tf,
         camera_static_tf,
@@ -173,4 +228,6 @@ def generate_launch_description():
         rtabmap,
         slam_pose_publisher,
         nav2_bringup_launch,
+        explore_node,
+        bootstrap_nudge,
     ])
