@@ -20,6 +20,7 @@
   <depend>trajectory_msgs</depend>
   <depend>builtin_interfaces</depend>
   <depend>ardupilot_msgs</depend>
+  <depend>cavex_slam_nav</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
