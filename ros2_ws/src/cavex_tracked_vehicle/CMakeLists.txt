@@ -14,6 +14,7 @@ find_package(ros_gz_bridge REQUIRED)
 find_package(ros_gz_sim REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(ardupilot_msgs REQUIRED)
 
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
@@ -30,6 +31,8 @@ install(DIRECTORY
 # Install Python nodes
 install(PROGRAMS
   cavex_tracked_vehicle/track_retract_control.py
+  cavex_tracked_vehicle/cmd_vel_to_ardupilot.py
+  cavex_tracked_vehicle/track_cmd_vel_bridge.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

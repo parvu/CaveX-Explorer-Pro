@@ -9,6 +9,11 @@ coverage/
 ros2_ws/install/
 ros2_ws/log/
 ros2_ws/cavex_ate_runs.csv
+ros2_ws/eeprom.bin
+ros2_ws/mav.parm
+ros2_ws/mav.tlog
+ros2_ws/mav.tlog.raw
+ros2_ws/logs/
 .local-deps/
 __pycache__/
 *.pyc
