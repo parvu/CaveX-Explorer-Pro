@@ -503,8 +503,18 @@
            project's existing convention of worktree-absolute paths (see ardupilot_gazebo_env.sh).
            ponytail: hardcoded to this worktree, not portable across machines/CI -- if this ever
            needs to run outside this checkout, template it (e.g. a launch file substituting
-           FindPackageShare('cavex_tracked_vehicle') before spawning) instead of a literal path. -->
-      <parameters>/home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/ros2_ws/src/cavex_tracked_vehicle/config/cavex_tracked_vehicle_ros2_control.yaml</parameters>
+           FindPackageShare('cavex_tracked_vehicle') before spawning) instead of a literal path.
+           Task 7 did exactly that: gazebo_tracked_vehicle.launch.py reads this checked-in file
+           at launch time and replaces the placeholder token in the <parameters> tag below (see
+           its literal value there -- not repeated here in the comment, since this file is
+           processed with a whole-file string .replace() and a second literal occurrence here
+           would get mangled too) with a real FindPackageShare('cavex_tracked_vehicle')-resolved
+           path, writing the result to a
+           generated temp file that is what actually gets spawned. This file itself is now a
+           template (the token is not a valid path -- direct `gz sim model.sdf.tracked`
+           throwaway loading, as Task 5 did for verification, needs the same substitution done
+           by hand first, or just launch gazebo_tracked_vehicle.launch.py instead). -->
+      <parameters>__ROS2_CONTROL_PARAMS_PATH__</parameters>
       <position_proportional_gain>20.0</position_proportional_gain>
     </plugin>
 

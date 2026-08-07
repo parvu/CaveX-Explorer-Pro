@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<!-- Launch-time-only stub, NOT the vehicle's real model. The real vehicle is
+     model.sdf.tracked (native SDF, spawned directly, already contains its own
+     SDF-embedded <ros2_control> tags).
+
+     Task 5's real, reproduced finding: gz_ros2_control::GazeboSimROS2ControlPlugin
+     still calls controller_manager::ControllerManager::robot_description_callback,
+     which blocks forever waiting for an external actor to publish a URDF (not the
+     SDF) on /robot_description with matching <ros2_control> joint/interface names --
+     contradicting gz_ros2_control's own upstream docs, which claim the SDF-embedded
+     tags are enough. Without this, joint_state_broadcaster/track_retract_controller
+     never initialize and the retraction joints are never actuatable, silently.
+
+     This URDF exists only to be published on /robot_description by
+     robot_state_publisher so that wait is satisfied. It intentionally does not
+     replicate the real hull geometry/inertia/meshes -- gz_ros2_control's
+     ResourceManager only reads the <ros2_control> block plus enough kinematic
+     structure (base_link + the two joints) to build its interface list; it never
+     drives simulation physics for this URDF (model.sdf.tracked's SDF already
+     defines all real physics/plugins independently). -->
+<robot name="cavex_tracked_blueboat">
+  <link name="base_link"/>
+
+  <link name="left_track_retract_mount"/>
+  <joint name="left_track_retract_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="left_track_retract_mount"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="0.0" upper="1.4" effort="50" velocity="1.0"/>
+  </joint>
+
+  <link name="right_track_retract_mount"/>
+  <joint name="right_track_retract_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="right_track_retract_mount"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="0.0" upper="1.4" effort="50" velocity="1.0"/>
+  </joint>
+
+  <ros2_control name="GazeboSimSystem" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <joint name="left_track_retract_joint">
+      <command_interface name="position">
+        <param name="min">0.0</param>
+        <param name="max">1.4</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="right_track_retract_joint">
+      <command_interface name="position">
+        <param name="min">0.0</param>
+        <param name="max">1.4</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+</robot>

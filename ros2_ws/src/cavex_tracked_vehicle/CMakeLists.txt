@@ -21,6 +21,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 # Install launch files, URDFs, Worlds, config, and models
 install(DIRECTORY
+  launch
   urdf
   worlds
   config
