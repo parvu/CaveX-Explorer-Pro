@@ -52,8 +52,17 @@ class TrackCmdVelBridge(Node):
         # BEST_EFFORT and matches.
         self.create_subscription(
             TwistStamped, '/ap/twist/filtered', self._cb, qos_profile_sensor_data)
+        self._got_first_msg = False
+        self.get_logger().info(
+            "track_cmd_vel_bridge ready: relaying /ap/twist/filtered -> "
+            "/track_cmd_vel (ros_gz_bridge then forwards this to "
+            "/model/cavex_tracked_blueboat/cmd_vel).")
 
     def _cb(self, msg: TwistStamped):
+        if not self._got_first_msg:
+            self._got_first_msg = True
+            self.get_logger().info(
+                "First /ap/twist/filtered message received; bridge is live.")
         self.pub.publish(msg.twist)
 
 

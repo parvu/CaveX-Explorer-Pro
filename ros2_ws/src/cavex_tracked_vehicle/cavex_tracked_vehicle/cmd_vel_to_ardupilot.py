@@ -38,22 +38,79 @@ class CmdVelToArduPilot(Node):
         super().__init__('cmd_vel_to_ardupilot')
         self.pub = self.create_publisher(TwistStamped, '/ap/cmd_vel', 10)
         self.create_subscription(Twist, '/cmd_vel', self._cb, 10)
+        # Each of these becomes True only once its service call is confirmed
+        # (via the response's success field) to have actually succeeded --
+        # never assumed just because the request was dispatched. The
+        # corresponding "_pending" flag prevents re-sending a request while
+        # one is already in flight. Until both "_set"/"_armed" are True,
+        # _ensure_armed_and_guided retries on every subsequent /cmd_vel.
+        self._mode_set = False
+        self._mode_pending = False
         self._armed = False
+        self._armed_pending = False
         self.arm_client = self.create_client(ArmMotors, '/ap/arm_motors')
         self.mode_client = self.create_client(ModeSwitch, '/ap/mode_switch')
+        self.get_logger().info(
+            "cmd_vel_to_ardupilot ready: relaying /cmd_vel -> /ap/cmd_vel; "
+            "will arm + set Rover GUIDED via /ap/arm_motors and "
+            "/ap/mode_switch on first /cmd_vel (retried until confirmed).")
 
     def _ensure_armed_and_guided(self):
-        if self._armed:
+        if self._mode_set and self._armed:
             return
-        if self.mode_client.wait_for_service(timeout_sec=1.0):
-            req = ModeSwitch.Request()
-            req.mode = ROVER_MODE_GUIDED
-            self.mode_client.call_async(req)
-        if self.arm_client.wait_for_service(timeout_sec=1.0):
-            req = ArmMotors.Request()
-            req.arm = True
-            self.arm_client.call_async(req)
-        self._armed = True
+        if not self._mode_set and not self._mode_pending:
+            if self.mode_client.wait_for_service(timeout_sec=1.0):
+                req = ModeSwitch.Request()
+                req.mode = ROVER_MODE_GUIDED
+                self._mode_pending = True
+                self.mode_client.call_async(req).add_done_callback(
+                    self._on_mode_switch_response)
+            else:
+                self.get_logger().warn(
+                    "/ap/mode_switch service not available; will retry on "
+                    "next /cmd_vel.")
+        if not self._armed and not self._armed_pending:
+            if self.arm_client.wait_for_service(timeout_sec=1.0):
+                req = ArmMotors.Request()
+                req.arm = True
+                self._armed_pending = True
+                self.arm_client.call_async(req).add_done_callback(
+                    self._on_arm_response)
+            else:
+                self.get_logger().warn(
+                    "/ap/arm_motors service not available; will retry on "
+                    "next /cmd_vel.")
+
+    def _on_mode_switch_response(self, future):
+        self._mode_pending = False
+        try:
+            resp = future.result()
+        except Exception as exc:
+            self.get_logger().error(f"ModeSwitch service call failed: {exc}")
+            return
+        if resp.status:
+            self._mode_set = True
+            self.get_logger().info(
+                f"ArduPilot mode set to GUIDED (curr_mode={resp.curr_mode}).")
+        else:
+            self.get_logger().warn(
+                f"ArduPilot mode switch to GUIDED failed (status=False, "
+                f"curr_mode={resp.curr_mode}); will retry on next /cmd_vel.")
+
+    def _on_arm_response(self, future):
+        self._armed_pending = False
+        try:
+            resp = future.result()
+        except Exception as exc:
+            self.get_logger().error(f"ArmMotors service call failed: {exc}")
+            return
+        if resp.result:
+            self._armed = True
+            self.get_logger().info("ArduPilot armed successfully.")
+        else:
+            self.get_logger().warn(
+                "ArduPilot arm request failed (result=False); will retry "
+                "on next /cmd_vel.")
 
     def _cb(self, msg: Twist):
         self._ensure_armed_and_guided()
