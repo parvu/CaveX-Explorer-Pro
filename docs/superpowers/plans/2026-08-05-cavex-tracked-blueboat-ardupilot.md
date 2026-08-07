@@ -892,7 +892,7 @@ git commit -m "Add full launch file: spawn + bridge the tracked vehicle, real Ar
 - Modify: `README.md` (third-party asset provenance/attribution section — the MIT license and citation must live in the repo, not only in this plan)
 
 **Interfaces:**
-- Produces: a real, static, textured cave mesh in `cavex_world.world` with **documented world-frame bounds x ∈ [-75, +75], y ∈ [-51, +51], z ∈ [0, +33]** (the mesh's real 150 m length × 102 m width × 33 m height, placed by the deterministic rule in Step 4). Every later task's coordinates derive from these bounds:
+- Produces: a real, static, textured cave mesh in `cavex_world.world`. **As actually built (Task 8 completion, commit `8882a214`): x ∈ [-75.17, +75.17], y ∈ [-51.16, +51.16], z ∈ [0, +36.18]** — real height 36.18 m, >1 m over the nominal 33 m this plan originally assumed (x/y matched nominal within ~0.2 m). No downstream coordinates needed adjustment for this: every task below that references these bounds uses only x/y (Task 9's obstacles, Task 19's `WATER_BOUNDARY_X`) or a floor-relative z (Task 9's z=8 drop height, Task 16's z=4.0 water surface) — none depends on the total ceiling height. Every later task's coordinates derive from these bounds:
   - **Dry section (tracked vehicle): x ∈ [-70, 0], y ∈ [-45, +45]** — Task 9's obstacles and Task 7's vehicle spawn live here.
   - **Transition passage: x ∈ [0, +10]** — the tracked vehicle can approach but not enter the water.
   - **Water section (BlueROV2): x ∈ [+10, +70], y ∈ [-45, +45]**, water surface at **z = 4.0** — Task 16's water region and Task 19's `WATER_BOUNDARY_X = 10.0`.
@@ -1606,7 +1606,7 @@ Expected: the real vendored `model.sdf` parses with its `Hydrodynamics` plugin p
 
 - [ ] **Step 2: Add a flooded water region to `cavex_world.world`**
 
-Use Task 8's re-derived real mesh bounds: the cave occupies `x ∈ [-75, +75]`, `y ∈ [-51, +51]`, `z ∈ [0, +33]`; the dry section is `x ∈ [-70, 0]`; the water section is **`x ∈ [+10, +70]`, `y ∈ [-45, +45]`, water surface at `z = 4.0`** (the `x ∈ [0, +10]` strip between them is the transition passage the tracked vehicle approaches but never enters under its own power). Add the water surface plane centred on that region:
+Use Task 8's re-derived real mesh bounds (as actually built, commit `8882a214`): the cave occupies `x ∈ [-75.17, +75.17]`, `y ∈ [-51.16, +51.16]`, `z ∈ [0, +36.18]` (real height 36.18 m, not the nominal 33 m — does not affect anything below, since the water surface height is floor-relative, not ceiling-relative); the dry section is `x ∈ [-70, 0]`; the water section is **`x ∈ [+10, +70]`, `y ∈ [-45, +45]`, water surface at `z = 4.0`** (the `x ∈ [0, +10]` strip between them is the transition passage the tracked vehicle approaches but never enters under its own power). Add the water surface plane centred on that region:
 
 ```xml
 <model name="water_surface">
