@@ -629,16 +629,20 @@
       <position_proportional_gain>20.0</position_proportional_gain>
     </plugin>
 
-    <!-- hydrodynamics plugin -->
-    <plugin name="gz::sim::systems::Hydrodynamics" 
-        filename="gz-waves1-hydrodynamics-system">
-        <enable>cavex_tracked_blueboat::base_link</enable>
-        <hydrodynamics>
-          <damping_on>1</damping_on>
-          <viscous_drag_on>1</viscous_drag_on>
-          <pressure_drag_on>1</pressure_drag_on>
-        </hydrodynamics>
-    </plugin>
+    <!-- Hydrodynamics plugin (gz-waves1-hydrodynamics-system) removed: real, root-caused
+         finding, not a nicety. It's the original BlueBoat's water-buoyancy physics,
+         irrelevant for this tracked, land-only variant that never enters water under its
+         own power (Task 4 removed the motor/Thruster plugins for the same reason but missed
+         this one). Its shared library isn't installed in this environment
+         ("Failed to load system plugin [gz-waves1-hydrodynamics-system]: Could not find
+         shared library", confirmed live in gz sim's own console output), and because it was
+         listed immediately before ArduPilotPlugin in this file, its load failure was
+         silently aborting ArduPilotPlugin's own loading too -- ArduPilotPlugin never
+         initialized, so ArduPilot's DDS bridge (/ap/arm_motors, /ap/mode_switch) never had a
+         live physics-side FDM connection behind it, explaining the "services visible in the
+         ROS2 graph but every call hangs forever" symptom investigated at length across
+         Tasks 11/12 and this dedicated investigation.
+    -->
 
       <!-- ardupilot plugin
         The original BlueBoat's <control channel="..."> blocks (motor_port_joint /
