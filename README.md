@@ -106,7 +106,7 @@ any real sensor or ROS2 topic — don't wire them up as if they were.
 
 ## Phase 1: Tracked BlueBoat-like Vehicle + BlueROV2
 
-Phase 1 uses a BlueBoat-hulled tracked ground vehicle under ArduPilot Rover
+Complete and merged into `main`. Phase 1 uses a BlueBoat-hulled tracked ground vehicle under ArduPilot Rover
 (ArduRover) control for the dry cave section, carrying a BlueROV2 as
 physical cargo mounted just above its deck. `vehicle_switch_node.py`
 watches the tracked vehicle's real ground truth and, on crossing the real
@@ -135,7 +135,7 @@ own separate, unresolved limitation — see "BlueROV2 / ArduSub" below;
 `vehicle_switch_node.py` does not start or manage ArduSub itself, by
 explicit design.
 
-**Build** (from the worktree root):
+**Build** (from the repo root):
 
 ```bash
 cd ros2_ws
