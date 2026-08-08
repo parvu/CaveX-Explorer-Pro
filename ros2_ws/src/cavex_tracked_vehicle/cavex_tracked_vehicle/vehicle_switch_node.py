@@ -40,10 +40,11 @@ from std_msgs.msg import Float64, String
 WATER_BOUNDARY_X = 15.0
 
 # Matches motorized_tether_control.py's own MIN/MAX_PAYOUT_LENGTH bounds --
-# docked short (held still by tether_frame_link's real cradle, see that
-# link's comment in model.sdf.tracked) while dry, paid out to operate once
-# in the water region.
-TETHER_LENGTH_DOCKED = 0.1
+# docked short (pure tether tension, no physical cradle -- see
+# tether_anchor_link's own comment in model.sdf.tracked for why a caged
+# version was tried and reverted) while dry, paid out to operate once in
+# the water region.
+TETHER_LENGTH_DOCKED = 0.15
 TETHER_LENGTH_DEPLOYED = 8.0
 
 

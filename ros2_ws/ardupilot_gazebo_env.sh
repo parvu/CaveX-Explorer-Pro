@@ -60,16 +60,20 @@ export PATH=/home/parvu/CaveX-Explorer-Pro/Micro-XRCE-DDS-Gen/scripts:$PATH
 # real non-zero GPU utilization/VRAM while `gz sim` runs, instead of
 # 0%/0MiB.
 #
-# Re-enabled: an earlier session disabled this by default after it appeared
-# to reliably crash Gazebo's server (~10-20s in) on the real
-# cavex_world.world -- but that testing coincided with an unrelated orphaned
-# `find /` process that had been silently eating 58% CPU for 20+ minutes
-# (load average >12, root-caused and killed later that same session, see
-# gazebo_tracked_vehicle.launch.py's git history). Re-tested on a clean
-# system with GPU rendering back on and the real world stayed up through a
-# full launch+settle+teardown cycle -- the earlier crash looks like it was
-# real system overload starving Gazebo's own watchdog, not a genuine
-# GPU/D3D12 stability problem. If it recurs, check system load (`uptime`)
-# for other runaway processes before assuming this is the cause again.
-export GALLIUM_DRIVER=d3d12
-export MESA_LOADER_DRIVER_OVERRIDE=d3d12
+# Disabled again -- inconclusive, not fixed. History: disabled by default
+# after it appeared to reliably crash Gazebo's server (~10-20s in,
+# "Escalating to SIGKILL on [Gazebo Sim Server]") on the real
+# cavex_world.world. Re-enabled a session later after that crash was
+# suspected to be caused by an unrelated orphaned `find /` process eating
+# 58% CPU during the original test (load average >12) -- retested clean
+# and it stayed up twice. Then crashed again, same signature, with normal
+# system load (~1.3) and no runaway process found. So the "it was just
+# system overload" theory does NOT fully explain it -- the real failure
+# mode still isn't understood, and the crash is apparently intermittent
+# either way. Left disabled since an unreliable renderer is worse than a
+# slower, reliable one for actual work; if picking this back up, treat
+# both theories as unconfirmed and look for a third explanation (timing/
+# race in D3D12's WSL translation layer under this specific heavy world
+# is the remaining real suspect, not yet investigated).
+# export GALLIUM_DRIVER=d3d12
+# export MESA_LOADER_DRIVER_OVERRIDE=d3d12

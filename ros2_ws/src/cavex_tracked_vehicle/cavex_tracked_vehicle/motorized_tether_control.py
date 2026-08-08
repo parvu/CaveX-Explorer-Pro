@@ -45,21 +45,24 @@ BOAT_MODEL_NAME = 'cavex_tracked_blueboat'
 ROV_MODEL_NAME = 'bluerov2'
 GZ_POSE_TOPIC = '/world/cavex_world/pose/info'
 
-# tether_frame_link's top cross bar pose in model.sdf.tracked, relative to
-# base_link -- the tether is fixed to the hull "at the level of the cross
-# bars", not a separate fixture.
-ANCHOR_LOCAL_OFFSET = (-0.5, 0.0, 0.0)
+# tether_anchor_link's real pose in model.sdf.tracked, relative to
+# base_link. x=-0.2 (moved 0.3m forward of an earlier x=-0.5 stern
+# placement).
+ANCHOR_LOCAL_OFFSET = (-0.2, 0.0, 0.05)
 
 # Motorized winch: max reel rate (m/s) and payout length bounds (m).
-# MIN_PAYOUT_LENGTH is deliberately short (not the frame's own physical
-# size) -- it's a taut-tether floor that, combined with tether_frame_link's
-# real mechanical cage, keeps the ROV still while docked in the dry
-# section: the frame alone stops it drifting out of the cage in y/z, and a
-# short taut tether stops it swinging fore/aft inside it (against the real
-# buoyancy the world's z-only Buoyancy plugin applies even here, see
-# tether_frame_link's own comment).
+# MIN_PAYOUT_LENGTH tightened from an earlier 0.3 -- pure tether tension
+# (no physical cradle; a physically-caged version was tried and reverted,
+# real ROV-vs-hull collision geometry bugs made it unreliable, not worth
+# the added complexity for now) means the whole "how still is docked"
+# question comes down to this one number and the spring/damping constants
+# below. 0.3 let the ROV drift ~0.5m under the world's real (if not fully
+# scoped) buoyancy before the earlier session tightened this to 0.1 to
+# match a cradle that's no longer here; 0.15 is a middle ground -- shorter
+# leash than the original loose value, without assuming a cage that isn't
+# there to also help.
 MAX_REEL_RATE = 0.15
-MIN_PAYOUT_LENGTH = 0.1
+MIN_PAYOUT_LENGTH = 0.15
 MAX_PAYOUT_LENGTH = 8.0
 
 # Spring-damper constraint, engaged only once distance > current payout

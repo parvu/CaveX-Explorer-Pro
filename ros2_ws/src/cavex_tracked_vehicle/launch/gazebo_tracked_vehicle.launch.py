@@ -137,56 +137,60 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Tethered BlueROV2, docked in tether_frame_link's real cradle (real
-    # request: no longer rigidly carried cargo -- replaced by
-    # motorized_tether_control.py, a real force-based constraint via the
-    # gz-sim-apply-link-wrench-system world plugin, commanded through
+    # Tethered BlueROV2 (real request: no longer rigidly carried cargo --
+    # replaced by motorized_tether_control.py, a real force-based constraint
+    # via the gz-sim-apply-link-wrench-system world plugin, commanded through
     # /cavex/tether/payout_length_cmd; see model.sdf.tracked's
-    # tether_frame_link comment for the full mechanism and why the old
-    # DetachableJoint carry was replaced). Spawned AFTER the tracked
-    # vehicle, per this session's request (reversed from the original
-    # bluerov2 -> x500 -> boat chain) -- see the spawn-order comment above
-    # LaunchDescription() for why x500 still has to spawn first.
+    # tether_anchor_link comment for why the old DetachableJoint carry was
+    # replaced). Spawned AFTER the tracked vehicle -- see the spawn-order
+    # comment above LaunchDescription().
     #
-    # Position: centered in tether_frame_link's cradle (local x=-0.5, y=0,
-    # matching that link's own pose) so the ROV docks directly inside the
-    # frame rather than dangling loose behind it.
+    # Position: near tether_anchor_link's own pose (local x=-0.2, moved
+    # 0.3m forward of an earlier x=-0.5 stern placement), still clear of
+    # the bow-mounted helipad at x=0.3. x = -35 + (-0.4) = -35.4, y = 0 --
+    # a little further aft than the anchor so the tether starts with some
+    # real slack rather than perfectly taut at t=0
+    # (motorized_tether_control.py's spring-damper force only engages once
+    # the ROV actually drifts past the current payout length, now 0.15m --
+    # a real 0.2m initial offset gives it a gentle initial pull rather
+    # than a large, jolting one).
     #
     # z: aligned so the ROV's own TOP surface sits level with the top of
-    # the hull (the "pontoon hulls" / the cradle's own top cross bar,
-    # local z=0), not its origin. bluerov2/model.sdf's own main-body
-    # collision box is centered at local z=0.06 with half-height 0.0325,
-    # so its top sits 0.06+0.0325=0.0925 above its spawn origin. base_link's
-    # hull collision top is AT its own local z=0 (per the real
-    # bounding-box comment elsewhere in this file), but that is NOT the
-    # same as the tracked vehicle's own spawn z (6.65) here: even spawning
-    # after the boat, the "create" spawn arguments below are static
-    # launch-time numbers, and the hull settles onto cave_floor_patch's
-    # real collision over the first several physics steps after its own
-    # spawn (live-verified, and matching this project's own
-    # already-documented constant, see launch.txt: "Expected z ~6.4
-    # (settled on cave_floor_patch, CAVE_FLOOR_Z=5.9 + hull rest height)")
-    # to rest at world z~6.408, not 6.65. Using the real settled height as
-    # the reference: 6.408 - 0.0925 = 6.3155.
+    # the hull (the "pontoon hulls", per this session's request), not its
+    # origin. bluerov2/model.sdf's own main-body collision box is centered
+    # at local z=0.06 with half-height 0.0325, so its top sits
+    # 0.06+0.0325=0.0925 above its spawn origin. base_link's hull collision
+    # top is AT its own local z=0 (per the real bounding-box comment
+    # elsewhere in this file), but that is NOT the same as the tracked
+    # vehicle's own spawn z (6.65) here: the ROV spawns FIRST (before the
+    # hull exists at all), and the hull settles onto cave_floor_patch's
+    # real collision after its own later spawn, live-verified (and matching
+    # this project's own already-documented constant, see launch.txt:
+    # "Expected z ~6.4 (settled on cave_floor_patch, CAVE_FLOOR_Z=5.9 +
+    # hull rest height)") to rest at world z~6.408, not 6.65. Using the
+    # real settled height as the reference: 6.408 - 0.0925 = 6.3155.
+    # (This is still only accurate at the moment the hull finishes
+    # settling -- the ROV is on a real motorized tether, not rigidly
+    # attached, so real buoyancy is free to drift it away from this
+    # afterward, same as the rest of this file's honest-physics
+    # conventions; not fought with an artificial vertical lock.)
     #
-    # Known caveat, mitigated but not eliminated by tether_frame_link's
-    # real cage: cavex_world.world's Buoyancy plugin applies its
-    # water-density function by world-frame z alone (below z=7.9 ->
-    # density 1000), not scoped to the water region's real x/y extent --
-    # bluerov2 technically experiences simulated underwater buoyancy the
-    # whole time it's docked in the dry section (z~6.3, below that
-    # threshold), not physically correct, still flagged rather than
-    # silently accepted. The frame's own collision (y/z) plus a short taut
-    # tether (motorized_tether_control.py's MIN_PAYOUT_LENGTH) now keep it
-    # mechanically still against that real buoyant force instead of
-    # relying on tether tension alone.
+    # Known caveat, not fully resolved: cavex_world.world's Buoyancy plugin applies
+    # its water-density function by world-frame z alone (below z=7.9 -> density
+    # 1000), not scoped to the water region's real x/y extent -- while under tow
+    # through the dry section (z~6.6, below that threshold), bluerov2
+    # technically experiences simulated underwater buoyancy the whole time, not just
+    # once it actually reaches the water region. This was already true of the old
+    # rigid-carry design too (flagged there for the same reason) -- not introduced
+    # by the tether change, still not physically correct, still flagged rather
+    # than silently accepted.
     spawn_bluerov2 = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'bluerov2', 'model.sdf'),
                    '-name', 'bluerov2',
-                   '-x', '-35.5', '-y', '0', '-z', '6.3155'],
+                   '-x', '-35.4', '-y', '0', '-z', '6.3155'],
         output='screen',
     )
 
@@ -211,11 +215,12 @@ def generate_launch_description():
     # identical launches. Spawning already at the target height removes the
     # free-fall these numbers were about in the first place: there's
     # nothing left to fall before the joint fixes it.)
-    # x = -35 + 0.3 = -34.7 (matching helipad_link's local x offset). Same
-    # spawn-before-parent ordering requirement as bluerov2 above, and the
-    # same placeholder scope: no PX4 SITL/flight-control integration here,
-    # see model.sdf.tracked's own comment on this drone's DetachableJoint
-    # block.
+    # x = -35 + 0.3 = -34.7 (matching helipad_link's local x offset).
+    # Unlike bluerov2 above, x500 still has to spawn BEFORE the boat --
+    # see the spawn-order comment above LaunchDescription(). Same
+    # placeholder scope as before: no PX4 SITL/flight-control integration
+    # here, see model.sdf.tracked's own comment on this drone's
+    # DetachableJoint block.
     spawn_x500_cargo = Node(
         package='ros_gz_sim',
         executable='create',
@@ -351,17 +356,14 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Spawn order (per this session's request -- the ROV now spawns AFTER
-    # the boat, reversed from the original bluerov2 -> x500 -> boat chain):
-    # x500 -> boat -> bluerov2 (+ controller loading, parallel to bluerov2).
-    # x500 still has to spawn before the boat -- unlike bluerov2, it's still
-    # rigidly carried via model.sdf.tracked's own DetachableJoint plugin,
-    # whose Configure() (running when the boat's own model loads) needs the
-    # child model to already exist. bluerov2 has no such constraint now (no
-    # DetachableJoint of its own -- see tether_frame_link's comment), so it
-    # can spawn any time; ordering it after the boat lets its spawn pose be
-    # computed relative to a real hull that already exists, matching this
-    # session's request directly.
+    # Spawn order: x500 -> boat -> bluerov2 (kept from an earlier session,
+    # not reverted by this round's tether-mechanism revert). x500 spawns
+    # before the boat because it's still rigidly DetachableJoint-attached,
+    # whose Configure() (running when the boat's own model loads) needs
+    # the child model to already exist. bluerov2 has no such constraint
+    # (no DetachableJoint of its own) so it spawns after the boat, letting
+    # its spawn pose be computed relative to a real hull that already
+    # exists.
     return LaunchDescription([
         set_plugin_path,
         set_resource_path,

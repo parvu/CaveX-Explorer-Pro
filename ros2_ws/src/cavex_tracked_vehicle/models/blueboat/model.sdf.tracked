@@ -221,6 +221,28 @@
          (box-primitive track geometry -- the real BlueBoat has no track hardware, so there
          is no real mesh/CAD to vendor for these parts). -->
 
+    <!-- Deployment struts (real request: keep the tracks clear of the
+         hull's own solid collision when deployed): each track no longer
+         hangs directly off its retract_mount pivot at a bare -Z offset --
+         a real, visible strut link now carries it, and the strut's own
+         fixed-joint pose to the track adds a real +0.03m OUTBOARD offset
+         (in local y, away from the hull centerline) on top of the
+         original -0.15m drop. base_link's own hull collision occupies its
+         real bounding box down to z=-0.376 (per the mount-height
+         derivation comment elsewhere in this file) and, per this same
+         session's real, live-tested finding while investigating a
+         separate ROV-cradle collision bug, that collision is genuinely
+         SOLID through its whole z-range, not a hollow shell -- so the
+         track's own real clearance margin from the hull's side (mount
+         y=0.35 vs. the hull's own y=0.45 half-width, only 0.10m) was
+         real, not comfortable. The strut's outward push widens that
+         margin at every retract angle, deployed or not.
+         tracks_separation (below, in the TrackedVehicle plugin) is
+         updated from 0.7 to 0.76 to match this new real geometry
+         (0.35+0.03=0.38 per side) -- a plugin parameter this project has
+         previously left silently mismatched from the real geometry it
+         claims to describe would be a real accuracy bug in the skid-steer
+         kinematics, not just cosmetic. -->
     <link name="left_track_retract_mount">
       <pose>-0.05 0.35 -0.2 0 0 0</pose>
       <inertial>
@@ -248,8 +270,26 @@
         </limit>
       </axis>
     </joint>
+    <link name="left_track_strut">
+      <pose relative_to="left_track_retract_mount">0 0.015 -0.075 0 0 0</pose>
+      <inertial>
+        <mass>0.15</mass>
+        <inertia><ixx>0.0005</ixx><iyy>0.0005</iyy><izz>0.0005</izz></inertia>
+      </inertial>
+      <visual name="left_track_strut_visual">
+        <geometry><box><size>0.08 0.03 0.15</size></box></geometry>
+        <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.25 0.25 0.25 1</diffuse></material>
+      </visual>
+      <collision name="left_track_strut_collision">
+        <geometry><box><size>0.08 0.03 0.15</size></box></geometry>
+      </collision>
+    </link>
+    <joint name="left_track_strut_fixed" type="fixed">
+      <parent>left_track_retract_mount</parent>
+      <child>left_track_strut</child>
+    </joint>
     <link name="left_track">
-      <pose relative_to="left_track_retract_mount">0 0 -0.15 0 0 0</pose>
+      <pose relative_to="left_track_retract_mount">0 0.03 -0.15 0 0 0</pose>
       <inertial>
         <mass>1.5</mass>
         <inertia>
@@ -277,6 +317,23 @@
         <material>
           <diffuse>0.1 0.1 0.1 1</diffuse>
         </material>
+      </visual>
+      <!-- Improved track model (real request): idler-wheel end caps,
+           visual only -- the functional collision stays the simple box
+           above (this project's own established, deliberate choice for
+           parts with no real hardware to model against, see the
+           box-primitive comment above this whole assembly). Purely
+           cosmetic, makes the silhouette read as a track instead of a
+           plain plank. -->
+      <visual name="left_track_wheel_fore_visual">
+        <pose>0.28 0 0 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.075</radius><length>0.13</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+      <visual name="left_track_wheel_aft_visual">
+        <pose>-0.28 0 0 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.075</radius><length>0.13</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
       </visual>
     </link>
     <joint name="left_track_fixed" type="fixed">
@@ -320,8 +377,26 @@
         </limit>
       </axis>
     </joint>
+    <link name="right_track_strut">
+      <pose relative_to="right_track_retract_mount">0 -0.015 -0.075 0 0 0</pose>
+      <inertial>
+        <mass>0.15</mass>
+        <inertia><ixx>0.0005</ixx><iyy>0.0005</iyy><izz>0.0005</izz></inertia>
+      </inertial>
+      <visual name="right_track_strut_visual">
+        <geometry><box><size>0.08 0.03 0.15</size></box></geometry>
+        <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.25 0.25 0.25 1</diffuse></material>
+      </visual>
+      <collision name="right_track_strut_collision">
+        <geometry><box><size>0.08 0.03 0.15</size></box></geometry>
+      </collision>
+    </link>
+    <joint name="right_track_strut_fixed" type="fixed">
+      <parent>right_track_retract_mount</parent>
+      <child>right_track_strut</child>
+    </joint>
     <link name="right_track">
-      <pose relative_to="right_track_retract_mount">0 0 -0.15 0 0 0</pose>
+      <pose relative_to="right_track_retract_mount">0 -0.03 -0.15 0 0 0</pose>
       <inertial>
         <mass>1.5</mass>
         <inertia>
@@ -349,6 +424,16 @@
         <material>
           <diffuse>0.1 0.1 0.1 1</diffuse>
         </material>
+      </visual>
+      <visual name="right_track_wheel_fore_visual">
+        <pose>0.28 0 0 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.075</radius><length>0.13</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+      <visual name="right_track_wheel_aft_visual">
+        <pose>-0.28 0 0 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.075</radius><length>0.13</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
       </visual>
     </link>
     <joint name="right_track_fixed" type="fixed">
@@ -587,7 +672,7 @@
       <body_link>base_link</body_link>
       <left_track link="left_track"/>
       <right_track link="right_track"/>
-      <tracks_separation>0.7</tracks_separation> <!-- left/right track mount y=+-0.35 per Task 4 -->
+      <tracks_separation>0.76</tracks_separation> <!-- left/right track mount y=+-0.35, plus the deployment struts' own +-0.03 outboard offset (see the strut comment above this whole assembly) = +-0.38 real track centerline -->
       <max_velocity>2.0</max_velocity>
       <max_acceleration>2.0</max_acceleration>
     </plugin>
@@ -695,8 +780,8 @@
       <imuName>imu_link::imu_sensor</imuName>
     </plugin>
 
-    <!-- Motorized tether + cradle frame: the BlueROV2 is no longer rigidly
-         carried (removed: the old rov_davit_link visual mount and the
+    <!-- Motorized tether mount: the BlueROV2 is no longer rigidly carried
+         (removed: the old rov_davit_link visual mount and the
          gz-sim-detachable-joint-system plugin that fixed it to the deck).
          Real reason for the change -- the old mechanism was a one-way rigid
          attach/detach (see vehicle_switch_node.py's prior docstring): the ROV
@@ -707,77 +792,38 @@
          that pulls the ROV back within a commandable, motor-rate-limited
          payout length whenever the tether goes taut, and applies zero force
          when slack -- bidirectional, and the ROV can swim under its own
-         thrusters the whole time, not just after being paid out.
-
-         tether_frame_link is a real cradle at the stern (opposite end of the
-         hull from the helipad): two vertical posts (y=+-0.20, just outside
-         bluerov2/model.sdf's own real y=[-0.17,0.17] footprint) joined by two
-         horizontal cross bars -- a bottom one at the ROV's own resting
-         bottom height and a top one level with the hull's own top (matching
-         the "align the ROV's top with the hull's top" spawn pose in
-         gazebo_tracked_vehicle.launch.py). Real collision on all four
-         members: the frame physically cages the ROV in y/z (open fore/aft),
-         giving it actual mechanical support while docked in the dry section
-         instead of relying on tether tension alone to fight the world's
-         buoyancy plugin (which applies by z alone, not scoped to the water
-         region's real x/y extent -- see the known-caveat comment elsewhere
-         in this file -- so even "dry" section buoyancy is real and would
-         otherwise float the ROV off a bare tether). The tether itself is
-         fixed to the hull "at the level of the cross bars", per this
-         session's request: motorized_tether_control.py's anchor pose is the
-         TOP cross bar's own location (x=-0.5, y=0, z=0 -- hull-top height),
-         not a separate fixture. -->
-    <link name="tether_frame_link">
-      <pose relative_to="base_link">-0.5 0 0 0 0 0</pose>
+         thrusters the whole time, not just after a one-shot release. This
+         tether_anchor_link is a small, static, visual-only cleat/spool
+         fixture (opposite end of the hull from the helipad, moved 0.3m
+         forward of an earlier x=-0.5 stern placement) marking the real
+         attachment point motorized_tether_control.py computes its anchor
+         pose from (base_link's hull collision bounding box is
+         x:[-0.60,0.59] relative to base_link, per the mount-height
+         derivation comment elsewhere in this file -- x=-0.2 stays well
+         clear of both the stern edge and the bow-mounted helipad at
+         x=0.3). Pure tether tension (no physical cradle) -- a caged
+         version was tried and reverted: real collision-geometry bugs
+         (the cage's own support surfaces ended up embedded inside the
+         hull's own solid collision, unreachable) made it settle
+         unpredictably rather than reliably, not worth the added
+         complexity for now. -->
+    <link name="tether_anchor_link">
+      <pose relative_to="base_link">-0.2 0 0.05 0 0 0</pose>
       <inertial>
-        <mass>0.3</mass>
-        <inertia><ixx>0.002</ixx><iyy>0.002</iyy><izz>0.002</izz></inertia>
+        <mass>0.2</mass>
+        <inertia><ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz></inertia>
       </inertial>
-      <visual name="tether_frame_post_left_visual">
-        <pose>0 0.20 -0.0325 0 0 0</pose>
-        <geometry><box><size>0.02 0.02 0.105</size></box></geometry>
+      <visual name="tether_anchor_visual">
+        <geometry><cylinder><radius>0.03</radius><length>0.08</length></cylinder></geometry>
         <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
       </visual>
-      <collision name="tether_frame_post_left_collision">
-        <pose>0 0.20 -0.0325 0 0 0</pose>
-        <geometry><box><size>0.02 0.02 0.105</size></box></geometry>
-      </collision>
-      <visual name="tether_frame_post_right_visual">
-        <pose>0 -0.20 -0.0325 0 0 0</pose>
-        <geometry><box><size>0.02 0.02 0.105</size></box></geometry>
-        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
-      </visual>
-      <collision name="tether_frame_post_right_collision">
-        <pose>0 -0.20 -0.0325 0 0 0</pose>
-        <geometry><box><size>0.02 0.02 0.105</size></box></geometry>
-      </collision>
-      <!-- Bottom cross bar: the ROV's own real resting-bottom height
-           (top(0) - collision height 0.065 = -0.065). -->
-      <visual name="tether_frame_crossbar_bottom_visual">
-        <pose>0 0 -0.065 1.5708 0 0</pose>
-        <geometry><cylinder><radius>0.012</radius><length>0.40</length></cylinder></geometry>
-        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
-      </visual>
-      <collision name="tether_frame_crossbar_bottom_collision">
-        <pose>0 0 -0.065 1.5708 0 0</pose>
-        <geometry><cylinder><radius>0.012</radius><length>0.40</length></cylinder></geometry>
-      </collision>
-      <!-- Top cross bar: level with the hull's own top (local z=0) -- this
-           is also the tether's real anchor height, see
-           motorized_tether_control.py's ANCHOR_LOCAL_OFFSET. -->
-      <visual name="tether_frame_crossbar_top_visual">
-        <pose>0 0 0 1.5708 0 0</pose>
-        <geometry><cylinder><radius>0.012</radius><length>0.40</length></cylinder></geometry>
-        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
-      </visual>
-      <collision name="tether_frame_crossbar_top_collision">
-        <pose>0 0 0 1.5708 0 0</pose>
-        <geometry><cylinder><radius>0.012</radius><length>0.40</length></cylinder></geometry>
+      <collision name="tether_anchor_collision">
+        <geometry><cylinder><radius>0.03</radius><length>0.08</length></cylinder></geometry>
       </collision>
     </link>
-    <joint name="tether_frame_joint" type="fixed">
+    <joint name="tether_anchor_joint" type="fixed">
       <parent>base_link</parent>
-      <child>tether_frame_link</child>
+      <child>tether_anchor_link</child>
     </joint>
 
     <!-- Helipad, front (bow, +x) of the hull -- placed at x=0.3 (inboard of the
@@ -786,10 +832,10 @@
          own Fuel model) has a visible landing platform. Deck-level (z=0.005,
          matching the hull collision's own real top surface). Flush again (no
          longer raised on a support post) -- that post existed only to clear a
-         BlueROV2 mounted directly underneath it; the ROV has since moved to a
-         tether_anchor_link at the stern (see above), so bow and stern no longer
-         share any footprint and the post is unneeded complexity. Purely a flat
-         marked platform -- no elevator/lowering mechanism. -->
+         BlueROV2 mounted directly underneath it; the ROV has since moved to
+         tether_anchor_link (see above, x=-0.2), which stays clear of this
+         helipad's own footprint so the post is unneeded complexity. Purely a
+         flat marked platform -- no elevator/lowering mechanism. -->
     <link name="helipad_link">
       <pose relative_to="base_link">0.3 0 0.005 0 0 0</pose>
       <inertial>
