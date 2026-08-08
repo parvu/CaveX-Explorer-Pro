@@ -281,6 +281,27 @@ or the tracked vehicle's own control nodes (the pre-existing "waiting for
 predate the handoff, not caused by it) -- confirmed by diffing the stack's
 log output from immediately before to after triggering the handoff.
 
+**Deployment mechanism, helipad, and PX4 x500** — `model.sdf.tracked` adds a
+static davit (deployment crane) fixture near the ROV's mount point (visual
+representation only, not actuated/animated — the real deployment mechanism
+is the `DetachableJoint` plugin, not this fixture) and a real, marked helipad
+at the bow. A second real, vendored model
+(`fuel.gazebosim.org/PX4/models/x500`, CC-BY-4.0) is carried on that helipad
+via its own `DetachableJoint` (`/cavex/x500_release/detach`), placeholder
+scope only — no PX4 SITL/flight-control integration, explicitly future work
+("airpocket exploration"). Live-verified: all three carried bodies (tracked
+vehicle + BlueROV2 + x500) spawn together without a physics crash across
+repeated launches, and a manual x500 detach produced real divergence (it
+fell under gravity once released, while the tracked vehicle itself stayed at
+its normal rest height). **Known limitation, not fully resolved**: exact
+mount alignment (bluerov2's top flush with the deck, x500 sitting precisely
+at the helipad surface) is not perfectly reliable — settled offsets varied
+between otherwise-identical launches (observed range: a few centimeters to
+several tens of centimeters), most likely from real timing variance in when
+each `DetachableJoint` actually engages relative to how long its child free-falls
+first. Never observed to cause a crash or hull-collision overlap across
+multiple extended test launches, but the mounts are best-effort, not exact.
+
 **Honesty caveats** (same standard as the rest of this project): this
 simulation's ground truth is simulator-internal and noiseless — treat any
 ATE/localization numbers as best-case/idealized, not real-sensor-noise
@@ -313,3 +334,19 @@ variant (`model.sdf.tracked`) is a project-authored modification (motors
 removed, track assemblies added) and is labeled "BlueBoat tracked-vehicle
 variant" throughout; it makes no marine/floating capability claim and no
 Blue Robotics endorsement.
+
+**BlueROV2** — `ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/` is
+vendored, unmodified, based on
+[clydemcqueen/bluerov2_gz](https://github.com/clydemcqueen/bluerov2_gz)'s
+real model structure (hull, thrusters, `ArduPilotPlugin` FDM link). Not an
+official Blue Robotics product release; labeled "BlueROV2" as a real vendored
+simulation asset, not a claim of hardware-accuracy beyond what that upstream
+repo itself provides.
+
+**PX4 x500 quadcopter** — `ros2_ws/src/cavex_tracked_vehicle/models/x500/`
+is vendored, unmodified, from
+[fuel.gazebosim.org/PX4/models/x500](https://fuel.gazebosim.org/1.0/PX4/models/x500)
+(CC BY 4.0, author Benjamin Perseghetti). Model of the NXP HoverGames Drone
+development kit (KIT-HGDRONEK66); carried as a placeholder for future
+aerial/"airpocket" exploration work (see the Phase 1 section above) — no PX4
+SITL or flight-control integration is wired up in this phase.

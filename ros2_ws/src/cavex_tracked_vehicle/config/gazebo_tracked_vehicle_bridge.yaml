@@ -71,3 +71,12 @@
   ros_type_name: "std_msgs/msg/Empty"
   gz_type_name: "gz.msgs.Empty"
   direction: ROS_TO_GZ
+
+# Same bridging requirement as the ROV's detach topic above, for the carried
+# x500's own DetachableJoint (model.sdf.tracked) -- placeholder release path
+# for future flight-control integration, not wired to any automatic trigger yet.
+- ros_topic_name: "cavex/x500_release/detach"
+  gz_topic_name: "/cavex/x500_release/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
