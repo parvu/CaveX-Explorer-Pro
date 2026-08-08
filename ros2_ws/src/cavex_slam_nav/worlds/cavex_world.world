@@ -22,15 +22,20 @@
          guessed -- the bluerov2 model.sdf itself has no Buoyancy plugin,
          only Hydrodynamics + 6 Thruster plugins; Buoyancy is a world-level
          plugin in the real upstream repo). above_depth is relative to
-         world-frame z=0, so it's set to 4.0 here (not upstream's 0) to put
-         the water/air interface at this world's real water surface height,
-         matching the water_surface visual pose below and Task 8's re-derived
-         cave-mesh bounds (water section x [10,70], y [-45,45]). -->
+         world-frame z=0, so it's set to match the water_surface model's
+         real pose below. Re-derived from a live probe-drop survey of the
+         actual cave mesh (not the old, unverified whole-AABB-half guess --
+         see water_surface's own comment for the full survey data): the real
+         flooded chamber's floor sits at world z~=0, so above_depth=2.0 puts
+         the water/air interface 2m above that floor (a partial fill, not a
+         full-depth flood -- the chamber's ceiling is unobstructed to at
+         least z=25, confirmed by probes falling completely unimpeded from
+         z=25 all the way to the z~=0 floor). -->
     <plugin filename="gz-sim-buoyancy-system" name="gz::sim::systems::Buoyancy">
       <graded_buoyancy>
         <default_density>1000</default_density>
         <density_change>
-          <above_depth>4.0</above_depth>
+          <above_depth>2.0</above_depth>
           <density>1</density>
         </density_change>
       </graded_buoyancy>
@@ -120,17 +125,41 @@
       <pose>-12 -3 8 0 0 0</pose>
     </include>
 
-    <!-- Flooded water region: water section x [10,70], y [-45,45], surface
-         z=4.0, per Task 8's real re-derived cave-mesh bounds (dry section
-         x [-70,0], transition x [0,10]). Bounding box center 40 0 4.0,
-         plane size 60x90 -- Task 19's WATER_BOUNDARY_X = 10.0 is exactly
-         this region's lower x edge. -->
+    <!-- Flooded water region: re-derived from a LIVE probe-drop survey of
+         the real cave mesh, not the earlier whole-AABB-half guess (a flat
+         x [10,70] y [-45,45] rectangle at z=4.0, which the survey below
+         shows was wrong -- e.g. a probe dropped at x=40,y=0 rested on solid
+         rock at z=7.16, well ABOVE that old z=4.0 "water" surface, meaning
+         much of the old rectangle floated over dry rock or empty space
+         outside the mesh entirely, not a real flooded chamber).
+
+         Survey method: 0.5m probe boxes dropped from z=25 (well above the
+         cave mesh's tallest recorded point, z=36.18) across a grid, entity
+         poses read back from `gz topic -t .../pose/info` once settled.
+         Findings:
+           - y=0 (the cave's nominal centerline) is frequently obstructed by
+             rubble/ledges -- probes there settled at z=6-9 instead of the
+             floor, or drifted several meters sideways off a slope.
+           - y in [2,12], x in [15,65]: every probe (3 x-values x 10
+             y-offsets, 30 points) settled at z~=0.20-0.25 (a 0.5m box's
+             half-height resting on a floor at z~=0) with ZERO drift from
+             its drop (x,y) -- a real, wide, flat, obstacle-free chamber
+             floor at world z~=0, confirmed clear overhead for the full
+             25m drop.
+         Water surface placed at z=2.0 (Buoyancy plugin's above_depth,
+         above): a 2m-deep partial flood of this chamber, well short of
+         its real ~25m+ ceiling clearance -- a real lake within the cave,
+         not a flood to the roof. Region inset slightly from the surveyed
+         bounds for margin: x [17,63], y [3,11], center (40, 7, 2.0),
+         plane size 46 x 8. Task 19's water-boundary handoff (not yet
+         implemented) should use this chamber's real x=17 edge, not the
+         old x=10 guess. -->
     <model name="water_surface">
       <static>true</static>
-      <pose>40 0 4.0 0 0 0</pose>
+      <pose>40 7 2.0 0 0 0</pose>
       <link name="surface">
         <visual name="water_visual">
-          <geometry><plane><size>60 90</size></plane></geometry>
+          <geometry><plane><size>46 8</size></plane></geometry>
           <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
         </visual>
       </link>
