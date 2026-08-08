@@ -112,23 +112,24 @@ def generate_launch_description():
     # model.sdf.tracked, per the path fix above), not the robot_state_publisher
     # URDF stub above (unrelated -- that stub is launch-time-only).
     #
-    # Task 8 update: cavex_world.world's placeholder "dry_cave" box (the
-    # z=2.5-on-top-of-a-solid-box spawn point Task 7 recorded, see
-    # task-7-report.md) is gone, replaced by the real vendored
-    # LTU-RAI/gazebo_cave_world mesh. Re-measured live with Task 8's
-    # probe-drop test (a 0.5m box dropped from z=12 at x=-60, y=0): it
-    # settled at z~=0.25 (box half-height, i.e. the real cave floor is at
-    # z~=0 here) and did NOT fall through or spawn embedded in rock -- the
-    # first (x, y) tried already worked, no grid-walk fallback needed. x/y
-    # moved from the placeholder's -30/0 to this real floor point's -60/0;
-    # z = 0.25 (measured floor/box-rest height) + 0.5 clearance, per this
-    # task's own convention.
+    # Spawn point history: Task 8's original probe-drop test at x=-60, y=0
+    # (a 0.5m box dropped from z=12, settling at z~=0.25) was later found to
+    # have been resting on cavex_world.world's flat ground_plane, not real
+    # cave mesh collision -- the vendored mesh has a genuine, confirmed hole
+    # in floor coverage at that exact spot (zero mesh vertices found within a
+    # 6x6m window there). Re-derived from the mesh's own real vertex data
+    # instead of another probe-drop test (see cavex_world.world's
+    # cave_floor_patch comment for the full derivation): a supplementary
+    # floor collision patch now covers x [-40,70] y [-12,12] at a real,
+    # vertex-confirmed height CAVE_FLOOR_Z=5.9. Spawn moved to x=-35 (inside
+    # that coverage, west of all four dry-section obstacles), z = 5.9 + 0.75
+    # clearance = 6.65.
     spawn_entity = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=['-world', 'cavex_world', '-file', generated_sdf_file,
                    '-name', VEHICLE_MODEL_NAME,
-                   '-x', '-60', '-y', '0', '-z', '0.75'],
+                   '-x', '-35', '-y', '0', '-z', '6.65'],
         output='screen',
     )
 
