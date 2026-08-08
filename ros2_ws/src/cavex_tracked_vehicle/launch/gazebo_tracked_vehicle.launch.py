@@ -149,13 +149,32 @@ def generate_launch_description():
     #
     # Position: moved to the stern (local x=-0.5, matching
     # tether_anchor_link's own pose) so the ROV and the bow-mounted helipad
-    # no longer share a footprint, per this session's reposition request.
-    # Spawned a little further aft and slightly low (x local -0.9, z local
-    # -0.05) so the tether starts with some real slack rather than
-    # perfectly taut at t=0 -- motorized_tether_control.py's spring-damper
+    # no longer share a footprint, per an earlier reposition request.
+    # x = -35 + (-0.9) = -35.9, y = 0 -- a little further aft than the
+    # anchor so the tether starts with some real slack rather than
+    # perfectly taut at t=0 (motorized_tether_control.py's spring-damper
     # force only engages once the ROV actually drifts past the current
-    # payout length. x = -35 + (-0.9) = -35.9, y = 0,
-    # z = 6.65 + (-0.05) = 6.6.
+    # payout length).
+    #
+    # z: aligned so the ROV's own TOP surface sits level with the top of
+    # the hull (the "pontoon hulls", per this session's request), not its
+    # origin. bluerov2/model.sdf's own main-body collision box is centered
+    # at local z=0.06 with half-height 0.0325, so its top sits
+    # 0.06+0.0325=0.0925 above its spawn origin. base_link's hull collision
+    # top is AT its own local z=0 (per the real bounding-box comment
+    # elsewhere in this file), but that is NOT the same as the tracked
+    # vehicle's own spawn z (6.65) here: the ROV spawns FIRST (before the
+    # hull exists at all), and the hull settles onto cave_floor_patch's
+    # real collision after its own later spawn, live-verified (and matching
+    # this project's own already-documented constant, see launch.txt:
+    # "Expected z ~6.4 (settled on cave_floor_patch, CAVE_FLOOR_Z=5.9 +
+    # hull rest height)") to rest at world z~6.408, not 6.65. Using the
+    # real settled height as the reference: 6.408 - 0.0925 = 6.3155.
+    # (This is still only accurate at the moment the hull finishes
+    # settling -- the ROV is on a real motorized tether, not rigidly
+    # attached, so real buoyancy is free to drift it away from this
+    # afterward, same as the rest of this file's honest-physics
+    # conventions; not fought with an artificial vertical lock.)
     #
     # Known caveat, not fully resolved: cavex_world.world's Buoyancy plugin applies
     # its water-density function by world-frame z alone (below z=7.9 -> density
@@ -172,28 +191,31 @@ def generate_launch_description():
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'bluerov2', 'model.sdf'),
                    '-name', 'bluerov2',
-                   '-x', '-35.9', '-y', '0', '-z', '6.6'],
+                   '-x', '-35.9', '-y', '0', '-z', '6.3155'],
         output='screen',
     )
 
     # Carried PX4 x500 quadcopter (real, vendored fuel.gazebosim.org/PX4/models/x500)
     # on model.sdf.tracked's real helipad_link (front of the hull, local x=0.3,
-    # z=0.005 deck-top -- flush again now that the BlueROV2 no longer mounts
-    # underneath it, see helipad_link's own comment). x500's own real
-    # landing-gear feet sit at local z~=-0.227 relative to its own origin
-    # (models/x500/model.sdf's real collision box poses) -- mounting the
-    # origin at deck-top(0.005) + 0.227 puts the feet right at the helipad
-    # surface in principle, but this model spawns SECOND, still BEFORE the
-    # tracked vehicle itself (OnProcessExit chain: bluerov2 -> x500 ->
-    # tracked vehicle), and live-verified the DetachableJoint does NOT
-    # preserve the exact spawn-time offset -- it free-falls under gravity
-    # for however long elapses before the parent model's plugin actually
-    # attaches it, losing real height in a way that varied between two
-    # otherwise-identical launches this session (0.237m -> 0.014m observed
-    # once, uncomfortably close to the hull's own collision top). Given
-    # +0.3m of headroom (well beyond the observed worst-case loss)
-    # empirically kept the settled offset safely positive across a retest.
-    # World z = 6.65 (tracked vehicle spawn) + 0.237 + 0.3 margin = 7.187;
+    # z=0.005 deck-top -- flush, no support post, see helipad_link's own
+    # comment). helipad_deck_visual/collision is a 0.01-thick disc centered
+    # on that link origin (no further local offset), so its own top surface
+    # is at local z=0.005+0.005=0.01 -- world z = 6.65 (tracked vehicle
+    # spawn) + 0.01 = 6.66.
+    #
+    # x500's own real landing-gear feet sit at local z~=-0.227 relative to
+    # its own origin (models/x500/model.sdf's real collision box poses), so
+    # spawning its origin at 6.66 + 0.227 = 6.887 puts the feet exactly at
+    # the helipad surface -- per this session's request that the legs
+    # actually sit on the pad, this is now spawned at that exact resting
+    # height rather than dropped onto it from above. (An earlier version of
+    # this spawn added +0.3m of drop margin to defend against the
+    # DetachableJoint not preserving the exact spawn-time offset if the
+    # model free-fell before the plugin attached it -- live-verified that
+    # settle height varied 0.237m -> 0.014m of loss between otherwise-
+    # identical launches. Spawning already at the target height removes the
+    # free-fall these numbers were about in the first place: there's
+    # nothing left to fall before the joint fixes it.)
     # x = -35 + 0.3 = -34.7 (matching helipad_link's local x offset). Same
     # spawn-before-parent ordering requirement as bluerov2 above, and the
     # same placeholder scope: no PX4 SITL/flight-control integration here,
@@ -205,7 +227,7 @@ def generate_launch_description():
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'x500', 'model.sdf'),
                    '-name', 'x500',
-                   '-x', '-34.7', '-y', '0', '-z', '7.187'],
+                   '-x', '-34.7', '-y', '0', '-z', '6.887'],
         output='screen',
     )
 
