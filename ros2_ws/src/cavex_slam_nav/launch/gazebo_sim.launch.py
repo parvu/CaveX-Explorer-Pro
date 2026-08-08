@@ -20,9 +20,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py')
         ),
-        # -s = server only, no gzclient GUI. Visualization now goes to the
-        # web frontend (web_telemetry_bridge.py) instead of a desktop window.
-        launch_arguments={'gz_args': f'-s -r {world_file}'}.items(),
+        launch_arguments={'gz_args': f'-r {world_file}'}.items(),
     )
 
     robot_state_publisher = Node(

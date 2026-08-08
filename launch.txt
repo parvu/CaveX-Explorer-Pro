@@ -1,0 +1,316 @@
+# CaveX-Explorer-Pro — tracked BlueBoat + BlueROV2 (ArduPilot) simulation
+# Worktree: /home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot
+# Run everything from the ros2_ws directory inside that worktree.
+# Visualization: Gazebo's own GUI (section 6) and/or rviz2. No web dashboard needed.
+
+cd /home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/ros2_ws
+
+# ============================================================
+# 0. STATUS — read this first
+# ============================================================
+# FIXED: the long-standing "/ap/arm_motors and /ap/mode_switch appear in the ROS2
+# graph but every call hangs forever" bug (mavproxy.py not on PATH -- fixed in
+# ardupilot_gazebo_env.sh, commit ade749f0).
+#
+# FIXED: the vehicle was resting on the flat, invisible ground_plane at z=0, not the
+# real cave mesh -- the vendored cave_world.obj's own collision has real, confirmed
+# gaps in floor coverage across large areas (a probe dropped at the ORIGINAL spawn
+# x=-60,y=0 fell through completely with ground_plane removed -- zero mesh vertices
+# in a 6x6m window there). Fixed by adding a real supplementary floor collision
+# (cave_floor_patch, z=5.9, derived from the mesh's own dense vertex data across
+# x=[-37,65]) and moving the spawn, all 4 obstacles, and the water region onto it.
+# ground_plane moved to z=-200 as a pure safety net. See cavex_world.world's own
+# comments for the full derivation. Spawn x is now -35, not -60.
+#
+# FIXED (major): DDS/--use_sim_time support was completely broken for BOTH ArduPilot
+# instances after a `./waf clean` -- the DDS code-generator tool (microxrceddsgen)
+# was never actually installed in this environment. Rebuilt it from ArduPilot's own
+# fork (https://github.com/ArduPilot/Micro-XRCE-DDS-Gen -- NOT eProsima's upstream,
+# which lacks a custom flag ArduPilot's build requires) and installed to
+# ~/.local/bin/microxrceddsgen (needs JDK 17 to build; the runtime jar works fine
+# under any JRE including 21). Both `ardurover` and `ardusub` binaries have been
+# rebuilt with real, working DDS support:
+#   cd ardupilot && ./waf configure --board sitl --enable-DDS && ./waf rover && ./waf sub
+# ardupilot_gazebo_env.sh's PATH export already covers ~/.local/bin, so this just
+# works once sourced -- no extra step needed for normal launches.
+#
+# STILL BROKEN: explore_lite's autonomous frontier exploration (Task 12) stops
+# itself almost immediately ("No frontiers found, stopping") -- RTAB-Map's published
+# /global_costmap/costmap window doesn't track the robot's real position even though
+# its internal WM is genuinely growing. Drive manually (step 5) instead. See the SDD
+# ledger for the full trail.
+#
+# ALSO FLAKY: icp_odometry's ICP registration bootstrap (needed before
+# /cavex/slam/odom publishes anything, which ATE eval -- section 7 -- depends on)
+# does not always succeed even after well-calibrated bootstrap driving. Symptom:
+# `ros2 topic echo /odom_info --once` shows icp_inliers_ratio staying at 0.0. The
+# obstacle-avoidance cross-check (section 7) only needs /odom_ground_truth (real
+# Gazebo ground truth), NOT /cavex/slam/odom, so it works regardless; only ATE needs
+# a working SLAM estimate.
+#
+# NOT YET WORKING: ArduSub (second instance, for the BlueROV2) arming is rejected
+# and the exact reason can't currently be seen -- MAVLink/SERIAL0 never produces a
+# heartbeat to any client in this environment (confirmed via mavproxy AND a direct
+# pymavlink connection, 30s+ patient waits), so ArduPilot's own rejection-reason
+# messages (routed via MAVLink STATUSTEXT) are unobservable. DDS connectivity, the
+# real Gazebo FDM/JSON physics link, and GUIDED mode-switching (mode=4) ARE all
+# confirmed working (section 8b). Needs a working MAVLink console to diagnose the
+# arm rejection further.
+#
+# DONE (live-verified): BlueROV2 is now carried on the tracked vehicle's deck and
+# released at the water boundary. gazebo_tracked_vehicle.launch.py spawns bluerov2
+# BEFORE the tracked vehicle (so model.sdf.tracked's DetachableJoint plugin finds it
+# already present), mounted +0.03m above the deck (as close to deck-flush as safely
+# achievable without overlapping the hull's own collision). vehicle_switch_node.py
+# (part of the same launch) watches /odom_ground_truth and at x>=15 retracts the
+# tracks + publishes to /cavex/rov_release/detach (bridged gz-transport, see
+# gazebo_tracked_vehicle_bridge.yaml). Live-verified: both spawn without a crash,
+# settle rigidly attached, and a manual detach produces real, growing positional
+# divergence within seconds. Settled mount offset is best-effort, not exact -- the
+# child free-falls a variable, real-timing-dependent amount before the joint
+# actually engages (confirmed by repeated relaunches, never crashed but offset
+# varied). NOT tested: a full real drive from spawn (x=-35) to the water boundary
+# (x=15, ~50m) -- RTF makes that slow: use section 5's drive loop for as long as
+# needed, or manually publish to /cavex/rov_release/detach + /cavex/tracks/command
+# to exercise the mechanism directly without waiting. One-way handoff -- no
+# automatic re-dock/re-attach. ArduSub is NOT started or managed by
+# vehicle_switch_node (explicit scope choice) -- see section 8b for controlling the
+# released BlueROV2 separately.
+#
+# DONE (live-verified): a static davit (deployment crane, NOT actuated -- visual/
+# collision only) near the ROV mount, a helipad at the bow (x=0.3, clear of the
+# camera mast), and a real vendored PX4 x500 quadcopter carried on the helipad via
+# a second DetachableJoint (/cavex/x500_release/detach, also bridged in
+# gazebo_tracked_vehicle_bridge.yaml -- same gz-transport-vs-ROS2 bridging gotcha
+# as the ROV's own detach topic, easy to miss if adding a third carried body).
+# Explicit placeholder scope: x500 has real rotor physics but NO PX4 SITL/MAVLink
+# flight-control wiring yet -- future airpocket-exploration work.
+#
+# FIXED (final whole-branch review, commit a0265c4f): right_track_retract_joint's
+# rotation axis was the same world-frame direction as the left joint's, but
+# left/right mounts are mirror images -- same axis swings them physically opposite
+# ways. Negated the right joint's axis. Functional live re-verification of joint
+# MOTION (not just command routing) was inconclusive in this environment --
+# /track_retract_controller/controller_state showed the command correctly reaching
+# reference=1.4 for both joints, but feedback.positions stayed pinned near 0 for
+# BOTH joints (not just the edited one), pointing to a separate, pre-existing
+# actuation/physics staleness issue, not a regression from this fix. If retraction
+# still doesn't visibly move the tracks, check controller_state's reference vs
+# feedback fields first to tell "command not routing" (would show ref=0) apart from
+# "physics not applying" (ref correct, feedback stuck) -- these need different
+# fixes.
+#
+# FOUND AND FIXED (session hygiene): 10 orphaned track_retract_control.py processes
+# had silently accumulated across one session's many relaunch cycles -- earlier
+# "clean up" sweeps used ps aux greps that matched other process names but missed
+# this one. Likely a real contributor to this project's long-documented recurring
+# DDS/ROS2-graph flakiness (10 competing nodes all named track_retract_control
+# confuses discovery/topic routing). Section 2's grep below already covers
+# "track_retract" -- always check its full output, don't assume a clean launch
+# means no leftovers from a PREVIOUS launch.
+
+# ============================================================
+# 1. Source the environment
+# ============================================================
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+source ardupilot_gazebo_env.sh   # puts ~/.local/bin (mavproxy.py, microxrceddsgen) on PATH
+
+# ============================================================
+# 2. Process hygiene — ALWAYS check before AND after launching
+# ============================================================
+# This environment accumulates orphaned processes and stale FastDDS shared-memory
+# segments extremely easily, especially across repeated launch/kill cycles -- this
+# has repeatedly caused nodes/services to go graph-visible-but-unreachable this
+# project. Prefer FEWER, more patient launch/kill cycles over rapid iteration.
+ps aux | grep -iE "gz sim|ardurover|ardusub|micro_ros_agent|MicroXRCEAgent|rtabmap|icp_odometry|static_transform|robot_state_publisher|cmd_vel_to_ardu|track_cmd_vel|track_retract|parameter_bridge|nav2|controller_server|planner_server|bt_navigator|behavior_server|lifecycle_manager|smoother_server|route_server|velocity_smoother|waypoint_follower|collision_monitor|docking_server|explore_lite|explore_node|ate_evaluator|ground_truth_odom|web_telemetry_bridge|slam_pose_publisher|ros2 topic pub|ros2 launch|ros2 run|gz topic|mavproxy|sitl_dds_udp"
+# kill -9 <pid> for every PID found. Re-run `ps aux` after killing to confirm.
+
+ls /dev/shm/fastrtps_* 2>/dev/null | wc -l
+# if large (dozens+): kill everything above first, then:
+ros2 daemon stop
+rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
+
+# ============================================================
+# 3. Launch the tracked vehicle (Gazebo + ArduPilot Rover SITL + adapter nodes)
+# ============================================================
+ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py &
+sleep 25
+
+ps aux | grep -iE "gz sim|ardurover|micro_ros_agent|mavproxy" | grep -v grep
+ros2 topic info /clock -v   # confirm exactly ONE publisher (gz_bridge)
+gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A4 'name: "cavex_tracked_blueboat"'
+# Expected z ~6.4 (settled on cave_floor_patch, CAVE_FLOOR_Z=5.9 + hull rest height) —
+# NOT z~0 (that would mean it's back on ground_plane / the floor fix regressed).
+
+# ============================================================
+# 4. Launch SLAM + Nav2 + explore_lite (RTAB-Map 3D lidar SLAM, costmap)
+# ============================================================
+# Also starts a bootstrap_nudge (auto-drives briefly, ~5 real min) and a delayed
+# explore_node (starts 320s in). explore_node's own frontier search is unreliable
+# (see section 0) — don't depend on it.
+ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py &
+sleep 15
+
+ros2 topic list | grep -iE "lidar|costmap|frontier|odom_ground_truth|ap/|cmd_vel|map"
+
+# ============================================================
+# 5. Drive the tracked vehicle for real
+# ============================================================
+ros2 topic pub --once /cavex/tracks/command std_msgs/msg/String "{data: 'deployed'}"
+sleep 3
+
+# --- 5a. NORMAL path: /cmd_vel -> cmd_vel_to_ardupilot.py -> ArduPilot GUIDED+armed
+# -> /ap/twist/filtered -> track_cmd_vel_bridge.py -> gz_bridge -> track drive.
+# ArduPilot needs a few seconds for EKF/prearm checks to settle before arming
+# succeeds (first attempt may report result=False — normal, retries automatically).
+# IMPORTANT: use a single persistent `-r N` publisher, NOT a shell loop spawning a
+# new `ros2 topic pub --once` process every iteration -- each spawn needs real DDS
+# discovery time that can exceed a short sleep, so a spawn-loop effectively never
+# actually delivers commands (confirmed the hard way).
+ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}, angular: {z: 0.0}}" &
+DRIVEPID=$!
+sleep 15
+kill -9 $DRIVEPID
+
+gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A4 'name: "cavex_tracked_blueboat"'
+# Expect real x movement from the spawn point (-35).
+
+# Confirm ArduPilot state directly if needed:
+ros2 service call /ap/mode_switch ardupilot_msgs/srv/ModeSwitch "{mode: 15}"   # 15 = GUIDED (Rover)
+ros2 service call /ap/arm_motors ardupilot_msgs/srv/ArmMotors "{arm: true}"
+
+# --- 5b. gz-transport workaround (bypasses ArduPilot entirely — still useful for
+# quick motion tests that don't need ArduPilot in the loop):
+( while true; do gz topic -t /model/cavex_tracked_blueboat/cmd_vel -m gz.msgs.Twist -p "linear: {x: 0.5}"; sleep 0.1; done ) &
+DRIVEPID=$!
+sleep 15
+kill -9 $DRIVEPID
+gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A4 'name: "cavex_tracked_blueboat"'
+
+# Track retraction check (independent of driving):
+ros2 topic pub --once /cavex/tracks/command std_msgs/msg/String "{data: 'retracted'}"
+sleep 3
+ros2 topic echo /joint_states --once | grep -A2 "track_retract"
+# ~0 rad deployed, ~1.4 rad retracted.
+
+# ============================================================
+# 6. Visualize with rviz2 and/or Gazebo's own GUI
+# ============================================================
+rviz2 --ros-args -p use_sim_time:=true &
+# No saved config yet — add displays manually: TF, PointCloud2 on /lidar/points,
+# Image on /camera/color/image_raw, Map on /map, Path/Odometry on
+# /cavex/slam/odom and /odom_ground_truth.
+
+# Gazebo's own 3D GUI client, attaches to the already-running headless -s server:
+gz sim -g &
+
+# ============================================================
+# 7. ATE evaluation + obstacle-avoidance cross-check
+# ============================================================
+# Real_time_factor here is highly variable (~0.02 to ~0.4+ depending on CPU load) --
+# check with `gz topic -t /stats -e -n1`. The brief's literal 10-run/30-60s spec can
+# take hours at low RTF; use a reduced scope for interactive checks.
+#
+# NOTE: the eval script does NOT drive the vehicle itself -- run a manual drive loop
+# (section 5a) in parallel or it just measures a stationary vehicle.
+# NOTE: the CSV is written by ate_evaluator_node (started in section 4), in THAT
+# process's cwd, not necessarily this shell's. If empty, check that launch's cwd and
+# its own stdout for "Not enough time-synchronized ground-truth/estimate pairs" —
+# means icp_odometry hadn't bootstrapped yet when finish_run fired.
+ros2 run cavex_tracked_vehicle run_tracked_vehicle_ate_eval.py --ros-args \
+  -p use_sim_time:=true -p num_runs:=3 -p budget_sim_s:=15.0
+cat cavex_ate_runs.csv
+python3 src/cavex_slam_nav/cavex_slam_nav/analyze_ate_runs.py cavex_ate_runs.csv
+
+# Obstacle-avoidance cross-check: does NOT need SLAM/ATE, only /odom_ground_truth.
+ros2 bag record -o /tmp/gt_run /odom_ground_truth &
+BAGPID=$!
+sleep 120
+kill -SIGINT $BAGPID   # SIGINT/SIGTERM, NOT -9 -- a -9 kill leaves the .mcap unreadable
+# Cross-check against Task 9's real obstacle centers (now repositioned onto
+# cave_floor_patch): obstacle_1 (-30,3), obstacle_2 (-20,-5), obstacle_3 (-10,6),
+# obstacle_4 (0,-3) — via a min-distance-to-obstacle-centers script reading the bag
+# through rosbag2_py + mcap storage.
+
+# ============================================================
+# 7b. BlueROV2 carry/release mechanism (part of section 3's launch — real, live-tested)
+# ============================================================
+# bluerov2 is already spawned+attached by section 3's launch (before the tracked
+# vehicle itself). Confirm rigid attachment:
+gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A5 'name: "bluerov2"\|name: "cavex_tracked_blueboat"'
+# Expect near-identical x,y and a constant ~0.4m z offset (bluerov2 above the boat).
+
+# Exercise the real handoff directly (without waiting for a full drive to x=15):
+ros2 topic pub --once /cavex/tracks/command std_msgs/msg/String "{data: 'retracted'}"
+ros2 topic pub --once /cavex/rov_release/detach std_msgs/msg/Empty "{}"
+sleep 20
+gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A5 'name: "bluerov2"\|name: "cavex_tracked_blueboat"'
+# Expect: the z offset between the two should now be GROWING over repeated samples
+# (real divergence, not a fixed rigid offset) — that's the real signal detachment
+# worked, not just that the topic publish succeeded.
+#
+# For the REAL, automatic trigger (vehicle_switch_node watching /odom_ground_truth,
+# no manual publish needed): drive the vehicle (section 5) from spawn (x=-35) to
+# x>=15, ~50m — slow at low RTF, budget real time accordingly. Not live-tested
+# end-to-end this session; the trigger logic and the release mechanism it calls were
+# each verified separately (see the SDD ledger for the full trail).
+#
+# x500 (helipad-carried PX4 drone) release — same pattern, separate topic:
+ros2 topic pub --once /cavex/x500_release/detach std_msgs/msg/Empty "{}"
+sleep 20
+gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A5 'name: "x500"\|name: "cavex_tracked_blueboat"'
+# Expect: x500 falls under gravity (no flight control wired yet — placeholder only).
+
+# ============================================================
+# 8. Water region + BlueROV2 (standalone verification — real, live-tested)
+# ============================================================
+# UPDATED (re-derived alongside the floor-collision fix, section 0): real chamber
+# floor z=5.9 (same CAVE_FLOOR_Z as cave_floor_patch), water surface at z=7.9 (a
+# real 2m partial flood), region x [15,65] y [-10,10], centered (40, 0).
+#
+# The entity name MUST be exactly "bluerov2" (not "bluerov2_test") -- the Buoyancy
+# plugin's <enable> matches the spawn-time entity name, not the model's internal SDF
+# <model name>, and silently no-ops on a mismatch (confirmed the hard way).
+gz service -s /world/cavex_world/create --reqtype gz.msgs.EntityFactory --reptype gz.msgs.Boolean --timeout 3000 \
+  --req 'sdf_filename: "src/cavex_tracked_vehicle/models/bluerov2/model.sdf", name: "bluerov2", pose: {position: {x: 40, y: 0, z: 6.9}}'
+sleep 8
+gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A5 'name: "bluerov2"'
+# Expected: settles and stays roughly mid-column (z between 5.9 and 7.9), doesn't
+# sink to the floor or breach the surface. Live-confirmed: spawned at z=6.9, settled
+# z~7.2-7.5, stable-ish (drifts slowly toward the surface without active depth hold,
+# real buoyancy behavior, not a bug).
+
+# --- 8b. ArduSub SITL, second instance (real, live-verified port/namespace fixes
+# needed for TWO simultaneous ArduPilot instances -- see section 0 for why each is
+# needed). BlueROV2's model.sdf FDM port is 9012 (not the vendored default 9002,
+# which collides with the tracked vehicle's own unused ArduPilotPlugin block).
+SUB_PARM="install/ardupilot_sitl/share/ardupilot_sitl/config/default_params/sub.parm"
+DDS_PARM="install/ardupilot_sitl/share/ardupilot_sitl/config/default_params/dds_udp.parm"
+INST1_PARM="src/cavex_tracked_vehicle/config/dds_udp_instance1.parm"
+ros2 launch ardupilot_sitl sitl_dds_udp.launch.py command:=ardusub model:=JSON \
+  instance:=1 port:=2029 micro_ros_agent_ns:=ap2 master:=tcp:127.0.0.1:5770 \
+  sim_port_in:=9013 sim_port_out:=9012 defaults:="$SUB_PARM,$DDS_PARM,$INST1_PARM" &
+sleep 20   # be patient -- DDS init + FDM handshake takes real time
+
+ros2 service list | grep v1   # expect /ap/v1/arm_motors, /ap/v1/mode_switch, etc.
+ros2 run cavex_tracked_vehicle cmd_vel_to_ardusub.py &
+sleep 3
+ros2 topic pub -r 10 /cmd_vel_rov geometry_msgs/msg/Twist "{linear: {x: 0.3}}" &
+PUBPID=$!
+sleep 15
+kill -9 $PUBPID
+gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A5 'name: "bluerov2"'
+# Mode-switch to GUIDED (mode=4, confirmed real) and DDS connectivity both work.
+# Arming currently fails (see section 0's "NOT YET WORKING" note) -- real position
+# delta will NOT appear until that's resolved.
+
+# Remove the standalone test spawn when done:
+gz service -s /world/cavex_world/remove --reqtype gz.msgs.Entity --reptype gz.msgs.Boolean --timeout 2000 \
+  --req "name: 'bluerov2', type: MODEL"
+
+# ============================================================
+# 9. Cleanup — ALWAYS run after finishing
+# ============================================================
+ps aux | grep -iE "gz sim|ardurover|ardusub|micro_ros_agent|MicroXRCEAgent|rtabmap|icp_odometry|nav2|explore|rviz2|mavproxy|sitl_dds_udp" | grep -v grep
+# kill -9 <pid> for every PID found; re-check ps aux afterward to confirm none survive.

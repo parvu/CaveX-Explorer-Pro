@@ -1,7 +1,7 @@
 #!/bin/bash
-export GZ_SIM_SYSTEM_PLUGIN_PATH=/home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/ardupilot_gazebo/build:$GZ_SIM_SYSTEM_PLUGIN_PATH
-export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/ardupilot_gazebo/models:/home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/ardupilot_gazebo/worlds:$GZ_SIM_RESOURCE_PATH
-export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/ros2_ws/src/cavex_slam_nav/models:$GZ_SIM_RESOURCE_PATH
+export GZ_SIM_SYSTEM_PLUGIN_PATH=/home/parvu/CaveX-Explorer-Pro/ardupilot_gazebo/build:$GZ_SIM_SYSTEM_PLUGIN_PATH
+export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/ardupilot_gazebo/models:/home/parvu/CaveX-Explorer-Pro/ardupilot_gazebo/worlds:$GZ_SIM_RESOURCE_PATH
+export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models:$GZ_SIM_RESOURCE_PATH
 
 # micro_ros_agent fix (Task 10 follow-up): micro_ros_msgs isn't a real apt/rosdep package on
 # ROS2 Jazzy, so this environment vendors it as a prebuilt extract at .local-deps/ros-extract.
@@ -11,7 +11,7 @@ export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-trac
 # executable does NOT propagate to transitive (dependency-of-a-dependency) lookups. Both .so
 # files sit in the exact same directory (confirmed with readelf -d), but generator_c.so has no
 # RPATH/RUNPATH of its own and isn't found unless this directory is in LD_LIBRARY_PATH directly.
-export LD_LIBRARY_PATH=/home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/.local-deps/ros-extract/opt/ros/jazzy/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/home/parvu/CaveX-Explorer-Pro/ros2_ws/install/micro_ros_msgs/lib:$LD_LIBRARY_PATH
 
 # mavproxy.py PATH fix (real root cause of the long-standing "/ap/arm_motors and
 # /ap/mode_switch appear in the ROS2 graph but every call hangs forever" symptom
@@ -39,3 +39,8 @@ export LD_LIBRARY_PATH=/home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-b
 # the dependency on whichever shell happens to invoke `ros2 launch` already having
 # ~/.local/bin set correctly.
 export PATH=$HOME/.local/bin:$PATH
+
+# microxrceddsgen (vendored Micro-XRCE-DDS-Gen at repo root) -- ardupilot_sitl's
+# CMake configure step shells out to this tool by bare name and fails
+# ("Could not find the program ['microxrceddsgen']") if it isn't on PATH.
+export PATH=/home/parvu/CaveX-Explorer-Pro/Micro-XRCE-DDS-Gen/scripts:$PATH

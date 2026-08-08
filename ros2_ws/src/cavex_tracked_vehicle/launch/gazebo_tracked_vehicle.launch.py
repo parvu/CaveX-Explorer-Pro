@@ -82,7 +82,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={'gz_args': f'-s -r {world_file}'}.items(),
+        launch_arguments={'gz_args': f'-r {world_file}'}.items(),
     )
 
     # gz_ros2_control's real, reproduced behavior (Task 5 finding, contradicts
@@ -141,25 +141,31 @@ def generate_launch_description():
     # whether DetachableJoint retries a not-yet-existing child, so this avoids
     # relying on that.
     #
-    # Position: same (x, y) as the tracked vehicle's own spawn, mounted as close
-    # to the hull deck's top (base_link's own local z=0 -- the hull collision
-    # extends only DOWN to z=-0.376, per model.sdf.tracked's real bounding-box
-    # comments) as safely achievable. bluerov2's own main-body collision box
-    # (models/bluerov2/model.sdf) is centered at its local z=0.06 with
-    # half-height 0.0325, so its own bottom sits 0.06-0.0325=+0.0275m ABOVE its
-    # origin (corrected in final review -- an earlier version of this comment
-    # had the sign backwards, claiming the bottom sits below the origin) --
-    # mounting the origin at deck-top + 0.03m puts the ROV's bottom at
-    # 0.03+0.0275=~0.058m above deck level, not the ~0.0025m originally
-    # claimed. Real clearance from the hull's own solid collision (the actual
-    # safety requirement) is larger than intended, not smaller, so this sign
-    # error was benign for crash-avoidance -- the real, documented gz-sim
-    # gotcha found in /usr/share/gz/gz-sim8/worlds/
+    # Position: moved forward to sit at the same (x, y) as the helipad (local
+    # x=0.3, y=0 -- model.sdf.tracked's helipad_link, now raised on a support
+    # post), so the ROV is mounted directly UNDER the drone launch pad rather
+    # than amidships. Still mounted on the hull deck's top (base_link's own
+    # local z=0 -- the hull collision extends only DOWN to z=-0.376, per
+    # model.sdf.tracked's real bounding-box comments), same z-clearance
+    # reasoning as before (deck-top + 0.03m). bluerov2's own main-body
+    # collision box (models/bluerov2/model.sdf) is centered at its local
+    # z=0.06 with half-height 0.0325, so its own bottom sits
+    # 0.06-0.0325=+0.0275m ABOVE its origin (corrected in final review -- an
+    # earlier version of this comment had the sign backwards, claiming the
+    # bottom sits below the origin) -- mounting the origin at deck-top + 0.03m
+    # puts the ROV's bottom at 0.03+0.0275=~0.058m above deck level, not the
+    # ~0.0025m originally claimed. Real clearance from the hull's own solid
+    # collision (the actual safety requirement) is larger than intended, not
+    # smaller, so this sign error was benign for crash-avoidance -- the real,
+    # documented gz-sim gotcha found in /usr/share/gz/gz-sim8/worlds/
     # detachable_joint.sdf's own comments ("this will cause Gazebo to crash because
     # B1 will be in collision with vehicle_blue") means any negative clearance
     # (fully embedding the ROV to make its own TOP, not bottom, flush with the
     # deck) is not safely achievable given the hull's collision has no real
-    # gap/moon-pool there. z = 6.65 (tracked vehicle spawn) + 0.03 = 6.68.
+    # gap/moon-pool there -- so "under the pad" means directly below its raised
+    # platform, not embedded inside the hull. x = -35 + 0.3 = -34.7 (matching
+    # helipad_link's local x offset). z = 6.65 (tracked vehicle spawn) + 0.03
+    # = 6.68 (well below the pad deck, now raised to local z=0.35).
     #
     # Known caveat, not fully resolved: cavex_world.world's Buoyancy plugin applies
     # its water-density function by world-frame z alone (below z=7.9 -> density
@@ -176,16 +182,18 @@ def generate_launch_description():
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'bluerov2', 'model.sdf'),
                    '-name', 'bluerov2',
-                   '-x', '-35', '-y', '0', '-z', '6.68'],
+                   '-x', '-34.7', '-y', '0', '-z', '6.68'],
         output='screen',
     )
 
     # Carried PX4 x500 quadcopter (real, vendored fuel.gazebosim.org/PX4/models/x500)
     # on model.sdf.tracked's real helipad_link (front of the hull, local x=0.3,
-    # z=0.01 deck-top). x500's own real landing-gear feet sit at local z~=-0.227
-    # relative to its own origin (models/x500/model.sdf's real collision box
-    # poses) -- mounting the origin at deck-top(0.01) + 0.227 puts the feet right
-    # at the helipad surface in principle, but this model spawns SECOND, still
+    # now raised on a support post to pad-deck z=0.35 so the BlueROV2 can be
+    # mounted directly underneath it -- see helipad_link's own comment).
+    # x500's own real landing-gear feet sit at local z~=-0.227 relative to its
+    # own origin (models/x500/model.sdf's real collision box poses) --
+    # mounting the origin at pad-deck(0.35) + 0.227 puts the feet right at the
+    # helipad surface in principle, but this model spawns SECOND, still
     # BEFORE the tracked vehicle itself (OnProcessExit chain: bluerov2 ->
     # x500 -> tracked vehicle; corrected in final review -- an earlier version
     # of this comment wrongly said "THIRD, after ... the tracked vehicle's own
@@ -197,18 +205,19 @@ def generate_launch_description():
     # -> 0.014m observed once, uncomfortably close to the hull's own collision
     # top). Given +0.3m of headroom (well beyond the observed worst-case loss)
     # empirically kept the settled offset safely positive across a retest.
-    # World z = 6.65 (tracked vehicle spawn) + 0.237 + 0.3 margin = 7.187;
-    # x = -35 + 0.3 = -34.7 (matching helipad_link's local x offset).
-    # Same spawn-before-parent ordering requirement as bluerov2 above, and the
-    # same placeholder scope: no PX4 SITL/flight-control integration here, see
-    # model.sdf.tracked's own comment on this drone's DetachableJoint block.
+    # World z = 6.65 (tracked vehicle spawn) + 0.35 (raised pad-deck) + 0.237
+    # + 0.3 margin = 7.537; x = -35 + 0.3 = -34.7 (matching helipad_link's
+    # local x offset). Same spawn-before-parent ordering requirement as
+    # bluerov2 above, and the same placeholder scope: no PX4 SITL/
+    # flight-control integration here, see model.sdf.tracked's own comment on
+    # this drone's DetachableJoint block.
     spawn_x500_cargo = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'x500', 'model.sdf'),
                    '-name', 'x500',
-                   '-x', '-34.7', '-y', '0', '-z', '7.187'],
+                   '-x', '-34.7', '-y', '0', '-z', '7.537'],
         output='screen',
     )
 

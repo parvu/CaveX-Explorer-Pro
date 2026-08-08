@@ -715,17 +715,18 @@
     </plugin>
 
     <!-- ROV deployment mechanism: a static A-frame davit visual+collision next to
-         the BlueROV2's mount point (x=0, y=0.3, clear of the ROV's own x[-0.23,0.23]
-         y[-0.17,0.17] footprint per bluerov2/model.sdf's real collision extents).
-         Honest scope: this is a visual/collision representation of a deployment
-         davit (a common real launch-and-recovery mechanism for small ROVs), NOT an
-         actuated/animated crane -- no joint motion, no winch simulation. The real
-         mechanism this project actually deploys the ROV with is
-         model.sdf.tracked's own DetachableJoint plugin above; this davit exists so
-         the deployment point has a real, visible fixture in the sim rather than
+         the BlueROV2's mount point (x=0.3, y=0.3 -- moved forward to sit alongside
+         the ROV's new under-helipad mount below, clear of the ROV's own
+         x[-0.23,0.23] y[-0.17,0.17] footprint per bluerov2/model.sdf's real
+         collision extents). Honest scope: this is a visual/collision representation
+         of a deployment davit (a common real launch-and-recovery mechanism for
+         small ROVs), NOT an actuated/animated crane -- no joint motion, no winch
+         simulation. The real mechanism this project actually deploys the ROV with
+         is model.sdf.tracked's own DetachableJoint plugin above; this davit exists
+         so the deployment point has a real, visible fixture in the sim rather than
          the ROV appearing to just float free of any visible mount hardware. -->
     <link name="rov_davit_link">
-      <pose relative_to="base_link">0 0.3 0.05 0 0 0</pose>
+      <pose relative_to="base_link">0.3 0.3 0.05 0 0 0</pose>
       <inertial>
         <mass>1.0</mass>
         <inertia><ixx>0.01</ixx><iyy>0.01</iyy><izz>0.01</izz></inertia>
@@ -753,11 +754,14 @@
     <!-- Helipad, front (bow, +x) of the hull -- placed at x=0.3 (inboard of the
          camera mast at x=0.55/z=0.15, per that link's own real pose, to avoid
          visual/collision clash) so a real x500 quadcopter (vendored below, PX4's
-         own Fuel model) has a visible landing platform. Deck-level (z=0, matching
-         the hull collision's own real top surface, same reasoning as the ROV
-         mount). Purely a flat marked platform -- no elevator/lowering mechanism. -->
+         own Fuel model) has a visible landing platform. Raised on a support post
+         (deck z=0.005 -> pad-deck z=0.35) so the BlueROV2's new mount (same x/y,
+         lower z -- see rov_davit_link above and gazebo_tracked_vehicle.launch.py's
+         spawn_bluerov2_cargo) sits directly underneath it, stowed low and clear of
+         the hull's own solid collision (no moon-pool exists -- see the ROV-mount
+         comment history above for why embedding it inside the hull isn't safe). -->
     <link name="helipad_link">
-      <pose relative_to="base_link">0.3 0 0.005 0 0 0</pose>
+      <pose relative_to="base_link">0.3 0 0.35 0 0 0</pose>
       <inertial>
         <mass>0.5</mass>
         <inertia><ixx>0.01</ixx><iyy>0.01</iyy><izz>0.01</izz></inertia>
@@ -768,6 +772,15 @@
       </visual>
       <collision name="helipad_deck_collision">
         <geometry><cylinder><radius>0.22</radius><length>0.01</length></cylinder></geometry>
+      </collision>
+      <visual name="helipad_post_visual">
+        <pose>0 0 -0.175 0 0 0</pose>
+        <geometry><cylinder><radius>0.03</radius><length>0.345</length></cylinder></geometry>
+        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+      </visual>
+      <collision name="helipad_post_collision">
+        <pose>0 0 -0.175 0 0 0</pose>
+        <geometry><cylinder><radius>0.03</radius><length>0.345</length></cylinder></geometry>
       </collision>
     </link>
     <joint name="helipad_joint" type="fixed">
