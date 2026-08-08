@@ -3,10 +3,11 @@
      meshes sourced from Blue Robotics' published CAD). This is NOT an official Blue Robotics
      tracked-vehicle product -- it is this project's own modification, replacing the boat's
      motor/prop assemblies with retractable track assemblies for cave-floor locomotion.
-     NOTE: model.config in this dir still only declares model.sdf (the untouched vendored
-     original); it does not point at this file. Whichever later task actually spawns the
-     tracked variant (Task 5/6) needs its own model.config (or a launch-time SDF path override)
-     pointing at model.sdf.tracked instead. -->
+     Resolved (was an open TODO through Task 4): gazebo_tracked_vehicle.launch.py spawns this
+     file directly via a launch-time `-file` path (a generated/templated copy, see that launch
+     file's own comments), not through model.config -- model.config's own model.sdf reference
+     stays pointed at the untouched vendored original on purpose, since that's a separate,
+     independently-spawnable asset this project doesn't modify. -->
 <sdf version="1.9">
   <model name="cavex_tracked_blueboat">
     <link name="base_link">
@@ -49,7 +50,11 @@
                izz: 5.640313 + 0.467500 = 6.107813
              Off-diagonal terms stay 0: x is uniform across all components, and the left/right
              track y-offsets are equal and opposite so any xy/yz cross terms cancel.
-             mass: 29.6 (hull, motors/props removed) + 2*1.5 (tracks) = 32.6 kg -->
+             mass: 29.6 (hull, motors/props removed) + 2*1.5 (tracks) = 32.6 kg.
+             This is base_link's OWN mass only (this <mass> tag below), not the
+             full vehicle total -- the davit and helipad links added later each
+             carry their own separate <inertial> (1.0 kg and 0.5 kg), not
+             folded into this figure. -->
         <pose>-0.05 0 -0.168405 0 0 0</pose>
         <mass>32.6</mass>
         <inertia>
@@ -296,8 +301,17 @@
     <joint name="right_track_retract_joint" type="revolute">
       <parent>base_link</parent>
       <child>right_track_retract_mount</child>
+      <!-- Axis negated relative to the left joint's <xyz>1 0 0</xyz> (real bug
+           found in final review, fixed here): left/right track mounts are
+           mirror images across the hull's centerline (y flipped), so rotating
+           both about the SAME +x axis direction swung them in physically
+           opposite directions -- the left track outboard-and-up (correct) but
+           the right track INBOARD-and-up, tucking it toward the hull
+           centerline instead of retracting outward. self_collide is off so
+           this never crashed, and "the joints moved 0<->1.4 rad" verification
+           still passed, which is why this survived every earlier live check. -->
       <axis>
-        <xyz>1 0 0</xyz>
+        <xyz>-1 0 0</xyz>
         <limit>
           <lower>0.0</lower>
           <upper>1.4</upper>
@@ -418,7 +432,9 @@
          <gazebo reference=...> wrapper -- that wrapper is URDF-to-SDF-xacro
          syntax only and this file is plain SDF already (same convention
          this file's own ros2_control/plugin comments already establish).
-         Real values (16-beam 360 deg gpu_lidar @10Hz, range 0.3-12m; camera
+         Real values (16-beam 360 deg gpu_lidar @10Hz, range 0.4-12m (Task 10's
+         self-occlusion fix raised the min from an earlier 0.3, see that
+         <min> value below); camera
          30Hz 800x800 R8G8B8) and the real proven gz-sim8 gotcha
          (<gz_frame_id> required or gz-sim stamps frame_id from the scene
          graph instead of the link name) both carried over from the

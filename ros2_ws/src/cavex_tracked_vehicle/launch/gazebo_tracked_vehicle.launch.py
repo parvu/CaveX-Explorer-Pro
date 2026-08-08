@@ -141,16 +141,20 @@ def generate_launch_description():
     # whether DetachableJoint retries a not-yet-existing child, so this avoids
     # relying on that.
     #
-    # Position: same (x, y) as the tracked vehicle's own spawn, so bluerov2's top
-    # sits flush with the hull deck's top (base_link's own local z=0 -- the hull
-    # collision extends only DOWN to z=-0.376, per model.sdf.tracked's real
-    # bounding-box comments), as closely as safely achievable. bluerov2's own
-    # main-body collision box (models/bluerov2/model.sdf) is centered at its local
-    # z=0.06 with half-height 0.0325, so its own bottom sits 0.0275m below its
-    # origin -- mounting the origin at deck-top + 0.03m puts the ROV's bottom
-    # ~0.0025m above deck level (top-of-pontoons-flush within a few millimeters)
-    # while keeping a small positive clearance from the hull's own solid collision
-    # -- the real, documented gz-sim gotcha found in /usr/share/gz/gz-sim8/worlds/
+    # Position: same (x, y) as the tracked vehicle's own spawn, mounted as close
+    # to the hull deck's top (base_link's own local z=0 -- the hull collision
+    # extends only DOWN to z=-0.376, per model.sdf.tracked's real bounding-box
+    # comments) as safely achievable. bluerov2's own main-body collision box
+    # (models/bluerov2/model.sdf) is centered at its local z=0.06 with
+    # half-height 0.0325, so its own bottom sits 0.06-0.0325=+0.0275m ABOVE its
+    # origin (corrected in final review -- an earlier version of this comment
+    # had the sign backwards, claiming the bottom sits below the origin) --
+    # mounting the origin at deck-top + 0.03m puts the ROV's bottom at
+    # 0.03+0.0275=~0.058m above deck level, not the ~0.0025m originally
+    # claimed. Real clearance from the hull's own solid collision (the actual
+    # safety requirement) is larger than intended, not smaller, so this sign
+    # error was benign for crash-avoidance -- the real, documented gz-sim
+    # gotcha found in /usr/share/gz/gz-sim8/worlds/
     # detachable_joint.sdf's own comments ("this will cause Gazebo to crash because
     # B1 will be in collision with vehicle_blue") means any negative clearance
     # (fully embedding the ROV to make its own TOP, not bottom, flush with the
@@ -181,9 +185,12 @@ def generate_launch_description():
     # z=0.01 deck-top). x500's own real landing-gear feet sit at local z~=-0.227
     # relative to its own origin (models/x500/model.sdf's real collision box
     # poses) -- mounting the origin at deck-top(0.01) + 0.227 puts the feet right
-    # at the helipad surface in principle, but this model spawns THIRD (after
-    # bluerov2 and the tracked vehicle's own boot sequence both take real time),
-    # and live-verified the DetachableJoint does NOT preserve the exact spawn-time
+    # at the helipad surface in principle, but this model spawns SECOND, still
+    # BEFORE the tracked vehicle itself (OnProcessExit chain: bluerov2 ->
+    # x500 -> tracked vehicle; corrected in final review -- an earlier version
+    # of this comment wrongly said "THIRD, after ... the tracked vehicle's own
+    # boot sequence"), and live-verified the DetachableJoint does NOT preserve
+    # the exact spawn-time
     # offset -- it free-falls under gravity for however long elapses before the
     # parent model's plugin actually attaches it, losing real height in a way
     # that varied between two otherwise-identical launches this session (0.237m

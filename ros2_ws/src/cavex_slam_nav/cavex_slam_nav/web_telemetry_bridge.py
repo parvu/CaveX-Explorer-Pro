@@ -144,8 +144,15 @@ class WebTelemetryBridge(Node):
     def _frontiers_cb(self, msg: MarkerArray):
         # explore_lite republishes this MarkerArray from its own frontier
         # search over Nav2's costmap -- real frontier count, not derived
-        # from anything ArduPilot-specific.
-        self._latest['frontier_count'] = len(msg.markers)
+        # from anything ArduPilot-specific. Real bug found in final review,
+        # fixed here: explore_lite's own visualizeFrontiers()
+        # (m-explore-ros2/explore/src/explore.cpp) publishes TWO ADD markers
+        # per real frontier (a POINTS marker then a SPHERE marker, same id
+        # sequence), plus trailing DELETE markers for the previous cycle's
+        # now-unused marker slots -- len(msg.markers) was double-plus-stale
+        # the real frontier count, not equal to it. Marker.ADD == 0.
+        add_markers = sum(1 for m in msg.markers if m.action == 0)
+        self._latest['frontier_count'] = add_markers // 2
 
     def _track_state_cb(self, msg: JointState):
         try:

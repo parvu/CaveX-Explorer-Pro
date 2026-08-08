@@ -116,9 +116,11 @@ retracts the tracks and releases the BlueROV2 via Gazebo's real
 confirmed against the actual upstream reference example at
 `/usr/share/gz/gz-sim8/worlds/detachable_joint.sdf`). Live-verified: both
 entities spawn together without a physics crash, settle rigidly attached
-(constant ~0.4m z offset), and a real detach produces genuine, growing
-positional divergence between them within seconds — not inferred from
-code alone.
+(constant z offset -- ~0.4m at the mount height first tested, ~0.03m at the
+current, deck-flush mount height after a later fix; see "Deployment
+mechanism, helipad, and PX4 x500" below), and a real detach produces
+genuine, growing positional divergence between them within seconds — not
+inferred from code alone.
 
 **Known limitations**: the handoff is one-way — `DetachableJoint` has no
 usable re-attach for a BlueROV2 that's already drifted away, so returning
@@ -169,6 +171,19 @@ Confirm real joint motion via `/joint_states`
 (`left_track_retract_joint`/`right_track_retract_joint`, ~0 rad deployed,
 ~1.4 rad retracted — live-verified round-trip).
 
+**`tracked_vehicle_slam.launch.py` auto-drives the vehicle for the first 300
+real seconds of every launch** (undisclosed until this final review):
+`bootstrap_nudge` unconditionally publishes `/cmd_vel` (`linear.x=0.3`) for
+5 minutes starting 5s after launch, to give `icp_odometry` enough real
+parallax to bootstrap at this environment's low real_time_factor (see
+that action's own comment in the launch file for the full calibration
+history). This means: (a) any manual `/cmd_vel` publish loop started in
+that same window competes with it rather than being the only driver, and
+(b) "no autonomous driving in the loop" claims elsewhere in this README
+about specific verification runs are only true once past that 300s window
+-- correct the record on both points if you're relying on either claim
+precisely.
+
 **ATE evaluation** (ground truth vs. RTAB-Map's SLAM estimate):
 
 ```bash
@@ -194,18 +209,25 @@ before relying on a `cavex_ate_runs.csv` result.
 
 **BlueROV2 / ArduSub** (`cmd_vel_to_ardusub.py`, second SITL instance):
 running a second ArduPilot instance (ArduSub, for the BlueROV2) alongside
-the Rover instance required three real, non-obvious fixes, all now applied
-in `ros2_ws/src/cavex_tracked_vehicle/config/dds_udp_instance1.parm`: (1)
-`DDS_UDP_PORT`/`micro_ros_agent_ns`/`master:=tcp:127.0.0.1:5770` to avoid
-port collisions with the Rover instance; (2) `DDS_USE_NS 1` -- AP_DDS's
-own topic/service names (`ap/cmd_vel` etc.) are hardcoded per-firmware
-regardless of which `micro_ros_agent` port bridges them, so two
-simultaneous instances collide on identical ROS 2 topic names unless this
-is enabled (verified topics land under `/ap/v1/...`, not the `/ap/...`
-of the Rover instance); (3) BlueROV2's own vendored `ArduPilotPlugin` FDM
-port was moved from the default 9002 to 9012 in `models/bluerov2/model.sdf`
-because the tracked vehicle's own (unused, inherited) `ArduPilotPlugin`
-block already binds 9002 in the same Gazebo process. With these fixes,
+the Rover instance required three real, non-obvious fixes (corrected in
+final review -- an earlier version of this section said all three live in
+`dds_udp_instance1.parm`; two are actually launch arguments, since this
+branch has no committed launch file that brings the second instance up --
+see "Water-boundary handoff" below for the real, manually-run command that
+supplies them): (1) `DDS_UDP_PORT` (in
+`ros2_ws/src/cavex_tracked_vehicle/config/dds_udp_instance1.parm`) plus the
+`micro_ros_agent_ns`/`master:=tcp:127.0.0.1:5770` launch arguments, to avoid
+port collisions with the Rover instance; (2) `DDS_USE_NS 1` (also in that
+parm file) -- AP_DDS's own topic/service names (`ap/cmd_vel` etc.) are
+hardcoded per-firmware regardless of which `micro_ros_agent` port bridges
+them, so two simultaneous instances collide on identical ROS 2 topic names
+unless this is enabled (verified topics land under `/ap/v1/...`, not the
+`/ap/...` of the Rover instance); (3) BlueROV2's own vendored
+`ArduPilotPlugin` FDM port was moved from the default 9002 to 9012 in
+`models/bluerov2/model.sdf` because the tracked vehicle's own (unused,
+inherited) `ArduPilotPlugin` block already binds 9002 in the same Gazebo
+process (supplied via the `sim_port_in`/`sim_port_out` launch arguments on
+the ArduSub side). With these fixes,
 DDS connectivity, the real Gazebo FDM/JSON physics link, and GUIDED mode
 switching (`/ap/v1/mode_switch`, mode 4) are all live-verified working.
 **Known limitation, not yet resolved**: arming (`/ap/v1/arm_motors`)
@@ -227,13 +249,20 @@ genuinely growing. Root cause not yet isolated (RTAB-Map grid-publishing lag
 vs. Nav2 `static_layer` sizing vs. frame-axis mismatch). Don't rely on it for
 autonomous verification; drive the vehicle manually via `/cmd_vel` instead —
 that's what this section's own verification did, real ground-truth motion
-with no autonomous driving in the loop. Obstacle-avoidance verification
+with no `explore_lite`/Nav2 autonomy in the loop (the launch file's own
+`bootstrap_nudge` auto-drive, see above, was still active for its first
+300s as it is on every launch). Obstacle-avoidance verification
 (Task 9's four fuel-model obstacles in the dry section) used a
 min-distance-to-obstacle-centers check against a recorded `/odom_ground_truth`
 bag; the manually-driven verification run never came within collision range
 of any obstacle (closest approach ~7.7m), which confirms no collisions but
 is a weaker exercise of close-proximity avoidance than a route that
-deliberately threads between them.
+deliberately threads between them. **Stale as of final review**: that
+~7.7m figure was measured against the obstacles' original positions
+(`x∈[-45,-12]`) and the original spawn (`x=-60`); the floor-collision fix
+below moved both the obstacles (`x∈[-30,0]`) and the spawn (`x=-35`), so
+that specific number no longer describes a check against the current
+world -- re-run the same bag-based check if you need current numbers.
 
 **Water region** — re-derived a second time after a real bug was found: the
 tracked vehicle (and everything else) turned out to be resting on
@@ -254,9 +283,17 @@ to the ceiling), region `x∈[15,65] y∈[-10,10]`, centered `(40, 0)`. See
 ./waf sub`, needs `--enable-DDS` at configure time and a real
 `microxrceddsgen` install, see "BlueROV2 / ArduSub" above), launch the
 tracked vehicle (which also spawns the carried BlueROV2 and
-`vehicle_switch_node.py`), drive to the real water boundary (`x=15`):
+`vehicle_switch_node.py`), **and also `tracked_vehicle_slam.launch.py`** --
+`vehicle_switch_node.py`'s real trigger watches `/odom_ground_truth`, which
+is only published once that second launch file's own
+`tracked_vehicle_ground_truth_odom.py` is running (corrected in final
+review: an earlier version of this section omitted this second launch
+file, under which the automatic trigger can never fire). Then drive to the
+real water boundary (`x=15`):
 
 ```bash
+ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py &
+ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py &
 ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}, angular: {z: 0.0}}"
 # real_time_factor here is highly variable (~0.01 to 0.4+) -- the ~50m drive from
 # the x=-35 spawn to x=15 can take a long time; to exercise the handoff directly
@@ -267,9 +304,22 @@ ros2 topic pub --once /cavex/rov_release/detach std_msgs/msg/Empty "{}"
 
 Once released, control the BlueROV2 via `cmd_vel_to_ardusub.py`'s manual
 teleop input (no autonomous exploration for the BlueROV2 this phase --
-explicit non-goal):
+explicit non-goal). This branch does NOT yet commit a launch file that
+brings up the second ArduSub SITL instance (corrected in final review --
+an earlier version of this section implied `ros2 run
+cmd_vel_to_ardusub.py` alone was enough; it needs the second instance
+already running underneath it). The real, live-verified bring-up
+command, run manually:
 
 ```bash
+SUB_PARM="install/ardupilot_sitl/share/ardupilot_sitl/config/default_params/sub.parm"
+DDS_PARM="install/ardupilot_sitl/share/ardupilot_sitl/config/default_params/dds_udp.parm"
+INST1_PARM="src/cavex_tracked_vehicle/config/dds_udp_instance1.parm"
+ros2 launch ardupilot_sitl sitl_dds_udp.launch.py command:=ardusub model:=JSON \
+  instance:=1 port:=2029 micro_ros_agent_ns:=ap2 master:=tcp:127.0.0.1:5770 \
+  sim_port_in:=9013 sim_port_out:=9012 defaults:="$SUB_PARM,$DDS_PARM,$INST1_PARM"
+# wait for DDS init (real, patient wait -- 15-25s), then confirm:
+ros2 service list | grep v1   # expect /ap/v1/arm_motors, /ap/v1/mode_switch, etc.
 ros2 run cavex_tracked_vehicle cmd_vel_to_ardusub.py
 ros2 topic pub -r 10 /cmd_vel_rov geometry_msgs/msg/Twist "{linear: {x: 0.3}}"
 ```
@@ -336,12 +386,16 @@ variant" throughout; it makes no marine/floating capability claim and no
 Blue Robotics endorsement.
 
 **BlueROV2** — `ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/` is
-vendored, unmodified, based on
+vendored, with one documented modification, based on
 [clydemcqueen/bluerov2_gz](https://github.com/clydemcqueen/bluerov2_gz)'s
-real model structure (hull, thrusters, `ArduPilotPlugin` FDM link). Not an
-official Blue Robotics product release; labeled "BlueROV2" as a real vendored
-simulation asset, not a claim of hardware-accuracy beyond what that upstream
-repo itself provides.
+real model structure (hull, thrusters, `ArduPilotPlugin` FDM link). The
+modification: `model.sdf`'s `ArduPilotPlugin` `fdm_port_in` was changed from
+the vendored default 9002 to 9012, to avoid a real port collision with the
+tracked vehicle's own (unused, inherited) `ArduPilotPlugin` block in the same
+Gazebo process -- see that plugin's own comment. Not an official Blue
+Robotics product release; labeled "BlueROV2" as a real vendored simulation
+asset, not a claim of hardware-accuracy beyond what that upstream repo
+itself provides.
 
 **PX4 x500 quadcopter** — `ros2_ws/src/cavex_tracked_vehicle/models/x500/`
 is vendored, unmodified, from

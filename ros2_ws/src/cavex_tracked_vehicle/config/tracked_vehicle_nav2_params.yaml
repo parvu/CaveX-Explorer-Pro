@@ -241,7 +241,12 @@ collision_monitor:
     # /scan publisher the source just never receives data, exactly like
     # icp_odometry's harmless "did not receive data on /scan" warning
     # elsewhere in this stack -- it does not crash or block bringup.
-    base_frame_id: "base_footprint"
+    # Fixed in final review: was "base_footprint", contradicting this file's
+    # own header comment (line 23-25: robot_base_frame is base_link, this
+    # vehicle's stub URDF has no base_footprint link/joint at all). Harmless
+    # today only because collision_monitor's "scan" source never receives
+    # data (see comment above) -- would matter the moment that changes.
+    base_frame_id: "base_link"
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
     cmd_vel_out_topic: "cmd_vel"
