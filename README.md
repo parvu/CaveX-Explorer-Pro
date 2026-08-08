@@ -104,16 +104,16 @@ RGB camera, 2D lidar, and IMU only). The frontend's sonar panels and `sonarActiv
 `sonarDepth`/`sonarEchoStrength` fields are concept-demo values, not backed by
 any real sensor or ROS2 topic — don't wire them up as if they were.
 
-## Phase 1 (revised): Tracked BlueBoat-like Vehicle
+## Phase 1: Tracked BlueBoat-like Vehicle + BlueROV2
 
-The original Phase 1 approach was a CHAMP legged quadruped
-(`docs/superpowers/specs/2026-08-04-cavex-legged-walker-phase1-design.md`);
-it was abandoned after an unresolved legged-locomotion balance/stance
-problem discovered during implementation. This phase replaces it with a
-BlueBoat-hulled tracked ground vehicle under ArduPilot Rover (ArduRover)
-control, in a separate worktree/branch
-(`cavex-tracked-blueboat-ardupilot`) — CHAMP's SLAM/Nav2 bringup for the
-legged robot is not reused.
+Phase 1 uses a BlueBoat-hulled tracked ground vehicle under ArduPilot Rover
+(ArduRover) control for the dry cave section, and a separate BlueROV2 under
+ArduSub control for the flooded section. **Not yet implemented**: carrying
+the BlueROV2 nested inside the tracked vehicle's pontoons and releasing it
+at the water boundary (planned via Gazebo's `DetachableJoint` system) —
+currently the BlueROV2 is verified as a standalone vehicle only (see
+`cmd_vel_to_ardusub.py` below); the physical carry/release mechanism and
+`vehicle_switch_node`'s water-boundary handoff are both still open work.
 
 **Build** (from the worktree root):
 
@@ -173,6 +173,33 @@ costmap-coverage problem below, not a new bug. No ATE data was successfully
 produced in the verification session that added this section; rerun and
 check `icp_inliers_ratio` is nonzero (`ros2 topic echo /odom_info --once`)
 before relying on a `cavex_ate_runs.csv` result.
+
+**BlueROV2 / ArduSub** (`cmd_vel_to_ardusub.py`, second SITL instance):
+running a second ArduPilot instance (ArduSub, for the BlueROV2) alongside
+the Rover instance required three real, non-obvious fixes, all now applied
+in `ros2_ws/src/cavex_tracked_vehicle/config/dds_udp_instance1.parm`: (1)
+`DDS_UDP_PORT`/`micro_ros_agent_ns`/`master:=tcp:127.0.0.1:5770` to avoid
+port collisions with the Rover instance; (2) `DDS_USE_NS 1` -- AP_DDS's
+own topic/service names (`ap/cmd_vel` etc.) are hardcoded per-firmware
+regardless of which `micro_ros_agent` port bridges them, so two
+simultaneous instances collide on identical ROS 2 topic names unless this
+is enabled (verified topics land under `/ap/v1/...`, not the `/ap/...`
+of the Rover instance); (3) BlueROV2's own vendored `ArduPilotPlugin` FDM
+port was moved from the default 9002 to 9012 in `models/bluerov2/model.sdf`
+because the tracked vehicle's own (unused, inherited) `ArduPilotPlugin`
+block already binds 9002 in the same Gazebo process. With these fixes,
+DDS connectivity, the real Gazebo FDM/JSON physics link, and GUIDED mode
+switching (`/ap/v1/mode_switch`, mode 4) are all live-verified working.
+**Known limitation, not yet resolved**: arming (`/ap/v1/arm_motors`)
+is consistently rejected (`result=False`) even with `ARMING_CHECK 0`,
+`FENCE_ENABLE 0`, and a real disarm-button RC option assigned (ArduSub's
+`AP_Arming_Sub::pre_arm_checks` hard-requires one, not gated by
+`ARMING_CHECK`) -- the exact rejection reason could not be captured
+because MAVLink/SERIAL0 never produced a heartbeat to any client in this
+environment (confirmed via both `mavproxy` and a direct `pymavlink`
+connection, 30s+ waits), so `AP_Arming`'s own `check_failed()` messages
+(routed via MAVLink STATUSTEXT) were never observable. Needs a working
+MAVLink console connection to diagnose further.
 
 **`explore_lite` (autonomous frontier exploration) — known limitation**: it
 currently stops itself almost immediately ("No frontiers found, stopping")

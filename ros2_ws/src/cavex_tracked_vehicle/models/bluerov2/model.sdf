@@ -342,7 +342,14 @@
     <plugin name="ArduPilotPlugin" filename="libArduPilotPlugin.so">
       <!-- Port settings -->
       <fdm_addr>127.0.0.1</fdm_addr>
-      <fdm_port_in>9002</fdm_port_in>
+      <!-- Changed from the vendored default 9002: model.sdf.tracked's own
+           inherited (unused) ArduPilotPlugin block still binds 9002 in this
+           same gz-sim process, and two plugins in one process both trying
+           to bind the identical UDP port silently conflict. Moved to 9012
+           (paired with 9013 -- gz-sim's ArduPilotPlugin defaults its
+           outgoing FDM-state port to fdm_port_in+1) to keep this real,
+           independent of that unused legacy block. -->
+      <fdm_port_in>9012</fdm_port_in>
       <connectionTimeoutMaxCount>5</connectionTimeoutMaxCount>
       <lock_step>1</lock_step>
 
