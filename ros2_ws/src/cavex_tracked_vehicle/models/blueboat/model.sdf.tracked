@@ -679,5 +679,24 @@
       <imuName>imu_link::imu_sensor</imuName>
     </plugin>
 
+    <!-- Carries a BlueROV2 through the dry section as physical cargo, released
+         at the water boundary by vehicle_switch_node.py (real Gazebo mechanism,
+         gz-sim-detachable-joint-system -- confirmed via the real, working
+         reference example at /usr/share/gz/gz-sim8/worlds/detachable_joint.sdf,
+         not guessed: the plugin lives on the PARENT model (this one), naming the
+         child by its spawn-time top-level entity name). gazebo_tracked_vehicle
+         .launch.py spawns bluerov2 BEFORE this model so the child entity already
+         exists when this plugin's Configure() resolves it. child_link="base_link"
+         matches bluerov2/model.sdf's real main-body link name. Detaching is a
+         one-way operation in this plugin (no re-attach mechanism implemented --
+         see the SDD ledger for why re-docking is deferred). -->
+    <plugin filename="gz-sim-detachable-joint-system"
+            name="gz::sim::systems::DetachableJoint">
+      <parent_link>base_link</parent_link>
+      <child_model>bluerov2</child_model>
+      <child_link>base_link</child_link>
+      <detach_topic>/cavex/rov_release/detach</detach_topic>
+    </plugin>
+
   </model>
 </sdf>

@@ -59,3 +59,15 @@
   ros_type_name: "geometry_msgs/msg/Twist"
   gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
+
+# model.sdf.tracked's DetachableJoint plugin's <detach_topic> is a pure
+# gz-transport topic (confirmed against the real reference example at
+# /usr/share/gz/gz-sim8/worlds/detachable_joint.sdf, which itself uses
+# `gz topic -t ... -m gz.msgs.Empty`, not a ROS2 topic) -- vehicle_switch_node.py
+# is a plain rclpy node and can't publish gz-transport directly without this
+# bridge entry.
+- ros_topic_name: "cavex/rov_release/detach"
+  gz_topic_name: "/cavex/rov_release/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ

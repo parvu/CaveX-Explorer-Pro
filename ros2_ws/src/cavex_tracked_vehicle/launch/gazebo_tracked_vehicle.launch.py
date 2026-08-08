@@ -133,6 +133,42 @@ def generate_launch_description():
         output='screen',
     )
 
+    # Carried BlueROV2 cargo (real request: stored on the tracked vehicle through
+    # the dry section, released at the water boundary by vehicle_switch_node.py via
+    # model.sdf.tracked's own DetachableJoint plugin, added alongside this). Spawned
+    # BEFORE the tracked vehicle so the plugin's Configure() (which runs when the
+    # tracked vehicle model loads) finds "bluerov2" already present -- untested
+    # whether DetachableJoint retries a not-yet-existing child, so this avoids
+    # relying on that.
+    #
+    # Position: same (x, y) as the tracked vehicle's own spawn, z offset +0.4m above
+    # the hull's deck (base_link's own local z=0 -- the hull collision extends only
+    # DOWN to z=-0.376, per model.sdf.tracked's real bounding-box comments) so the
+    # two models' collision geometries don't overlap at spawn -- the real, documented
+    # gz-sim gotcha found in /usr/share/gz/gz-sim8/worlds/detachable_joint.sdf's own
+    # comments ("this will cause Gazebo to crash because B1 will be in collision with
+    # vehicle_blue"). x centered near the hull's own x=0 keeps clear of the antenna
+    # mast (x=[-0.583,-0.281] locally), which extends up from z=0.019.
+    #
+    # Known caveat, not fully resolved: cavex_world.world's Buoyancy plugin applies
+    # its water-density function by world-frame z alone (below z=7.9 -> density
+    # 1000), not scoped to the water region's real x/y extent -- while carried
+    # through the dry section (z~7.0-7.4, below that threshold), bluerov2
+    # technically experiences simulated underwater buoyancy the whole time, not just
+    # once released. Since it's rigidly attached to the much heavier tracked vehicle
+    # via the DetachableJoint, this manifests as extra load on the joint rather than
+    # anything visibly wrong, but it's not physically correct -- flagged here rather
+    # than silently accepted.
+    spawn_bluerov2_cargo = Node(
+        package='ros_gz_sim',
+        executable='create',
+        arguments=['-world', 'cavex_world', '-file',
+                   os.path.join(pkg_cavex_tracked, 'models', 'bluerov2', 'model.sdf'),
+                   '-name', 'bluerov2',
+                   '-x', '-35', '-y', '0', '-z', '7.05'],
+        output='screen',
+    )
+
     # gz_bridge: ONE combined parameter_bridge process (real, structural fix,
     # not a Task 7/12 code bug -- see gazebo_tracked_vehicle_bridge.yaml's own
     # header comment for the full live-diagnosed root cause). This used to be
@@ -206,6 +242,19 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
+    # Task 19: watches the tracked vehicle's real ground truth and triggers the
+    # water-boundary handoff (track retraction + BlueROV2 release via the
+    # DetachableJoint plugin above) -- needs tracked_vehicle_ground_truth_odom.py
+    # (started by tracked_vehicle_slam.launch.py, not here) to actually be
+    # publishing /odom_ground_truth for its trigger condition to ever fire.
+    vehicle_switch_node = Node(
+        package='cavex_tracked_vehicle',
+        executable='vehicle_switch_node.py',
+        name='vehicle_switch_node',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
     # ros2_control's controllers are declared to the controller_manager the
     # gz_ros2_control plugin starts on model spawn, but nothing loads/activates
     # them by itself (same real, empirically-confirmed requirement as the
@@ -233,12 +282,19 @@ def generate_launch_description():
         set_resource_path,
         gz_sim,
         robot_state_publisher,
-        spawn_entity,
+        spawn_bluerov2_cargo,
         gz_bridge,
         ardupilot_sitl_launch,
         cmd_vel_to_ardupilot,
         track_cmd_vel_bridge_node,
         track_retract_control,
+        vehicle_switch_node,
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=spawn_bluerov2_cargo,
+                on_exit=[spawn_entity],
+            )
+        ),
         RegisterEventHandler(
             event_handler=OnProcessExit(
                 target_action=spawn_entity,
