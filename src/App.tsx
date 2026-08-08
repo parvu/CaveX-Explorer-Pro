@@ -7,6 +7,7 @@ import { MultiModalNavPlanner } from "./components/MultiModalNavPlanner";
 import { KinematicChainEditor } from "./components/KinematicChainEditor";
 import { ROS2WorkspaceExplorer } from "./components/ROS2WorkspaceExplorer";
 import { SICSlamVisualizer } from "./components/SICSlamVisualizer";
+import { TrackedVehiclePanel } from "./components/TrackedVehiclePanel";
 import { AICopilotModal } from "./components/AICopilotModal";
 
 // Ground Collision Floor Height Calculator & Safety Clearance
@@ -629,6 +630,9 @@ export default function App() {
                 }));
               }}
             />
+
+            {/* Tracked BlueBoat-like vehicle live status (Tasks 5/10-13) */}
+            <TrackedVehiclePanel />
           </>
         )}
 

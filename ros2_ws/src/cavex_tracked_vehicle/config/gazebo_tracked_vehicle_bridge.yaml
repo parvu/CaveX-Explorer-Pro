@@ -1,0 +1,82 @@
+# Combined ros_gz_bridge parameter_bridge config for the tracked vehicle.
+#
+# Real, structural fix: this project's launch file originally ran TWO
+# separate `parameter_bridge` processes (one for sensors via CLI args, one
+# for track_cmd_vel via a separate config file). Each process bridges
+# /clock independently once told to (each had its own explicit /clock
+# entry) -- running two processes meant two independent /clock relays
+# (confirmed via `ros2 topic info /clock -v` showing 2 distinct
+# `ros_gz_bridge` publisher GIDs while both processes were running),
+# producing real timing jitter ("Detected jump back in time. Clearing TF
+# buffer" warnings, repeatedly) that broke icp_odometry's frame-to-frame
+# registration entirely (ratio stuck at 0.000000 even with substantial
+# real vehicle motion) and, in turn, kept RTAB-Map's WM stuck at 0
+# forever, starving Nav2's costmap and blocking explore_lite. Fixed by
+# merging both processes into this one file / one parameter_bridge
+# process, with exactly one /clock entry -- confirmed live afterward:
+# `ros2 topic info /clock -v` shows exactly 1 publisher.
+- topic_name: "/world/cavex_world/model/cavex_tracked_blueboat/link/imu_link/sensor/imu_sensor/imu"
+  ros_topic_name: "/imu"
+  gz_topic_name: "/world/cavex_world/model/cavex_tracked_blueboat/link/imu_link/sensor/imu_sensor/imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/lidar/points"
+  gz_topic_name: "/lidar/points/points"
+  ros_type_name: "sensor_msgs/msg/PointCloud2"
+  gz_type_name: "gz.msgs.PointCloudPacked"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/camera/color/image_raw"
+  gz_topic_name: "/camera/color"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/camera/color/camera_info"
+  gz_topic_name: "/camera/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+
+- topic_name: "/world/cavex_world/pose/info"
+  ros_type_name: "geometry_msgs/msg/PoseArray"
+  gz_type_name: "gz.msgs.Pose_V"
+  direction: GZ_TO_ROS
+
+- topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+
+# track_cmd_vel's ROS2<->gz-transport leg (Task 6): carries
+# track_cmd_vel_bridge.py's /track_cmd_vel (ROS2 Twist) onto the real
+# gz-transport topic /model/cavex_tracked_blueboat/cmd_vel (gz.msgs.Twist)
+# that TrackedVehicle actually subscribes to.
+- ros_topic_name: "track_cmd_vel"
+  gz_topic_name: "/model/cavex_tracked_blueboat/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
+# model.sdf.tracked's DetachableJoint plugin's <detach_topic> is a pure
+# gz-transport topic (confirmed against the real reference example at
+# /usr/share/gz/gz-sim8/worlds/detachable_joint.sdf, which itself uses
+# `gz topic -t ... -m gz.msgs.Empty`, not a ROS2 topic) -- vehicle_switch_node.py
+# is a plain rclpy node and can't publish gz-transport directly without this
+# bridge entry.
+- ros_topic_name: "cavex/rov_release/detach"
+  gz_topic_name: "/cavex/rov_release/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+# Same bridging requirement as the ROV's detach topic above, for the carried
+# x500's own DetachableJoint (model.sdf.tracked) -- placeholder release path
+# for future flight-control integration, not wired to any automatic trigger yet.
+- ros_topic_name: "cavex/x500_release/detach"
+  gz_topic_name: "/cavex/x500_release/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ

@@ -1,0 +1,19 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    track_retract_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+track_retract_controller:
+  ros__parameters:
+    joints:
+      - left_track_retract_joint
+      - right_track_retract_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    interpolation_method: "none" # continuous streaming commands, not discrete waypoints -- same real gotcha and fix as the abandoned branch's Task 7

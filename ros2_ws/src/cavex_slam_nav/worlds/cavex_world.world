@@ -17,6 +17,35 @@
     </plugin>
     <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
 
+    <!-- Buoyancy plugin: vendored from clydemcqueen/bluerov2_gz's
+         worlds/bluerov2_underwater.world (real upstream structure, not
+         guessed -- the bluerov2 model.sdf itself has no Buoyancy plugin,
+         only Hydrodynamics + 6 Thruster plugins; Buoyancy is a world-level
+         plugin in the real upstream repo). above_depth is relative to
+         world-frame z=0, so it tracks CAVE_FLOOR_Z + 2.0 (see
+         cave_floor_patch's own comment for how CAVE_FLOOR_Z=5.9 was
+         derived) -- a 2m partial flood above the real cave floor, not a
+         guessed height. -->
+    <plugin filename="gz-sim-buoyancy-system" name="gz::sim::systems::Buoyancy">
+      <graded_buoyancy>
+        <default_density>1000</default_density>
+        <density_change>
+          <above_depth>7.9</above_depth>
+          <density>1</density>
+        </density_change>
+      </graded_buoyancy>
+      <!-- Must match the SPAWN-TIME ENTITY NAME exactly, not just the model's internal
+           SDF <model name>. gz-sim-buoyancy-system matches <enable> against the entity
+           name given at spawn (e.g. the `name:` argument to `gz service .../create`),
+           not the model file's own <model name="bluerov2">. Spawning with any other
+           entity name (e.g. "bluerov2_test") makes Buoyancy silently no-op -- no error,
+           the vehicle just sinks/rests on the floor as if unbuoyant. Confirmed the hard
+           way: Task 16's own live verification test hit exactly this and produced a
+           false pass (settled on ground_plane, not actual mid-water equilibrium) until
+           re-run with the correctly-matching entity name "bluerov2". -->
+      <enable>bluerov2</enable>
+    </plugin>
+
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>
       <pose>0 0 10 0 0 0</pose>
@@ -25,37 +54,146 @@
       <direction>-0.5 0.1 -0.9</direction>
     </light>
 
+    <!-- Safety-net plane only, far below all real geometry -- NOT meant to be
+         anything a vehicle ever rests on. Real history: earlier versions of
+         this world left this at z=0, and every "the robot is standing on the
+         cave floor" check up to that point (Task 8's original probe-drop
+         test, and an entire probe-drop survey session that re-derived the
+         water region) was actually resting on THIS flat plane, not real cave
+         mesh collision -- the vendored cave_world.obj's collision mesh has
+         real, confirmed gaps directly underfoot in large areas (e.g. a probe
+         dropped at the original x=-60,y=0 dry-section spawn point fell
+         completely through, with ZERO mesh vertices found within a 6x6m
+         window there -- a genuine hole in the scan, not a measurement error).
+         Moved far below (z=-200) so nothing can be mistaken for resting on
+         real cave floor again; see cave_floor_patch below for the actual,
+         real supplementary floor collision. -->
     <model name="ground_plane">
       <static>true</static>
+      <pose>0 0 -200 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+          <geometry><plane><normal>0 0 1</normal><size>1000 1000</size></plane></geometry>
         </collision>
         <visual name="visual">
-          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+          <geometry><plane><normal>0 0 1</normal><size>1000 1000</size></plane></geometry>
           <material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material>
         </visual>
       </link>
     </model>
 
-    <!-- Dry Cave Section Box (-39 to -5) -->
-    <model name="dry_cave">
+    <!-- Real cave geometry: vendored from LTU-RAI/gazebo_cave_world (MIT).
+         Koval, Kanellakis, Vidmark, Haluska, Nikolakopoulos, "A Subterranean
+         Virtual Cave World for Gazebo based on the DARPA SubT Challenge",
+         arXiv:2004.08452, Lulea University of Technology. Not authored here.
+         Pose computed by Task 8's AABB script from the real OBJ vertices --
+         NOT just a Z-axis yaw as originally planned: this OBJ's local up
+         axis is Y, not Z (cross-checked against upstream's own
+         worlds/cave_world.world, which itself applies roll=90 deg to stand
+         the mesh up), so roll=pi/2 fixes local-Y-up -> world-Z-up and an
+         additional yaw=pi/2 puts the ~150m long axis on world X.
+         Real, measured world-frame bounds after this pose: x [-75.17,75.17],
+         y [-51.16,51.16], z [0,36.18] (height is 36.18m, not the nominal
+         33m -- >1m off nominal; x/y match nominal within ~0.2m). -->
+    <include>
+      <uri>model://cave_world</uri>
+      <name>cave_world</name>
+      <pose>18.7830 31.4050 5.9826 1.5708 0.0000 1.5708</pose>
+    </include>
+
+    <!-- Supplementary floor collision -- NOT part of the vendored mesh (that
+         stays unmodified). Added because the vendored mesh's own collision
+         has real, confirmed gaps in floor coverage across large areas
+         (see ground_plane's comment above for how this was discovered).
+         CAVE_FLOOR_Z=5.9 was derived directly from the mesh's own visual
+         vertex data (not from any probe-drop test, which the discovery
+         above showed was unreliable): parsing cave_world.obj's raw
+         vertices and transforming them into world frame with the same
+         pose as the cave_world include above, the x range [-37, 65]
+         (the corridor this project actually uses, dry section through the
+         flooded chamber) shows a remarkably consistent real floor height
+         clustered tightly around z=5.5-6.1 across dozens of independent
+         2m x-slices (e.g. x=-37: 5.98; x=27: 5.56 (2324 verts); x=57: 5.90
+         (5228 verts) -- these are genuine, dense mesh regions, not sparse
+         guesses). This patch covers x [-40,70] y [-12,12] at a flat
+         top surface z=5.9 (box center z=5.4, thickness 1m) -- a flat
+         proxy for the real, gently-undulating visual floor in that
+         height cluster, not a perfect match to every bump, but grounded
+         in real mesh data rather than an arbitrary guess. The vehicle
+         spawn, obstacle positions, and water region below were all moved
+         to sit on this patch. x < -40 (the original x=-60 spawn area) is
+         NOT covered -- that area's mesh has real floor-coverage gaps and
+         was abandoned rather than patched further given time already
+         invested; if resuming work there, redo the vertex-density check
+         from this comment before trusting anything in that zone. -->
+    <model name="cave_floor_patch">
       <static>true</static>
-      <pose>-22 0 1 0 0 0</pose>
+      <pose>15 0 5.4 0 0 0</pose>
       <link name="link">
-        <collision name="col"><geometry><box><size>34 12 2</size></box></geometry></collision>
-        <visual name="vis"><geometry><box><size>34 12 2</size></box></geometry><material><ambient>0.3 0.3 0.3 1</ambient></material><transparency>0.5</transparency></visual>
+        <collision name="collision">
+          <geometry><box><size>110 24 1</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>0.01</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>110 24 1</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
       </link>
     </model>
 
-    <!-- Water Section (Raised) ( -5 to 29 ) -->
-    <model name="flooded_cave_water">
+    <!-- Fuel-sourced obstacles for Nav2 costmap / explore_lite frontiers.
+         Real, confirmed-to-exist OpenRobotics Fuel models (no <static> tag,
+         real mass+inertia, so they fall and settle under gravity). Positions
+         moved from the original x [-45,-12] to x [-30,0] (commit re-deriving
+         cave_floor_patch above) -- the original positions predated
+         cave_floor_patch and were never actually verified to land on real
+         floor (this world's ground_plane sat at z=0 back then too, so a
+         "settled" reading could equally have been the same ground-plane
+         mix-up documented on ground_plane's own comment). Spawn z raised to
+         CAVE_FLOOR_Z + 2 = 7.9 (was 8, arbitrary/pre-dates the floor fix) so
+         they fall a short, controlled distance onto cave_floor_patch. -->
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Cinder%20Block%202</uri>
+      <name>obstacle_1</name>
+      <pose>-30 3 7.9 0 0 0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Cinder%20block%20wide</uri>
+      <name>obstacle_2</name>
+      <pose>-20 -5 7.9 0 0 0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Wood%20cube%2010cm</uri>
+      <name>obstacle_3</name>
+      <pose>-10 6 7.9 0 0 0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Construction%20Barrel</uri>
+      <name>obstacle_4</name>
+      <pose>0 -3 7.9 0 0 0</pose>
+    </include>
+
+    <!-- Flooded water region, re-anchored to cave_floor_patch's real
+         CAVE_FLOOR_Z=5.9 (see that model's own comment for the full
+         real-mesh-vertex derivation -- this world's earlier water-region
+         history, including a "live probe-drop survey" that found a floor
+         at z~=0, was itself resting on ground_plane by mistake; see
+         ground_plane's own comment for that discovery). Water surface at
+         z = CAVE_FLOOR_Z + 2.0 = 7.9 -- a real 2m partial flood above the
+         actual cave floor. Region: x [15,65] y [-10,10], center (40, 0,
+         7.9), plane size 50 x 20 (within cave_floor_patch's x [-40,70]
+         y [-12,12] coverage, inset for margin). Task 19's water-boundary
+         handoff should treat x=15 as the wet/dry boundary. -->
+    <model name="water_surface">
       <static>true</static>
-      <pose>12 0 0.6 0 0 0</pose>
-      <link name="link">
-        <visual name="water">
-          <geometry><box><size>34 12 0.1</size></box></geometry>
-          <material><ambient>0 0.4 0.8 0.5</ambient></material>
+      <pose>40 0 7.9 0 0 0</pose>
+      <link name="surface">
+        <visual name="water_visual">
+          <geometry><plane><size>50 20</size></plane></geometry>
+          <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
         </visual>
       </link>
     </model>

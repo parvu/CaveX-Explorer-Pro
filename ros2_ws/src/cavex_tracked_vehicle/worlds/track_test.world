@@ -1,0 +1,88 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="track_test">
+    <physics name="4ms" type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- Throwaway world for Task 3 topic-verification rig. Adding any
+         explicit <plugin> disables gz-sim's implicit default plugin set,
+         so everything needed has to be listed here (mirrors cavex_world.world). -->
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+          <material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="track_test_rig">
+      <pose>0 0 0.3 0 0 0</pose>
+      <link name="body_link">
+        <inertial><mass>10</mass><inertia><ixx>0.3</ixx><iyy>0.5</iyy><izz>0.5</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="col"><geometry><box><size>0.6 0.4 0.2</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.6 0.4 0.2</size></box></geometry></visual>
+      </link>
+
+      <link name="left_track">
+        <pose relative_to="body_link">0 0.25 -0.1 0 0 0</pose>
+        <inertial><mass>1</mass><inertia><ixx>0.01</ixx><iyy>0.01</iyy><izz>0.01</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="col"><geometry><box><size>0.5 0.1 0.1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.5 0.1 0.1</size></box></geometry></visual>
+      </link>
+      <joint name="left_track_joint" type="fixed">
+        <parent>body_link</parent>
+        <child>left_track</child>
+      </joint>
+
+      <link name="right_track">
+        <pose relative_to="body_link">0 -0.25 -0.1 0 0 0</pose>
+        <inertial><mass>1</mass><inertia><ixx>0.01</ixx><iyy>0.01</iyy><izz>0.01</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="col"><geometry><box><size>0.5 0.1 0.1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.5 0.1 0.1</size></box></geometry></visual>
+      </link>
+      <joint name="right_track_joint" type="fixed">
+        <parent>body_link</parent>
+        <child>right_track</child>
+      </joint>
+
+      <plugin filename="gz-sim-track-controller-system" name="gz::sim::systems::TrackController">
+        <link>left_track</link>
+        <track_orientation>1 0 0</track_orientation>
+        <max_velocity>5.0</max_velocity>
+      </plugin>
+      <plugin filename="gz-sim-track-controller-system" name="gz::sim::systems::TrackController">
+        <link>right_track</link>
+        <track_orientation>1 0 0</track_orientation>
+        <max_velocity>5.0</max_velocity>
+      </plugin>
+
+      <plugin filename="gz-sim-tracked-vehicle-system" name="gz::sim::systems::TrackedVehicle">
+        <body_link>body_link</body_link>
+        <left_track link="left_track"/>
+        <right_track link="right_track"/>
+        <tracks_separation>0.5</tracks_separation>
+        <max_velocity>5.0</max_velocity>
+        <max_acceleration>3.0</max_acceleration>
+      </plugin>
+    </model>
+  </world>
+</sdf>
