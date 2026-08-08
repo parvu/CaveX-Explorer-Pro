@@ -695,8 +695,8 @@
       <imuName>imu_link::imu_sensor</imuName>
     </plugin>
 
-    <!-- Motorized tether mount: the BlueROV2 is no longer rigidly carried
-         (removed: the old rov_davit_link visual mount and the
+    <!-- Motorized tether + cradle frame: the BlueROV2 is no longer rigidly
+         carried (removed: the old rov_davit_link visual mount and the
          gz-sim-detachable-joint-system plugin that fixed it to the deck).
          Real reason for the change -- the old mechanism was a one-way rigid
          attach/detach (see vehicle_switch_node.py's prior docstring): the ROV
@@ -707,31 +707,77 @@
          that pulls the ROV back within a commandable, motor-rate-limited
          payout length whenever the tether goes taut, and applies zero force
          when slack -- bidirectional, and the ROV can swim under its own
-         thrusters the whole time, not just after a one-shot release. This
-         tether_anchor_link is a small, static, visual-only cleat/spool
-         fixture at the stern (opposite end of the hull from the helipad, per
-         this session's reposition request) marking the real attachment
-         point motorized_tether_control.py computes its anchor pose from
-         (base_link's hull collision bounding box is x:[-0.60,0.59] relative
-         to base_link, per the mount-height derivation comment elsewhere in
-         this file -- x=-0.5 sits just inboard of the stern edge). -->
-    <link name="tether_anchor_link">
-      <pose relative_to="base_link">-0.5 0 0.05 0 0 0</pose>
+         thrusters the whole time, not just after being paid out.
+
+         tether_frame_link is a real cradle at the stern (opposite end of the
+         hull from the helipad): two vertical posts (y=+-0.20, just outside
+         bluerov2/model.sdf's own real y=[-0.17,0.17] footprint) joined by two
+         horizontal cross bars -- a bottom one at the ROV's own resting
+         bottom height and a top one level with the hull's own top (matching
+         the "align the ROV's top with the hull's top" spawn pose in
+         gazebo_tracked_vehicle.launch.py). Real collision on all four
+         members: the frame physically cages the ROV in y/z (open fore/aft),
+         giving it actual mechanical support while docked in the dry section
+         instead of relying on tether tension alone to fight the world's
+         buoyancy plugin (which applies by z alone, not scoped to the water
+         region's real x/y extent -- see the known-caveat comment elsewhere
+         in this file -- so even "dry" section buoyancy is real and would
+         otherwise float the ROV off a bare tether). The tether itself is
+         fixed to the hull "at the level of the cross bars", per this
+         session's request: motorized_tether_control.py's anchor pose is the
+         TOP cross bar's own location (x=-0.5, y=0, z=0 -- hull-top height),
+         not a separate fixture. -->
+    <link name="tether_frame_link">
+      <pose relative_to="base_link">-0.5 0 0 0 0 0</pose>
       <inertial>
-        <mass>0.2</mass>
-        <inertia><ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz></inertia>
+        <mass>0.3</mass>
+        <inertia><ixx>0.002</ixx><iyy>0.002</iyy><izz>0.002</izz></inertia>
       </inertial>
-      <visual name="tether_anchor_visual">
-        <geometry><cylinder><radius>0.03</radius><length>0.08</length></cylinder></geometry>
+      <visual name="tether_frame_post_left_visual">
+        <pose>0 0.20 -0.0325 0 0 0</pose>
+        <geometry><box><size>0.02 0.02 0.105</size></box></geometry>
         <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
       </visual>
-      <collision name="tether_anchor_collision">
-        <geometry><cylinder><radius>0.03</radius><length>0.08</length></cylinder></geometry>
+      <collision name="tether_frame_post_left_collision">
+        <pose>0 0.20 -0.0325 0 0 0</pose>
+        <geometry><box><size>0.02 0.02 0.105</size></box></geometry>
+      </collision>
+      <visual name="tether_frame_post_right_visual">
+        <pose>0 -0.20 -0.0325 0 0 0</pose>
+        <geometry><box><size>0.02 0.02 0.105</size></box></geometry>
+        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+      </visual>
+      <collision name="tether_frame_post_right_collision">
+        <pose>0 -0.20 -0.0325 0 0 0</pose>
+        <geometry><box><size>0.02 0.02 0.105</size></box></geometry>
+      </collision>
+      <!-- Bottom cross bar: the ROV's own real resting-bottom height
+           (top(0) - collision height 0.065 = -0.065). -->
+      <visual name="tether_frame_crossbar_bottom_visual">
+        <pose>0 0 -0.065 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.012</radius><length>0.40</length></cylinder></geometry>
+        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+      </visual>
+      <collision name="tether_frame_crossbar_bottom_collision">
+        <pose>0 0 -0.065 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.012</radius><length>0.40</length></cylinder></geometry>
+      </collision>
+      <!-- Top cross bar: level with the hull's own top (local z=0) -- this
+           is also the tether's real anchor height, see
+           motorized_tether_control.py's ANCHOR_LOCAL_OFFSET. -->
+      <visual name="tether_frame_crossbar_top_visual">
+        <pose>0 0 0 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.012</radius><length>0.40</length></cylinder></geometry>
+        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+      </visual>
+      <collision name="tether_frame_crossbar_top_collision">
+        <pose>0 0 0 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.012</radius><length>0.40</length></cylinder></geometry>
       </collision>
     </link>
-    <joint name="tether_anchor_joint" type="fixed">
+    <joint name="tether_frame_joint" type="fixed">
       <parent>base_link</parent>
-      <child>tether_anchor_link</child>
+      <child>tether_frame_link</child>
     </joint>
 
     <!-- Helipad, front (bow, +x) of the hull -- placed at x=0.3 (inboard of the

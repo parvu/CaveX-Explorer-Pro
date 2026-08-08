@@ -45,12 +45,21 @@ BOAT_MODEL_NAME = 'cavex_tracked_blueboat'
 ROV_MODEL_NAME = 'bluerov2'
 GZ_POSE_TOPIC = '/world/cavex_world/pose/info'
 
-# tether_anchor_link's real pose in model.sdf.tracked, relative to base_link.
-ANCHOR_LOCAL_OFFSET = (-0.5, 0.0, 0.05)
+# tether_frame_link's top cross bar pose in model.sdf.tracked, relative to
+# base_link -- the tether is fixed to the hull "at the level of the cross
+# bars", not a separate fixture.
+ANCHOR_LOCAL_OFFSET = (-0.5, 0.0, 0.0)
 
 # Motorized winch: max reel rate (m/s) and payout length bounds (m).
+# MIN_PAYOUT_LENGTH is deliberately short (not the frame's own physical
+# size) -- it's a taut-tether floor that, combined with tether_frame_link's
+# real mechanical cage, keeps the ROV still while docked in the dry
+# section: the frame alone stops it drifting out of the cage in y/z, and a
+# short taut tether stops it swinging fore/aft inside it (against the real
+# buoyancy the world's z-only Buoyancy plugin applies even here, see
+# tether_frame_link's own comment).
 MAX_REEL_RATE = 0.15
-MIN_PAYOUT_LENGTH = 0.3
+MIN_PAYOUT_LENGTH = 0.1
 MAX_PAYOUT_LENGTH = 8.0
 
 # Spring-damper constraint, engaged only once distance > current payout
