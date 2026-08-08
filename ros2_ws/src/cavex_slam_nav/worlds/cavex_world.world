@@ -17,6 +17,19 @@
     </plugin>
     <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
 
+    <!-- Real gz-sim world-scoped wrench-application system (confirmed via
+         `strings` on the installed .so: subscribes gz.msgs.EntityWrench on
+         /world/<world>/wrench, /wrench/persistent, /wrench/clear -- same
+         verification discipline as every other plugin in this project).
+         Used by motorized_tether_control.py to apply a real spring-damper
+         corrective force pulling the tethered BlueROV2 back within the
+         current commanded tether length -- there is no rope/cable physics
+         system installed in this Gazebo Harmonic build (confirmed absent
+         from /usr/lib/x86_64-linux-gnu/gz-sim-8/plugins/), so this force-based
+         constraint is the real, honest mechanism available, not a claim of
+         simulated cable dynamics (no catenary droop/self-collision). -->
+    <plugin filename="gz-sim-apply-link-wrench-system" name="gz::sim::systems::ApplyLinkWrench" />
+
     <!-- Buoyancy plugin: vendored from clydemcqueen/bluerov2_gz's
          worlds/bluerov2_underwater.world (real upstream structure, not
          guessed -- the bluerov2 model.sdf itself has no Buoyancy plugin,

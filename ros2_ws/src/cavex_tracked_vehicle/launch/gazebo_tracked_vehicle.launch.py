@@ -8,9 +8,13 @@ from launch_ros.actions import Node
 
 # This project's existing convention (see ardupilot_gazebo_env.sh, and
 # model.sdf.tracked's own gz_ros2_control <parameters> comment pre-Task-7): a
-# worktree-absolute path, not portable across machines/CI. Kept as one
-# constant here rather than baked into multiple strings.
-WORKTREE_ROOT = '/home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot'
+# repo-absolute path, not portable across machines/CI. Kept as one constant
+# here rather than baked into multiple strings. (Fixed: used to point at the
+# now-deleted cavex-tracked-blueboat-ardupilot worktree from before that
+# branch was merged into main -- harmless in practice since
+# ardupilot_gazebo_env.sh's own correct entries already precede this one on
+# the resulting search path, but stale and worth keeping accurate.)
+WORKTREE_ROOT = '/home/parvu/CaveX-Explorer-Pro'
 
 # Task 4/5/6's real, confirmed spawned model name -- NOT cavex_tracked_vehicle
 # (the brief's Interfaces section names the package, not the spawned model;
@@ -133,91 +137,75 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Carried BlueROV2 cargo (real request: stored on the tracked vehicle through
-    # the dry section, released at the water boundary by vehicle_switch_node.py via
-    # model.sdf.tracked's own DetachableJoint plugin, added alongside this). Spawned
-    # BEFORE the tracked vehicle so the plugin's Configure() (which runs when the
-    # tracked vehicle model loads) finds "bluerov2" already present -- untested
-    # whether DetachableJoint retries a not-yet-existing child, so this avoids
-    # relying on that.
+    # Tethered BlueROV2 (real request: no longer rigidly carried cargo --
+    # replaced by motorized_tether_control.py, a real force-based constraint
+    # via the gz-sim-apply-link-wrench-system world plugin, commanded through
+    # /cavex/tether/payout_length_cmd; see model.sdf.tracked's
+    # tether_anchor_link comment for why the old DetachableJoint carry was
+    # replaced). Spawned BEFORE the tracked vehicle only because this
+    # ordering was already proven not to race the sim's own startup
+    # (unrelated to any cross-model plugin resolution now -- there is no
+    # DetachableJoint on this model anymore).
     #
-    # Position: moved forward to sit at the same (x, y) as the helipad (local
-    # x=0.3, y=0 -- model.sdf.tracked's helipad_link, now raised on a support
-    # post), so the ROV is mounted directly UNDER the drone launch pad rather
-    # than amidships. Still mounted on the hull deck's top (base_link's own
-    # local z=0 -- the hull collision extends only DOWN to z=-0.376, per
-    # model.sdf.tracked's real bounding-box comments), same z-clearance
-    # reasoning as before (deck-top + 0.03m). bluerov2's own main-body
-    # collision box (models/bluerov2/model.sdf) is centered at its local
-    # z=0.06 with half-height 0.0325, so its own bottom sits
-    # 0.06-0.0325=+0.0275m ABOVE its origin (corrected in final review -- an
-    # earlier version of this comment had the sign backwards, claiming the
-    # bottom sits below the origin) -- mounting the origin at deck-top + 0.03m
-    # puts the ROV's bottom at 0.03+0.0275=~0.058m above deck level, not the
-    # ~0.0025m originally claimed. Real clearance from the hull's own solid
-    # collision (the actual safety requirement) is larger than intended, not
-    # smaller, so this sign error was benign for crash-avoidance -- the real,
-    # documented gz-sim gotcha found in /usr/share/gz/gz-sim8/worlds/
-    # detachable_joint.sdf's own comments ("this will cause Gazebo to crash because
-    # B1 will be in collision with vehicle_blue") means any negative clearance
-    # (fully embedding the ROV to make its own TOP, not bottom, flush with the
-    # deck) is not safely achievable given the hull's collision has no real
-    # gap/moon-pool there -- so "under the pad" means directly below its raised
-    # platform, not embedded inside the hull. x = -35 + 0.3 = -34.7 (matching
-    # helipad_link's local x offset). z = 6.65 (tracked vehicle spawn) + 0.03
-    # = 6.68 (well below the pad deck, now raised to local z=0.35).
+    # Position: moved to the stern (local x=-0.5, matching
+    # tether_anchor_link's own pose) so the ROV and the bow-mounted helipad
+    # no longer share a footprint, per this session's reposition request.
+    # Spawned a little further aft and slightly low (x local -0.9, z local
+    # -0.05) so the tether starts with some real slack rather than
+    # perfectly taut at t=0 -- motorized_tether_control.py's spring-damper
+    # force only engages once the ROV actually drifts past the current
+    # payout length. x = -35 + (-0.9) = -35.9, y = 0,
+    # z = 6.65 + (-0.05) = 6.6.
     #
     # Known caveat, not fully resolved: cavex_world.world's Buoyancy plugin applies
     # its water-density function by world-frame z alone (below z=7.9 -> density
-    # 1000), not scoped to the water region's real x/y extent -- while carried
-    # through the dry section (z~6.7, below that threshold), bluerov2
+    # 1000), not scoped to the water region's real x/y extent -- while under tow
+    # through the dry section (z~6.6, below that threshold), bluerov2
     # technically experiences simulated underwater buoyancy the whole time, not just
-    # once released. Since it's rigidly attached to the much heavier tracked vehicle
-    # via the DetachableJoint, this manifests as extra load on the joint rather than
-    # anything visibly wrong, but it's not physically correct -- flagged here rather
+    # once it actually reaches the water region. This was already true of the old
+    # rigid-carry design too (flagged there for the same reason) -- not introduced
+    # by the tether change, still not physically correct, still flagged rather
     # than silently accepted.
-    spawn_bluerov2_cargo = Node(
+    spawn_bluerov2 = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'bluerov2', 'model.sdf'),
                    '-name', 'bluerov2',
-                   '-x', '-34.7', '-y', '0', '-z', '6.68'],
+                   '-x', '-35.9', '-y', '0', '-z', '6.6'],
         output='screen',
     )
 
     # Carried PX4 x500 quadcopter (real, vendored fuel.gazebosim.org/PX4/models/x500)
     # on model.sdf.tracked's real helipad_link (front of the hull, local x=0.3,
-    # now raised on a support post to pad-deck z=0.35 so the BlueROV2 can be
-    # mounted directly underneath it -- see helipad_link's own comment).
-    # x500's own real landing-gear feet sit at local z~=-0.227 relative to its
-    # own origin (models/x500/model.sdf's real collision box poses) --
-    # mounting the origin at pad-deck(0.35) + 0.227 puts the feet right at the
-    # helipad surface in principle, but this model spawns SECOND, still
-    # BEFORE the tracked vehicle itself (OnProcessExit chain: bluerov2 ->
-    # x500 -> tracked vehicle; corrected in final review -- an earlier version
-    # of this comment wrongly said "THIRD, after ... the tracked vehicle's own
-    # boot sequence"), and live-verified the DetachableJoint does NOT preserve
-    # the exact spawn-time
-    # offset -- it free-falls under gravity for however long elapses before the
-    # parent model's plugin actually attaches it, losing real height in a way
-    # that varied between two otherwise-identical launches this session (0.237m
-    # -> 0.014m observed once, uncomfortably close to the hull's own collision
-    # top). Given +0.3m of headroom (well beyond the observed worst-case loss)
+    # z=0.005 deck-top -- flush again now that the BlueROV2 no longer mounts
+    # underneath it, see helipad_link's own comment). x500's own real
+    # landing-gear feet sit at local z~=-0.227 relative to its own origin
+    # (models/x500/model.sdf's real collision box poses) -- mounting the
+    # origin at deck-top(0.005) + 0.227 puts the feet right at the helipad
+    # surface in principle, but this model spawns SECOND, still BEFORE the
+    # tracked vehicle itself (OnProcessExit chain: bluerov2 -> x500 ->
+    # tracked vehicle), and live-verified the DetachableJoint does NOT
+    # preserve the exact spawn-time offset -- it free-falls under gravity
+    # for however long elapses before the parent model's plugin actually
+    # attaches it, losing real height in a way that varied between two
+    # otherwise-identical launches this session (0.237m -> 0.014m observed
+    # once, uncomfortably close to the hull's own collision top). Given
+    # +0.3m of headroom (well beyond the observed worst-case loss)
     # empirically kept the settled offset safely positive across a retest.
-    # World z = 6.65 (tracked vehicle spawn) + 0.35 (raised pad-deck) + 0.237
-    # + 0.3 margin = 7.537; x = -35 + 0.3 = -34.7 (matching helipad_link's
-    # local x offset). Same spawn-before-parent ordering requirement as
-    # bluerov2 above, and the same placeholder scope: no PX4 SITL/
-    # flight-control integration here, see model.sdf.tracked's own comment on
-    # this drone's DetachableJoint block.
+    # World z = 6.65 (tracked vehicle spawn) + 0.237 + 0.3 margin = 7.187;
+    # x = -35 + 0.3 = -34.7 (matching helipad_link's local x offset). Same
+    # spawn-before-parent ordering requirement as bluerov2 above, and the
+    # same placeholder scope: no PX4 SITL/flight-control integration here,
+    # see model.sdf.tracked's own comment on this drone's DetachableJoint
+    # block.
     spawn_x500_cargo = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'x500', 'model.sdf'),
                    '-name', 'x500',
-                   '-x', '-34.7', '-y', '0', '-z', '7.537'],
+                   '-x', '-34.7', '-y', '0', '-z', '7.187'],
         output='screen',
     )
 
@@ -295,14 +283,31 @@ def generate_launch_description():
     )
 
     # Task 19: watches the tracked vehicle's real ground truth and triggers the
-    # water-boundary handoff (track retraction + BlueROV2 release via the
-    # DetachableJoint plugin above) -- needs tracked_vehicle_ground_truth_odom.py
-    # (started by tracked_vehicle_slam.launch.py, not here) to actually be
-    # publishing /odom_ground_truth for its trigger condition to ever fire.
+    # water-boundary handoff (track retraction + paying the tether out to let
+    # the BlueROV2 operate independently in the water region -- see
+    # motorized_tether_control.py below, real bidirectional replacement for
+    # the old one-way DetachableJoint release) -- needs
+    # tracked_vehicle_ground_truth_odom.py (started by
+    # tracked_vehicle_slam.launch.py, not here) to actually be publishing
+    # /odom_ground_truth for its trigger condition to ever fire.
     vehicle_switch_node = Node(
         package='cavex_tracked_vehicle',
         executable='vehicle_switch_node.py',
         name='vehicle_switch_node',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
+    # Motorized tether: real force-based constraint (gz-sim-apply-link-wrench
+    # -system, world plugin in cavex_world.world) replacing the old rigid
+    # DetachableJoint carry. Subscribes both models' real world poses
+    # directly via gz-transport (same proven pattern as
+    # tracked_vehicle_ground_truth_odom.py, not the ROS bridge -- PoseArray
+    # drops the per-pose name field needed to tell the two models apart).
+    motorized_tether_control = Node(
+        package='cavex_tracked_vehicle',
+        executable='motorized_tether_control.py',
+        name='motorized_tether_control',
         output='screen',
         parameters=[{'use_sim_time': True}],
     )
@@ -334,16 +339,17 @@ def generate_launch_description():
         set_resource_path,
         gz_sim,
         robot_state_publisher,
-        spawn_bluerov2_cargo,
+        spawn_bluerov2,
         gz_bridge,
         ardupilot_sitl_launch,
         cmd_vel_to_ardupilot,
         track_cmd_vel_bridge_node,
         track_retract_control,
         vehicle_switch_node,
+        motorized_tether_control,
         RegisterEventHandler(
             event_handler=OnProcessExit(
-                target_action=spawn_bluerov2_cargo,
+                target_action=spawn_bluerov2,
                 on_exit=[spawn_x500_cargo],
             )
         ),

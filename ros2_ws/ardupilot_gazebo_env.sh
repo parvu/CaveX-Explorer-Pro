@@ -44,3 +44,32 @@ export PATH=$HOME/.local/bin:$PATH
 # CMake configure step shells out to this tool by bare name and fails
 # ("Could not find the program ['microxrceddsgen']") if it isn't on PATH.
 export PATH=/home/parvu/CaveX-Explorer-Pro/Micro-XRCE-DDS-Gen/scripts:$PATH
+
+# WSL GPU passthrough for Gazebo's Ogre2 renderer -- investigated, NOT
+# enabled by default here. Without any override, Mesa's EGL device
+# enumeration only ever finds EGL_MESA_device_software (llvmpipe --
+# confirmed via ~/.gz/rendering/ogre2.log's own GL_RENDERER line reading
+# "llvmpipe (LLVM ..., 256 bits)"), even though /dev/dxg (WSL's real
+# DirectX-GPU passthrough device) is present and working -- this
+# environment has no /dev/dri/renderD* node, which is the path Mesa's EGL
+# device enumeration normally uses to prefer a hardware driver over
+# software. Setting GALLIUM_DRIVER=d3d12 and MESA_LOADER_DRIVER_OVERRIDE=d3d12
+# does force Mesa's real d3d12 Gallium driver (already installed:
+# /usr/lib/x86_64-linux-gnu/dri/d3d12_dri.so) -- confirmed live on a small
+# bundled demo world (ardupilot_gazebo/worlds/iris_runway.sdf): GL_RENDERER
+# then reads "D3D12 (NVIDIA GeForce GTX 1050 Ti)" and `nvidia-smi` shows
+# real non-zero GPU utilization/VRAM while `gz sim` runs, instead of
+# 0%/0MiB. BUT: on this project's real cavex_world.world (the ~24MB cave
+# trimesh plus active camera/lidar Ogre2 sensors), the same override made
+# the Gazebo server crash reliably within ~10-20s every time (its own
+# internal supervisor logs "Escalating to SIGKILL on [Gazebo Sim Server]"),
+# reproduced twice, and confirmed to NOT reproduce with the override unset
+# on an otherwise-identical launch. Root cause not further diagnosed (likely
+# WSL's D3D12 translation layer choking on the large trimesh and/or
+# concurrent sensor rendering -- not investigated further, out of scope for
+# this session's time budget). Left commented out rather than defaulted on,
+# since it currently makes the real launch strictly worse. If picking this
+# back up: try isolating whether it's the trimesh size or the camera/lidar
+# sensors that trigger it, and check for an updated Mesa/WSL driver version.
+# export GALLIUM_DRIVER=d3d12
+# export MESA_LOADER_DRIVER_OVERRIDE=d3d12

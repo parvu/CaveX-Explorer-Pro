@@ -695,73 +695,57 @@
       <imuName>imu_link::imu_sensor</imuName>
     </plugin>
 
-    <!-- Carries a BlueROV2 through the dry section as physical cargo, released
-         at the water boundary by vehicle_switch_node.py (real Gazebo mechanism,
-         gz-sim-detachable-joint-system -- confirmed via the real, working
-         reference example at /usr/share/gz/gz-sim8/worlds/detachable_joint.sdf,
-         not guessed: the plugin lives on the PARENT model (this one), naming the
-         child by its spawn-time top-level entity name). gazebo_tracked_vehicle
-         .launch.py spawns bluerov2 BEFORE this model so the child entity already
-         exists when this plugin's Configure() resolves it. child_link="base_link"
-         matches bluerov2/model.sdf's real main-body link name. Detaching is a
-         one-way operation in this plugin (no re-attach mechanism implemented --
-         see the SDD ledger for why re-docking is deferred). -->
-    <plugin filename="gz-sim-detachable-joint-system"
-            name="gz::sim::systems::DetachableJoint">
-      <parent_link>base_link</parent_link>
-      <child_model>bluerov2</child_model>
-      <child_link>base_link</child_link>
-      <detach_topic>/cavex/rov_release/detach</detach_topic>
-    </plugin>
-
-    <!-- ROV deployment mechanism: a static A-frame davit visual+collision next to
-         the BlueROV2's mount point (x=0.3, y=0.3 -- moved forward to sit alongside
-         the ROV's new under-helipad mount below, clear of the ROV's own
-         x[-0.23,0.23] y[-0.17,0.17] footprint per bluerov2/model.sdf's real
-         collision extents). Honest scope: this is a visual/collision representation
-         of a deployment davit (a common real launch-and-recovery mechanism for
-         small ROVs), NOT an actuated/animated crane -- no joint motion, no winch
-         simulation. The real mechanism this project actually deploys the ROV with
-         is model.sdf.tracked's own DetachableJoint plugin above; this davit exists
-         so the deployment point has a real, visible fixture in the sim rather than
-         the ROV appearing to just float free of any visible mount hardware. -->
-    <link name="rov_davit_link">
-      <pose relative_to="base_link">0.3 0.3 0.05 0 0 0</pose>
+    <!-- Motorized tether mount: the BlueROV2 is no longer rigidly carried
+         (removed: the old rov_davit_link visual mount and the
+         gz-sim-detachable-joint-system plugin that fixed it to the deck).
+         Real reason for the change -- the old mechanism was a one-way rigid
+         attach/detach (see vehicle_switch_node.py's prior docstring): the ROV
+         either rode perfectly fixed to the hull or was permanently released,
+         with no way to reel it back in. Replaced by
+         motorized_tether_control.py, a real force-based constraint (see the
+         gz-sim-apply-link-wrench-system world plugin in cavex_world.world)
+         that pulls the ROV back within a commandable, motor-rate-limited
+         payout length whenever the tether goes taut, and applies zero force
+         when slack -- bidirectional, and the ROV can swim under its own
+         thrusters the whole time, not just after a one-shot release. This
+         tether_anchor_link is a small, static, visual-only cleat/spool
+         fixture at the stern (opposite end of the hull from the helipad, per
+         this session's reposition request) marking the real attachment
+         point motorized_tether_control.py computes its anchor pose from
+         (base_link's hull collision bounding box is x:[-0.60,0.59] relative
+         to base_link, per the mount-height derivation comment elsewhere in
+         this file -- x=-0.5 sits just inboard of the stern edge). -->
+    <link name="tether_anchor_link">
+      <pose relative_to="base_link">-0.5 0 0.05 0 0 0</pose>
       <inertial>
-        <mass>1.0</mass>
-        <inertia><ixx>0.01</ixx><iyy>0.01</iyy><izz>0.01</izz></inertia>
+        <mass>0.2</mass>
+        <inertia><ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz></inertia>
       </inertial>
-      <visual name="rov_davit_post_visual">
-        <pose>0 0 0.15 0 0 0</pose>
-        <geometry><box><size>0.04 0.04 0.3</size></box></geometry>
+      <visual name="tether_anchor_visual">
+        <geometry><cylinder><radius>0.03</radius><length>0.08</length></cylinder></geometry>
         <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
       </visual>
-      <visual name="rov_davit_arm_visual">
-        <pose>-0.12 0 0.28 0 0.4 0</pose>
-        <geometry><box><size>0.28 0.03 0.03</size></box></geometry>
-        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
-      </visual>
-      <collision name="rov_davit_post_collision">
-        <pose>0 0 0.15 0 0 0</pose>
-        <geometry><box><size>0.04 0.04 0.3</size></box></geometry>
+      <collision name="tether_anchor_collision">
+        <geometry><cylinder><radius>0.03</radius><length>0.08</length></cylinder></geometry>
       </collision>
     </link>
-    <joint name="rov_davit_joint" type="fixed">
+    <joint name="tether_anchor_joint" type="fixed">
       <parent>base_link</parent>
-      <child>rov_davit_link</child>
+      <child>tether_anchor_link</child>
     </joint>
 
     <!-- Helipad, front (bow, +x) of the hull -- placed at x=0.3 (inboard of the
          camera mast at x=0.55/z=0.15, per that link's own real pose, to avoid
          visual/collision clash) so a real x500 quadcopter (vendored below, PX4's
-         own Fuel model) has a visible landing platform. Raised on a support post
-         (deck z=0.005 -> pad-deck z=0.35) so the BlueROV2's new mount (same x/y,
-         lower z -- see rov_davit_link above and gazebo_tracked_vehicle.launch.py's
-         spawn_bluerov2_cargo) sits directly underneath it, stowed low and clear of
-         the hull's own solid collision (no moon-pool exists -- see the ROV-mount
-         comment history above for why embedding it inside the hull isn't safe). -->
+         own Fuel model) has a visible landing platform. Deck-level (z=0.005,
+         matching the hull collision's own real top surface). Flush again (no
+         longer raised on a support post) -- that post existed only to clear a
+         BlueROV2 mounted directly underneath it; the ROV has since moved to a
+         tether_anchor_link at the stern (see above), so bow and stern no longer
+         share any footprint and the post is unneeded complexity. Purely a flat
+         marked platform -- no elevator/lowering mechanism. -->
     <link name="helipad_link">
-      <pose relative_to="base_link">0.3 0 0.35 0 0 0</pose>
+      <pose relative_to="base_link">0.3 0 0.005 0 0 0</pose>
       <inertial>
         <mass>0.5</mass>
         <inertia><ixx>0.01</ixx><iyy>0.01</iyy><izz>0.01</izz></inertia>
@@ -772,15 +756,6 @@
       </visual>
       <collision name="helipad_deck_collision">
         <geometry><cylinder><radius>0.22</radius><length>0.01</length></cylinder></geometry>
-      </collision>
-      <visual name="helipad_post_visual">
-        <pose>0 0 -0.175 0 0 0</pose>
-        <geometry><cylinder><radius>0.03</radius><length>0.345</length></cylinder></geometry>
-        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
-      </visual>
-      <collision name="helipad_post_collision">
-        <pose>0 0 -0.175 0 0 0</pose>
-        <geometry><cylinder><radius>0.03</radius><length>0.345</length></cylinder></geometry>
       </collision>
     </link>
     <joint name="helipad_joint" type="fixed">

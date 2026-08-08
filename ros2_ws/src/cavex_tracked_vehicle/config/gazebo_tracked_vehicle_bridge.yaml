@@ -60,19 +60,23 @@
   gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
 
-# model.sdf.tracked's DetachableJoint plugin's <detach_topic> is a pure
-# gz-transport topic (confirmed against the real reference example at
-# /usr/share/gz/gz-sim8/worlds/detachable_joint.sdf, which itself uses
-# `gz topic -t ... -m gz.msgs.Empty`, not a ROS2 topic) -- vehicle_switch_node.py
-# is a plain rclpy node and can't publish gz-transport directly without this
-# bridge entry.
-- ros_topic_name: "cavex/rov_release/detach"
-  gz_topic_name: "/cavex/rov_release/detach"
-  ros_type_name: "std_msgs/msg/Empty"
-  gz_type_name: "gz.msgs.Empty"
+# motorized_tether_control.py's real force-based tether constraint: the
+# real gz-sim-apply-link-wrench-system world plugin (cavex_world.world)
+# subscribes gz.msgs.EntityWrench on this pure gz-transport topic (confirmed
+# via `strings` on the installed .so -- same verification discipline as
+# every other topic in this file). ros_gz_interfaces/msg/EntityWrench is the
+# real, matching ROS2 bridge type (confirmed present:
+# `ros2 interface show ros_gz_interfaces/msg/EntityWrench`). Same
+# bridge-not-direct-publish pattern already used for the detach topics
+# below -- a plain rclpy node can't publish gz-transport directly without
+# a bridge entry.
+- ros_topic_name: "cavex/tether/wrench"
+  gz_topic_name: "/world/cavex_world/wrench"
+  ros_type_name: "ros_gz_interfaces/msg/EntityWrench"
+  gz_type_name: "gz.msgs.EntityWrench"
   direction: ROS_TO_GZ
 
-# Same bridging requirement as the ROV's detach topic above, for the carried
+# Same bridging requirement as the tether wrench topic above, for the carried
 # x500's own DetachableJoint (model.sdf.tracked) -- placeholder release path
 # for future flight-control integration, not wired to any automatic trigger yet.
 - ros_topic_name: "cavex/x500_release/detach"
