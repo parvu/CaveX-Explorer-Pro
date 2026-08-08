@@ -235,14 +235,51 @@ of any obstacle (closest approach ~7.7m), which confirms no collisions but
 is a weaker exercise of close-proximity avoidance than a route that
 deliberately threads between them.
 
-**Water region** — the flooded chamber for Task 16's BlueROV2/water-boundary
-work was re-derived from a live probe-drop survey of the real vendored cave
-mesh (not an unverified whole-bounding-box guess): a real, flat, obstacle-free
-floor at world `z~=0` was found spanning roughly `x∈[15,65] y∈[2,12]`,
-confirmed clear for at least 25m overhead. The water surface sits at `z=2.0`
-(a real ~2m partial flood, not a fill to the ceiling), centered at `(40, 7)`.
-See `ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world`'s `water_surface`
-and `Buoyancy` plugin comments for the full survey data.
+**Water region** — re-derived a second time after a real bug was found: the
+tracked vehicle (and everything else) turned out to be resting on
+`cavex_world.world`'s flat `ground_plane` at `z=0`, not the real vendored cave
+mesh's own collision, which has genuine gaps in floor coverage across large
+areas (a probe dropped at the original spawn point fell straight through with
+`ground_plane` removed). Re-derived the real floor height (`z=5.9`,
+`CAVE_FLOOR_Z`) directly from the mesh's own dense vertex data across the
+`x=[-37,65]` corridor this project uses, added a real supplementary
+`cave_floor_patch` collision there, and moved `ground_plane` to `z=-200` as a
+pure safety net. The flooded chamber sits on that same real floor: water
+surface at `z=7.9` (a real ~2m partial flood above the real floor, not a fill
+to the ceiling), region `x∈[15,65] y∈[-10,10]`, centered `(40, 0)`. See
+`ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world`'s `cave_floor_patch`,
+`water_surface`, and `Buoyancy` plugin comments for the full derivation.
+
+**Water-boundary handoff** — end to end: build ArduSub (`cd ardupilot &&
+./waf sub`, needs `--enable-DDS` at configure time and a real
+`microxrceddsgen` install, see "BlueROV2 / ArduSub" above), launch the
+tracked vehicle (which also spawns the carried BlueROV2 and
+`vehicle_switch_node.py`), drive to the real water boundary (`x=15`):
+
+```bash
+ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}, angular: {z: 0.0}}"
+# real_time_factor here is highly variable (~0.01 to 0.4+) -- the ~50m drive from
+# the x=-35 spawn to x=15 can take a long time; to exercise the handoff directly
+# instead of waiting, publish its two triggers manually:
+ros2 topic pub --once /cavex/tracks/command std_msgs/msg/String "{data: 'retracted'}"
+ros2 topic pub --once /cavex/rov_release/detach std_msgs/msg/Empty "{}"
+```
+
+Once released, control the BlueROV2 via `cmd_vel_to_ardusub.py`'s manual
+teleop input (no autonomous exploration for the BlueROV2 this phase --
+explicit non-goal):
+
+```bash
+ros2 run cavex_tracked_vehicle cmd_vel_to_ardusub.py
+ros2 topic pub -r 10 /cmd_vel_rov geometry_msgs/msg/Twist "{linear: {x: 0.3}}"
+```
+
+Live-verified with the full SLAM/Nav2/`vehicle_switch_node` stack running
+together: the handoff produces no new, persistent errors in RTAB-Map, Nav2,
+or the tracked vehicle's own control nodes (the pre-existing "waiting for
+`map` transform" messages during RTAB-Map's own startup are normal and
+predate the handoff, not caused by it) -- confirmed by diffing the stack's
+log output from immediately before to after triggering the handoff.
 
 **Honesty caveats** (same standard as the rest of this project): this
 simulation's ground truth is simulator-internal and noiseless — treat any
