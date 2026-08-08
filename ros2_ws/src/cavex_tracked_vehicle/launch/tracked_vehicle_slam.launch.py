@@ -11,12 +11,11 @@ from launch_ros.actions import Node
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
 
-    # Ported from the abandoned cavex-legged-walker-phase1 branch's
-    # walker_slam.launch.py (real, working config for a different vehicle in
-    # this project). That branch used frame_id='base_footprint' because its
-    # URDF's TF root is base_footprint -> base_link (base_link's only parent
-    # is that static joint) -- using 'base_link' there would have given
-    # base_link a second, conflicting parent.
+    # Ported from a prior project vehicle's working SLAM launch config. That
+    # vehicle used frame_id='base_footprint' because its URDF's TF root is
+    # base_footprint -> base_link (base_link's only parent is that static
+    # joint) -- using 'base_link' there would have given base_link a second,
+    # conflicting parent.
     #
     # This vehicle is different: Task 7's stub URDF (cavex_tracked_vehicle.urdf,
     # read directly for this task) declares only <link name="base_link"/> plus
@@ -153,9 +152,8 @@ def generate_launch_description():
     # owns SLAM and publishes /map). Included here rather than as a
     # separate launch file since Nav2's static_layer needs RTAB-Map's /map
     # already flowing -- see tracked_vehicle_nav2_params.yaml for the full
-    # rationale (ported from the abandoned cavex-legged-walker-phase1
-    # branch's real, working config for a different vehicle in this
-    # project, same no-/scan situation).
+    # rationale (ported from a prior project vehicle's real, working config,
+    # same no-/scan situation).
     nav2_bringup_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory('nav2_bringup'), 'launch', 'navigation_launch.py')

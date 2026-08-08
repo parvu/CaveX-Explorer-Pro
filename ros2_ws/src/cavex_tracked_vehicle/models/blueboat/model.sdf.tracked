@@ -422,9 +422,9 @@
          30Hz 800x800 R8G8B8) and the real proven gz-sim8 gotcha
          (<gz_frame_id> required or gz-sim stamps frame_id from the scene
          graph instead of the link name) both carried over from the
-         abandoned cavex-legged-walker-phase1 branch's real, working
-         cavex_walker.urdf.xacro sensor blocks -- same sensor types, same
-         requirement, re-verified live for this hull rather than assumed.
+         a prior project vehicle's real, working sensor URDF blocks -- same
+         sensor types, same requirement, re-verified live for this hull
+         rather than assumed.
          Mount heights picked from blueboat_hull_collision.stl's real
          bounding box (x:[-0.60,0.59] y:[-0.45,0.45] z:[-0.376,0] relative to
          base_link -- hull collision top sits at z=0): both sensors sit at
@@ -577,11 +577,10 @@
     </plugin>
 
     <!-- Retraction-joint actuation: real ros2_control + gz_ros2_control bridge, same pattern
-         already proven on the abandoned legged-walker branch (its Task 7 fix history).
-         position_proportional_gain is a GazeboSimSystem-wide SDF <plugin> child element, NOT a
-         per-joint <ros2_control>/<param> -- confirmed the hard way there by reading
-         gz_ros2_control's real upstream source. Reused directly here rather than
-         rediscovered. -->
+         already proven on a prior project vehicle. position_proportional_gain is a
+         GazeboSimSystem-wide SDF <plugin> child element, NOT a per-joint
+         <ros2_control>/<param> -- confirmed the hard way there by reading gz_ros2_control's
+         real upstream source. Reused directly here rather than rediscovered. -->
     <ros2_control name="GazeboSimSystem" type="system">
       <hardware>
         <plugin>gz_ros2_control/GazeboSimSystem</plugin>
