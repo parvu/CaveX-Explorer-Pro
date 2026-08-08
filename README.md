@@ -104,6 +104,109 @@ RGB camera, 2D lidar, and IMU only). The frontend's sonar panels and `sonarActiv
 `sonarDepth`/`sonarEchoStrength` fields are concept-demo values, not backed by
 any real sensor or ROS2 topic — don't wire them up as if they were.
 
+## Phase 1 (revised): Tracked BlueBoat-like Vehicle
+
+The original Phase 1 approach was a CHAMP legged quadruped
+(`docs/superpowers/specs/2026-08-04-cavex-legged-walker-phase1-design.md`);
+it was abandoned after an unresolved legged-locomotion balance/stance
+problem discovered during implementation. This phase replaces it with a
+BlueBoat-hulled tracked ground vehicle under ArduPilot Rover (ArduRover)
+control, in a separate worktree/branch
+(`cavex-tracked-blueboat-ardupilot`) — CHAMP's SLAM/Nav2 bringup for the
+legged robot is not reused.
+
+**Build** (from the worktree root):
+
+```bash
+cd ros2_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+source ardupilot_gazebo_env.sh   # ArduPilot SITL env, incl. mavproxy.py on PATH
+```
+
+**Launch** (two terminals, or background both):
+
+```bash
+ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py   # Gazebo + ArduPilot Rover SITL
+ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py     # RTAB-Map 3D-lidar SLAM + Nav2
+```
+
+Drive it (once ArduPilot arms and sets GUIDED mode, which
+`cmd_vel_to_ardupilot.py` does automatically a few seconds after launch):
+
+```bash
+ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}, angular: {z: 0.0}}"
+```
+
+**Track retraction control** — the hull's two retractable track assemblies
+are commanded via a single string topic:
+
+```bash
+ros2 topic pub --once /cavex/tracks/command std_msgs/msg/String "{data: 'retracted'}"
+ros2 topic pub --once /cavex/tracks/command std_msgs/msg/String "{data: 'deployed'}"
+```
+
+Confirm real joint motion via `/joint_states`
+(`left_track_retract_joint`/`right_track_retract_joint`, ~0 rad deployed,
+~1.4 rad retracted — live-verified round-trip).
+
+**ATE evaluation** (ground truth vs. RTAB-Map's SLAM estimate):
+
+```bash
+ros2 run cavex_tracked_vehicle run_tracked_vehicle_ate_eval.py --ros-args \
+  -p use_sim_time:=true -p num_runs:=3 -p budget_sim_s:=15.0
+cat cavex_ate_runs.csv
+```
+
+This environment's real_time_factor is typically very low (~0.02-0.03, spiking
+higher under lighter CPU load) — the eval script does not drive the vehicle
+itself; run a manual `/cmd_vel` publish loop alongside it or the run just
+measures a stationary vehicle. **Known limitation, not yet resolved**:
+`icp_odometry` (RTAB-Map's lidar odometry front end) does not reliably
+bootstrap its first keyframe even after well-calibrated bootstrap driving —
+symptom is `icp_inliers_ratio` staying at 0.0 and repeated "Registration
+failed: No matches available for computing distance quantiles" /
+"structural complexity is too low (corridor-like environment)" log lines.
+This is the same underlying class of issue as `explore_lite`'s parked
+costmap-coverage problem below, not a new bug. No ATE data was successfully
+produced in the verification session that added this section; rerun and
+check `icp_inliers_ratio` is nonzero (`ros2 topic echo /odom_info --once`)
+before relying on a `cavex_ate_runs.csv` result.
+
+**`explore_lite` (autonomous frontier exploration) — known limitation**: it
+currently stops itself almost immediately ("No frontiers found, stopping")
+because RTAB-Map's published `/global_costmap/costmap` window doesn't track
+the robot's real position even though RTAB-Map's internal map graph is
+genuinely growing. Root cause not yet isolated (RTAB-Map grid-publishing lag
+vs. Nav2 `static_layer` sizing vs. frame-axis mismatch). Don't rely on it for
+autonomous verification; drive the vehicle manually via `/cmd_vel` instead —
+that's what this section's own verification did, real ground-truth motion
+with no autonomous driving in the loop. Obstacle-avoidance verification
+(Task 9's four fuel-model obstacles in the dry section) used a
+min-distance-to-obstacle-centers check against a recorded `/odom_ground_truth`
+bag; the manually-driven verification run never came within collision range
+of any obstacle (closest approach ~7.7m), which confirms no collisions but
+is a weaker exercise of close-proximity avoidance than a route that
+deliberately threads between them.
+
+**Water region** — the flooded chamber for Task 16's BlueROV2/water-boundary
+work was re-derived from a live probe-drop survey of the real vendored cave
+mesh (not an unverified whole-bounding-box guess): a real, flat, obstacle-free
+floor at world `z~=0` was found spanning roughly `x∈[15,65] y∈[2,12]`,
+confirmed clear for at least 25m overhead. The water surface sits at `z=2.0`
+(a real ~2m partial flood, not a fill to the ceiling), centered at `(40, 7)`.
+See `ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world`'s `water_surface`
+and `Buoyancy` plugin comments for the full survey data.
+
+**Honesty caveats** (same standard as the rest of this project): this
+simulation's ground truth is simulator-internal and noiseless — treat any
+ATE/localization numbers as best-case/idealized, not real-sensor-noise
+results. The vehicle is labeled "BlueBoat-like tracked vehicle" throughout;
+it makes no official Blue Robotics/ArduPilot endorsement claim and no
+marine/floating capability claim (tracks only, ArduPilot Rover firmware, not
+ArduBoat).
+
 ## Third-party assets
 
 **Cave geometry** — `ros2_ws/src/cavex_slam_nav/models/cave_world/` is
