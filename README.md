@@ -107,13 +107,31 @@ any real sensor or ROS2 topic — don't wire them up as if they were.
 ## Phase 1: Tracked BlueBoat-like Vehicle + BlueROV2
 
 Phase 1 uses a BlueBoat-hulled tracked ground vehicle under ArduPilot Rover
-(ArduRover) control for the dry cave section, and a separate BlueROV2 under
-ArduSub control for the flooded section. **Not yet implemented**: carrying
-the BlueROV2 nested inside the tracked vehicle's pontoons and releasing it
-at the water boundary (planned via Gazebo's `DetachableJoint` system) —
-currently the BlueROV2 is verified as a standalone vehicle only (see
-`cmd_vel_to_ardusub.py` below); the physical carry/release mechanism and
-`vehicle_switch_node`'s water-boundary handoff are both still open work.
+(ArduRover) control for the dry cave section, carrying a BlueROV2 as
+physical cargo mounted just above its deck. `vehicle_switch_node.py`
+watches the tracked vehicle's real ground truth and, on crossing the real
+water boundary (x=15, `cave_floor_patch`'s own vertex-confirmed edge),
+retracts the tracks and releases the BlueROV2 via Gazebo's real
+`gz-sim-detachable-joint-system` plugin (added to `model.sdf.tracked`,
+confirmed against the actual upstream reference example at
+`/usr/share/gz/gz-sim8/worlds/detachable_joint.sdf`). Live-verified: both
+entities spawn together without a physics crash, settle rigidly attached
+(constant ~0.4m z offset), and a real detach produces genuine, growing
+positional divergence between them within seconds — not inferred from
+code alone.
+
+**Known limitations**: the handoff is one-way — `DetachableJoint` has no
+usable re-attach for a BlueROV2 that's already drifted away, so returning
+to the dry section does not re-dock it or re-deploy the tracks
+automatically. `cavex_world.world`'s Buoyancy plugin applies its water
+density by world-frame z alone, not scoped to the real water region's x/y
+extent, so the carried BlueROV2 technically experiences buoyancy forces
+throughout dry-section transport too (absorbed as extra load on the joint
+while attached — not visibly wrong, but not physically correct either).
+Controlling the BlueROV2 once released still needs ArduSub, which has its
+own separate, unresolved limitation — see "BlueROV2 / ArduSub" below;
+`vehicle_switch_node.py` does not start or manage ArduSub itself, by
+explicit design.
 
 **Build** (from the worktree root):
 
