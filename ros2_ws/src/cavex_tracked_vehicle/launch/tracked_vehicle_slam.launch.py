@@ -237,6 +237,25 @@ def generate_launch_description():
         )],
     )
 
+    # Real request: "implement dead end algorithm: backtrack until another
+    # opening or corridor is found." Nav2's own stock BackUp recovery (see
+    # tracked_vehicle_nav_to_pose_bt.xml) only backs up a fixed 0.60m per
+    # attempt -- real, but not enough for an actual dead-end tunnel many
+    # meters deep. This node handles that: detects genuine no-progress stalls
+    # (not just idle), cancels the active Nav2 goal, and reverses along its
+    # own recorded trail until the global costmap shows a real lateral
+    # opening. Safe to start immediately alongside everything else -- its own
+    # stuck-detection requires a recent nonzero /cmd_vel command, so it can't
+    # fire before real driving (bootstrap_nudge or explore_lite) begins. See
+    # dead_end_backtrack_node.py's own module docstring for the full design.
+    dead_end_backtrack_node = Node(
+        package='cavex_tracked_vehicle',
+        executable='dead_end_backtrack_node.py',
+        name='dead_end_backtrack_node',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
     # Task 12: real, structural cold-start deadlock discovered live -- not a
     # code bug, a known characteristic of pure ICP scan-matching odometry.
     # From a stationary spawn, icp_odometry cannot compute its first
@@ -327,6 +346,7 @@ def generate_launch_description():
         slam_pose_publisher,
         nav2_bringup_launch,
         explore_node,
+        dead_end_backtrack_node,
         bootstrap_nudge,
         ate_evaluator,
         tracked_vehicle_ground_truth_odom,
