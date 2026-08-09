@@ -53,7 +53,7 @@ from std_msgs.msg import Empty, Float64, String
 WATER_BOUNDARY_X = 15.0
 
 # Matches motorized_tether_control.py's own MIN/MAX_PAYOUT_LENGTH bounds.
-TETHER_LENGTH_DOCKED = 0.15
+TETHER_LENGTH_DOCKED = 0.05
 TETHER_LENGTH_DEPLOYED = 8.0
 
 # "Fully afloat" threshold -- a real, empirically-derived value, not

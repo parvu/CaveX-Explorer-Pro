@@ -51,18 +51,12 @@ GZ_POSE_TOPIC = '/world/cavex_world/pose/info'
 ANCHOR_LOCAL_OFFSET = (-0.2, 0.0, 0.05)
 
 # Motorized winch: max reel rate (m/s) and payout length bounds (m).
-# MIN_PAYOUT_LENGTH tightened from an earlier 0.3 -- pure tether tension
-# (no physical cradle; a physically-caged version was tried and reverted,
-# real ROV-vs-hull collision geometry bugs made it unreliable, not worth
-# the added complexity for now) means the whole "how still is docked"
-# question comes down to this one number and the spring/damping constants
-# below. 0.3 let the ROV drift ~0.5m under the world's real (if not fully
-# scoped) buoyancy before the earlier session tightened this to 0.1 to
-# match a cradle that's no longer here; 0.15 is a middle ground -- shorter
-# leash than the original loose value, without assuming a cage that isn't
-# there to also help.
+# MIN_PAYOUT_LENGTH tightened to 0.05: in the dry section the rigid
+# DetachableJoint lock (vehicle_switch_node.py) is what actually holds the
+# ROV still now, not tether tension -- this floor just keeps the tether
+# itself snug against the hull rather than dictating dock stability.
 MAX_REEL_RATE = 0.15
-MIN_PAYOUT_LENGTH = 0.15
+MIN_PAYOUT_LENGTH = 0.05
 MAX_PAYOUT_LENGTH = 8.0
 
 # Spring-damper constraint, engaged only once distance > current payout
