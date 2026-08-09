@@ -126,6 +126,16 @@ def generate_launch_description():
             # disables this skip (always process/consider each frame).
             'RGBD/LinearUpdate': '0.0',
             'RGBD/AngularUpdate': '0.0',
+            # Default Rtabmap/DetectionRate is 1Hz (matches the "Rate=1.00s"
+            # seen live in rtabmap's own log line) -- that's also how often
+            # it publishes the map->odom TF. Lidar/odom messages land between
+            # those publishes, so rviz/costmap TF lookups at those in-between
+            # stamps intermittently hit "frame does not exist" or
+            # extrapolation errors even once SLAM is healthy. Raised to 5Hz
+            # to shrink that gap; 0 (uncapped) was considered but risks
+            # starving loop-closure/graph-optimization CPU time for no real
+            # benefit here.
+            'Rtabmap/DetectionRate': '5.0',
         }],
         remappings=[
             ('rgb/image', '/camera/color/image_raw'),
