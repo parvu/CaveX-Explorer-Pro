@@ -108,28 +108,40 @@ any real sensor or ROS2 topic — don't wire them up as if they were.
 
 Complete and merged into `main`. Phase 1 uses a BlueBoat-hulled tracked ground vehicle under ArduPilot Rover
 (ArduRover) control for the dry cave section, carrying a BlueROV2 as
-physical cargo mounted just above its deck. `vehicle_switch_node.py`
-watches the tracked vehicle's real ground truth and, on crossing the real
-water boundary (x=15, `cave_floor_patch`'s own vertex-confirmed edge),
-retracts the tracks and releases the BlueROV2 via Gazebo's real
-`gz-sim-detachable-joint-system` plugin (added to `model.sdf.tracked`,
+physical cargo mounted just above its deck. The BlueROV2 is **rigidly
+locked** to the hull for the whole dry section (Gazebo's real
+`gz-sim-detachable-joint-system` plugin, added to `model.sdf.tracked`,
 confirmed against the actual upstream reference example at
-`/usr/share/gz/gz-sim8/worlds/detachable_joint.sdf`). Live-verified: both
+`/usr/share/gz/gz-sim8/worlds/detachable_joint.sdf` -- real `attach_topic`
+AND `detach_topic`, `/cavex/rov_lock/attach`/`/cavex/rov_lock/detach`), not
+just carried by tether tension. `vehicle_switch_node.py` locks it once at
+startup (a short retry burst, since bluerov2 spawns after the tracked
+vehicle) and releases it ONLY once BOTH real conditions hold: past the
+water boundary (x=15, `cave_floor_patch`'s own vertex-confirmed edge) AND
+the boat has been genuinely afloat (z > 6.5, empirically derived -- this
+hull turns out close to neutrally buoyant, not a clean floating-waterline
+case) for 2s continuously. The motorized tether (`motorized_tether_control.py`)
+stays active throughout -- the rigid joint dominates while it holds, and
+becomes the operative restraint again once unlocked, the same way a real
+ROV stays connected by its umbilical even once released to operate
+independently. Track retraction + tether payout are triggered independently,
+keyed to the water-boundary x crossing alone. Docked/retracted tether
+length is tightened to 0.05m (`MIN_PAYOUT_LENGTH`/`TETHER_LENGTH_DOCKED`,
+down from an earlier 0.15m) now that the rigid lock, not tether tension, is
+what actually holds the ROV still in the dry section. Live-verified: both
 entities spawn together without a physics crash, settle rigidly attached
 (constant z offset -- ~0.4m at the mount height first tested, ~0.03m at the
 current, deck-flush mount height after a later fix; see "Deployment
-mechanism, helipad, and PX4 x500" below), and a real detach produces
+mechanism, helipad, and PX4 x500" below), and a manual detach produces
 genuine, growing positional divergence between them within seconds — not
 inferred from code alone.
 
-**Known limitations**: the handoff is one-way — `DetachableJoint` has no
-usable re-attach for a BlueROV2 that's already drifted away, so returning
-to the dry section does not re-dock it or re-deploy the tracks
-automatically. `cavex_world.world`'s Buoyancy plugin applies its water
+**Known limitations**: the handoff is one-way — no automatic re-lock/re-dock
+once released. `cavex_world.world`'s Buoyancy plugin applies its water
 density by world-frame z alone, not scoped to the real water region's x/y
 extent, so the carried BlueROV2 technically experiences buoyancy forces
-throughout dry-section transport too (absorbed as extra load on the joint
-while attached — not visibly wrong, but not physically correct either).
+throughout dry-section transport too (absorbed as extra load on the rigid
+joint while locked — not visibly wrong, but not physically correct either).
 Controlling the BlueROV2 once released still needs ArduSub, which has its
 own separate, unresolved limitation — see "BlueROV2 / ArduSub" below;
 `vehicle_switch_node.py` does not start or manage ArduSub itself, by
@@ -150,6 +162,29 @@ source ardupilot_gazebo_env.sh   # ArduPilot SITL env, incl. mavproxy.py on PATH
 ```bash
 ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py   # Gazebo + ArduPilot Rover SITL
 ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py     # RTAB-Map 3D-lidar SLAM + Nav2
+```
+
+GPU rendering is on by default (`ardupilot_gazebo_env.sh` sets
+`GALLIUM_DRIVER=d3d12`/`MESA_LOADER_DRIVER_OVERRIDE=d3d12` for WSL2 GPU
+passthrough) -- generally stable but has intermittently crashed `gz sim gui`
+for reasons never fully root-caused. Under the full stack (GPU render +
+RTAB-Map + Nav2 all together), this environment's CPU can saturate hard
+enough (observed load average 31 on an 8-core box) that Nav2's lifecycle
+bond heartbeats (4s timeout) get missed, crashing `collision_monitor`/
+`waypoint_follower` and aborting Nav2 bringup entirely -- SLAM/TF/rviz are
+unaffected (no bond timeout). Retry via `ros2 service call
+/lifecycle_manager_navigation/manage_nodes
+nav2_msgs/srv/ManageLifecycleNodes "{command: 0}"` once load has settled.
+
+Visualize with the saved rviz2 config (TF, `/map`, `/lidar/points`,
+ground-truth + SLAM odometry paths, `/explore/frontiers`) and/or Gazebo's
+own GUI in follow mode (locks the camera onto the boat -- model name is
+`cavex_tracked_blueboat`, confirm with `gz model --list` if unsure):
+
+```bash
+ros2 run rviz2 rviz2 -d src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz &
+gz service -s /gui/follow --reqtype gz.msgs.StringMsg --reptype gz.msgs.Boolean \
+  --timeout 3000 --req 'data: "cavex_tracked_blueboat"'
 ```
 
 Drive it (once ArduPilot arms and sets GUIDED mode, which
@@ -241,17 +276,32 @@ connection, 30s+ waits), so `AP_Arming`'s own `check_failed()` messages
 (routed via MAVLink STATUSTEXT) were never observable. Needs a working
 MAVLink console connection to diagnose further.
 
-**`explore_lite` (autonomous frontier exploration) — known limitation**: it
-currently stops itself almost immediately ("No frontiers found, stopping")
-because RTAB-Map's published `/global_costmap/costmap` window doesn't track
-the robot's real position even though RTAB-Map's internal map graph is
-genuinely growing. Root cause not yet isolated (RTAB-Map grid-publishing lag
-vs. Nav2 `static_layer` sizing vs. frame-axis mismatch). Don't rely on it for
-autonomous verification; drive the vehicle manually via `/cmd_vel` instead —
-that's what this section's own verification did, real ground-truth motion
-with no `explore_lite`/Nav2 autonomy in the loop (the launch file's own
-`bootstrap_nudge` auto-drive, see above, was still active for its first
-300s as it is on every launch). Obstacle-avoidance verification
+**`explore_lite` (autonomous frontier exploration) — fixed, two independent
+real bugs**: it used to stop itself almost immediately ("No frontiers found,
+stopping"), traced to two separate causes, both fixed: (1) `explore_node`
+used to connect to Nav2 and call its first `makePlan()` before RTAB-Map had
+published a real `map` frame at all -- fixed by delaying `explore_node`'s
+own start (a `TimerAction`, 320s) until after the bootstrap-drive window has
+given RTAB-Map time to publish a stable map. (2) even with a real `map`
+frame, the Nav2 costmap's own `inflation_layer` (`inflation_radius=0.5`) was
+consuming ~76% of the real free space, leaving no free-cell-adjacent-to-
+unknown cells for frontier search to find -- confirmed live by direct
+OccupancyGrid inspection (raw `/map` free=3841 cells vs. costmap free=919),
+fixed by reducing to `0.35` (just above `robot_radius=0.3`), which recovered
+1445 real frontier-adjacent cells and produced actual `/explore/frontiers`
+markers. Also added a real "backup when blocked, search another corridor"
+tuning fix: Nav2's stock `BackUp` recovery distance (0.30m, sized for a
+TurtleBot-class footprint) rarely cleared this vehicle's real ~1.19m hull --
+see `config/tracked_vehicle_nav_to_pose_bt.xml` (`backup_dist=0.60m`), wired
+via `bt_navigator`'s `default_nav_to_pose_bt_xml`. "Search another corridor"
+needed no new code: `explore_lite`'s own `frontier_blacklist_` already
+retries a different frontier once Nav2 aborts one. Also fixed: RTAB-Map's
+`map`->`odom` TF was only published at its default 1Hz (`Rtabmap/
+DetectionRate`), causing intermittent "could not transform ... to map"
+flicker whenever a lidar/odom message landed between publishes -- raised to
+5Hz, live-verified via `rtabmap`'s own "Rate=0.20s" log line and a
+`tf2_echo` stream updating every 0.2s with no extrapolation errors once
+locked on. Obstacle-avoidance verification
 (Task 9's four fuel-model obstacles in the dry section) used a
 min-distance-to-obstacle-centers check against a recorded `/odom_ground_truth`
 bag; the manually-driven verification run never came within collision range

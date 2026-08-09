@@ -1,9 +1,9 @@
 # CaveX-Explorer-Pro — tracked BlueBoat + BlueROV2 (ArduPilot) simulation
-# Worktree: /home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot
-# Run everything from the ros2_ws directory inside that worktree.
-# Visualization: Gazebo's own GUI (section 6) and/or rviz2. No web dashboard needed.
+# No worktree anymore -- run everything from the repo's own ros2_ws directory.
+# Visualization: Gazebo's own GUI (section 6, GPU-rendered) and/or rviz2 with the
+# saved map-reconstruction config. No web dashboard needed.
 
-cd /home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/ros2_ws
+cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
 
 # ============================================================
 # 0. STATUS — read this first
@@ -34,11 +34,26 @@ cd /home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/ro
 # ardupilot_gazebo_env.sh's PATH export already covers ~/.local/bin, so this just
 # works once sourced -- no extra step needed for normal launches.
 #
-# STILL BROKEN: explore_lite's autonomous frontier exploration (Task 12) stops
-# itself almost immediately ("No frontiers found, stopping") -- RTAB-Map's published
-# /global_costmap/costmap window doesn't track the robot's real position even though
-# its internal WM is genuinely growing. Drive manually (step 5) instead. See the SDD
-# ledger for the full trail.
+# FIXED: explore_lite's "No frontiers found, stopping" bug had TWO independent real
+# causes, both fixed: (1) explore_node used to connect before RTAB-Map's `map` frame
+# existed -- fixed by delaying its start (TimerAction, 320s) until after the
+# bootstrap-drive window. (2) the Nav2 costmap's own inflation_layer (inflation_radius
+# 0.5) was consuming ~76% of the real free space, leaving no free-cell-adjacent-to-
+# unknown cells for frontier_search to find -- reduced to 0.35 (just above
+# robot_radius=0.3). Both confirmed live via direct OccupancyGrid inspection. Also
+# added a real "backup when blocked" fix: Nav2's stock BackUp recovery distance
+# (0.30m, TurtleBot-scale) rarely cleared this ~1.19m hull -- see
+# config/tracked_vehicle_nav_to_pose_bt.xml (backup_dist=0.60m), wired via
+# bt_navigator's default_nav_to_pose_bt_xml. "Search another corridor" needed no new
+# code -- explore_lite's own frontier_blacklist_ already does it on Nav2 abort.
+
+# FIXED: RTAB-Map's map->odom TF was only published at its default 1Hz
+# (Rtabmap/DetectionRate), causing intermittent "could not transform ... to map"
+# flicker in rviz/costmap TF lookups whenever a lidar/odom message landed between
+# publishes -- not a one-off startup transient as first assumed. Raised to 5Hz
+# (Rtabmap/DetectionRate: 5.0 in tracked_vehicle_slam.launch.py). Live-verified:
+# rtabmap's own log now shows "Rate=0.20s" and tf2_echo updates every 0.2s with no
+# extrapolation errors once locked on.
 #
 # ALSO FLAKY: icp_odometry's ICP registration bootstrap (needed before
 # /cavex/slam/odom publishes anything, which ATE eval -- section 7 -- depends on)
@@ -57,25 +72,35 @@ cd /home/parvu/CaveX-Explorer-Pro/.worktrees/cavex-tracked-blueboat-ardupilot/ro
 # confirmed working (section 8b). Needs a working MAVLink console to diagnose the
 # arm rejection further.
 #
-# DONE (live-verified): BlueROV2 is now carried on the tracked vehicle's deck and
-# released at the water boundary. gazebo_tracked_vehicle.launch.py spawns bluerov2
-# BEFORE the tracked vehicle (so model.sdf.tracked's DetachableJoint plugin finds it
-# already present), mounted +0.03m above the deck (as close to deck-flush as safely
-# achievable without overlapping the hull's own collision). vehicle_switch_node.py
-# (part of the same launch) watches /odom_ground_truth and at x>=15 retracts the
-# tracks + publishes to /cavex/rov_release/detach (bridged gz-transport, see
-# gazebo_tracked_vehicle_bridge.yaml). Live-verified: both spawn without a crash,
-# settle rigidly attached, and a manual detach produces real, growing positional
-# divergence within seconds. Settled mount offset is best-effort, not exact -- the
-# child free-falls a variable, real-timing-dependent amount before the joint
-# actually engages (confirmed by repeated relaunches, never crashed but offset
-# varied). NOT tested: a full real drive from spawn (x=-35) to the water boundary
-# (x=15, ~50m) -- RTF makes that slow: use section 5's drive loop for as long as
-# needed, or manually publish to /cavex/rov_release/detach + /cavex/tracks/command
-# to exercise the mechanism directly without waiting. One-way handoff -- no
-# automatic re-dock/re-attach. ArduSub is NOT started or managed by
-# vehicle_switch_node (explicit scope choice) -- see section 8b for controlling the
-# released BlueROV2 separately.
+# DONE (live-verified): the BlueROV2 is now RIGIDLY LOCKED to the hull for the
+# entire dry section (gz-sim-detachable-joint-system, real attach_topic AND
+# detach_topic -- /cavex/rov_lock/attach, /cavex/rov_lock/detach, bridged in
+# gazebo_tracked_vehicle_bridge.yaml), not just carried by tether tension.
+# vehicle_switch_node.py locks it once at startup (a short retry burst, since
+# bluerov2 spawns AFTER the tracked vehicle) and releases it ONLY once BOTH real
+# conditions hold: past the water boundary (x>=15) AND the boat has been genuinely
+# afloat (z > AFLOAT_Z_THRESHOLD=6.5, empirically derived -- this hull is close to
+# neutrally buoyant, not a clean floating-waterline case) for 2s continuously. The
+# motorized tether (motorized_tether_control.py) stays active throughout -- the
+# rigid joint dominates while it holds, and becomes the operative restraint again
+# once unlocked. Docked/retracted tether length tightened to 0.05m (was 0.15m) now
+# that the rigid lock, not tether tension, is what actually holds the ROV still.
+# One-way handoff -- no automatic re-dock/re-lock. ArduSub is NOT started or managed
+# by vehicle_switch_node (explicit scope choice) -- see section 8b for controlling
+# the released BlueROV2 separately.
+
+# NOTE (GPU rendering): ardupilot_gazebo_env.sh sets GALLIUM_DRIVER=d3d12 and
+# MESA_LOADER_DRIVER_OVERRIDE=d3d12 (WSL2 GPU passthrough) -- generally stable but
+# intermittently crashes gz sim gui for reasons never fully root-caused; if the GUI
+# dies, relaunch section 3 and check `ps aux` for orphaned survivors before retrying.
+# Under a full stack (Gazebo GPU render + RTAB-Map + full Nav2), this environment's
+# CPU can saturate hard (observed load average 31 on an 8-core box) -- Nav2's
+# lifecycle bond heartbeats (4s timeout) can then be missed, crashing
+# collision_monitor/waypoint_follower and aborting Nav2 bringup entirely (SLAM/TF/
+# rviz are unaffected, they have no bond timeout). If this happens, retry via
+# `ros2 service call /lifecycle_manager_navigation/manage_nodes
+# nav2_msgs/srv/ManageLifecycleNodes "{command: 0}"` once load has settled, or free
+# up CPU (e.g. close the GPU-rendered GUI) before relaunching.
 #
 # DONE (live-verified): a static davit (deployment crane, NOT actuated -- visual/
 # collision only) near the ROV mount, a helipad at the bow (x=0.3, clear of the
@@ -197,13 +222,18 @@ ros2 topic echo /joint_states --once | grep -A2 "track_retract"
 # ============================================================
 # 6. Visualize with rviz2 and/or Gazebo's own GUI
 # ============================================================
-rviz2 --ros-args -p use_sim_time:=true &
-# No saved config yet — add displays manually: TF, PointCloud2 on /lidar/points,
-# Image on /camera/color/image_raw, Map on /map, Path/Odometry on
-# /cavex/slam/odom and /odom_ground_truth.
+# Saved rviz2 config (TF, /map, /lidar/points, ground-truth + SLAM odometry paths,
+# /explore/frontiers, optional costmap overlay -- all pre-wired, Fixed Frame=map):
+ros2 run rviz2 rviz2 -d src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz &
 
-# Gazebo's own 3D GUI client, attaches to the already-running headless -s server:
-gz sim -g &
+# Gazebo GUI follow mode -- locks the camera onto the boat with a trailing offset
+# (model name is "cavex_tracked_blueboat", NOT "blueboat" -- confirm with
+# `gz model --list` if unsure):
+gz service -s /gui/follow --reqtype gz.msgs.StringMsg --reptype gz.msgs.Boolean \
+  --timeout 3000 --req 'data: "cavex_tracked_blueboat"'
+gz service -s /gui/follow/offset --reqtype gz.msgs.Vector3d --reptype gz.msgs.Boolean \
+  --timeout 3000 --req 'x: -6.0, y: 0.0, z: 3.0'
+# To stop following: same /gui/follow service with data: ""
 
 # ============================================================
 # 7. ATE evaluation + obstacle-avoidance cross-check
@@ -312,5 +342,10 @@ gz service -s /world/cavex_world/remove --reqtype gz.msgs.Entity --reptype gz.ms
 # ============================================================
 # 9. Cleanup — ALWAYS run after finishing
 # ============================================================
-ps aux | grep -iE "gz sim|ardurover|ardusub|micro_ros_agent|MicroXRCEAgent|rtabmap|icp_odometry|nav2|explore|rviz2|mavproxy|sitl_dds_udp" | grep -v grep
-# kill -9 <pid> for every PID found; re-check ps aux afterward to confirm none survive.
+ps aux | grep -iE "gz sim|ardurover|ardusub|micro_ros_agent|MicroXRCEAgent|rtabmap|icp_odometry|nav2|explore|rviz2|mavproxy|sitl_dds_udp|parameter_bridge|robot_state_publisher|spawner|controller_server|planner_server|bt_navigator|behavior_server|lifecycle_manager|smoother_server|route_server|velocity_smoother|waypoint_follower|collision_monitor|docking_server" | grep -v grep
+# kill -9 <pid> for EVERY PID found (never pkill -f -- unreliable in this
+# environment); re-check ps aux afterward to confirm none survive. Two full launch
+# trees have been found running simultaneously in this project before -- don't
+# assume a clean launch means no leftovers from a PREVIOUS one.
+ros2 daemon stop
+rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
