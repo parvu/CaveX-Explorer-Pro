@@ -54,9 +54,9 @@ WATER_BOUNDARY_X = 15.0
 
 # Matches motorized_tether_control.py's own MIN_PAYOUT_LENGTH (see that
 # module's own derivation comment: real anchor-to-ROV distance at the
-# raised +0.3m spawn, not a hull-collision-safe floor -- setting this any
+# current spawn, not a hull-collision-safe floor -- setting this any
 # lower would just get silently clamped up to MIN_PAYOUT_LENGTH anyway).
-TETHER_LENGTH_DOCKED = 0.25
+TETHER_LENGTH_DOCKED = 0.12
 TETHER_LENGTH_DEPLOYED = 8.0
 
 # "Fully afloat" threshold -- a real, empirically-derived value, not

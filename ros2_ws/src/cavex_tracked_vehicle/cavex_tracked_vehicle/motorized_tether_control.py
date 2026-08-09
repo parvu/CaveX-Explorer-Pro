@@ -51,21 +51,22 @@ GZ_POSE_TOPIC = '/world/cavex_world/pose/info'
 ANCHOR_LOCAL_OFFSET = (-0.2, 0.0, 0.05)
 
 # Motorized winch: max reel rate (m/s) and payout length bounds (m).
-# MIN_PAYOUT_LENGTH: real request -- ROV spawn raised +0.3m (see
-# gazebo_tracked_vehicle.launch.py's spawn_bluerov2 z, now 6.6155) and the
-# dry-phase tether shortened to match, explicitly WITHOUT re-checking
-# against the hull's own collision geometry (an earlier 0.5185m-derived
-# floor accounted for that; this value does not). Real straight-line
-# anchor-to-ROV distance at the new spawn: anchor world z ~= hull's own
-# settled z (6.408, see launch.txt) + ANCHOR_LOCAL_OFFSET's z (0.05) =
-# 6.458; dz = 6.6155-6.458 = 0.1575, dx = 0.2 (anchor local x=-0.2 vs ROV
-# spawn local x=-0.4) -> sqrt(0.2^2+0.1575^2) = 0.2546m, rounded to 0.25m.
-# Safe only because the rigid DetachableJoint lock, not tether tension, is
-# what actually holds the ROV during the dry section (vehicle_switch_node.py)
-# -- this value gives no hull-collision protection if that lock is ever not
-# engaged, unlike the geometric floor it replaces.
+# MIN_PAYOUT_LENGTH: real request -- ROV spawn moved 0.1m down and 0.3m
+# forward (see gazebo_tracked_vehicle.launch.py's spawn_bluerov2, now
+# x=-35.1, z=6.5155) and the dry-phase tether shortened to match, again
+# explicitly WITHOUT re-checking against the hull's own collision geometry
+# (an earlier 0.5185m-derived floor accounted for that; this value does
+# not). Real straight-line anchor-to-ROV distance at the new spawn: anchor
+# world x ~= boat spawn x(-35) + ANCHOR_LOCAL_OFFSET's x(-0.2) = -35.2,
+# world z ~= hull's own settled z (6.408, see launch.txt) +
+# ANCHOR_LOCAL_OFFSET's z (0.05) = 6.458; dx = -35.2-(-35.1) = -0.1,
+# dz = 6.458-6.5155 = -0.0575 -> sqrt(0.1^2+0.0575^2) = 0.1153m, rounded to
+# 0.12m. Safe only because the rigid DetachableJoint lock, not tether
+# tension, is what actually holds the ROV during the dry section
+# (vehicle_switch_node.py) -- this value gives no hull-collision protection
+# if that lock is ever not engaged, unlike the geometric floor it replaces.
 MAX_REEL_RATE = 0.15
-MIN_PAYOUT_LENGTH = 0.25
+MIN_PAYOUT_LENGTH = 0.12
 MAX_PAYOUT_LENGTH = 8.0
 
 # Spring-damper constraint, engaged only once distance > current payout

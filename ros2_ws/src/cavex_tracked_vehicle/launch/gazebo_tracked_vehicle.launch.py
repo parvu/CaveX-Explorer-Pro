@@ -147,33 +147,19 @@ def generate_launch_description():
     #
     # Position: near tether_anchor_link's own pose (local x=-0.2, moved
     # 0.3m forward of an earlier x=-0.5 stern placement), still clear of
-    # the bow-mounted helipad at x=0.3. x = -35 + (-0.4) = -35.4, y = 0 --
-    # a little further aft than the anchor so the tether starts with some
-    # real slack rather than perfectly taut at t=0
-    # (motorized_tether_control.py's spring-damper force only engages once
-    # the ROV actually drifts past the current payout length, now 0.15m --
-    # a real 0.2m initial offset gives it a gentle initial pull rather
-    # than a large, jolting one).
+    # the bow-mounted helipad at x=0.3. Base x = -35 + (-0.4) = -35.4, then
+    # moved a further +0.3m forward per real request: -35.4 + 0.3 = -35.1
+    # (+x is forward, this file's established convention). y = 0.
     #
-    # z: base height aligned so the ROV's own TOP surface sits level with the
-    # top of the hull (the "pontoon hulls", per an earlier session's
-    # request), not its origin. bluerov2/model.sdf's own main-body collision
-    # box is centered at local z=0.06 with half-height 0.0325, so its top
-    # sits 0.06+0.0325=0.0925 above its spawn origin. base_link's hull
-    # collision top is AT its own local z=0 (per the real bounding-box
-    # comment elsewhere in this file), but that is NOT the same as the
-    # tracked vehicle's own spawn z (6.65) here: the ROV spawns FIRST (before
-    # the hull exists at all), and the hull settles onto cave_floor_patch's
-    # real collision after its own later spawn, live-verified (and matching
-    # this project's own already-documented constant, see launch.txt:
-    # "Expected z ~6.4 (settled on cave_floor_patch, CAVE_FLOOR_Z=5.9 +
-    # hull rest height)") to rest at world z~6.408, not 6.65. Base height:
-    # 6.408 - 0.0925 = 6.3155, then RAISED an explicit further +0.3m per real
-    # request (6.3155 + 0.3 = 6.6155) -- deliberately NOT re-checked against
-    # the hull's own collision geometry (real request: ignore collision
-    # boxes for this dry-cave-phase adjustment; the rigid DetachableJoint
-    # lock, not this spawn placement or the tether, is what actually holds
-    # the ROV during the dry section -- see vehicle_switch_node.py).
+    # z: base height 6.3155 (ROV top flush with the hull's own top, see the
+    # raise-request comment below for the derivation), raised +0.3m to
+    # 6.6155 in an earlier request, then moved down 0.1m per this request:
+    # 6.6155 - 0.1 = 6.5155. Both x and z moves deliberately NOT re-checked
+    # against the hull's own collision geometry (real request: move the ROV
+    # "indifferent from collisions" for this dry-cave-phase adjustment; the
+    # rigid DetachableJoint lock, not this spawn placement or the tether, is
+    # what actually holds the ROV during the dry section -- see
+    # vehicle_switch_node.py).
     # (This is still only accurate at the moment the hull finishes
     # settling -- the ROV is on a real motorized tether, not rigidly
     # attached, so real buoyancy is free to drift it away from this
@@ -195,7 +181,7 @@ def generate_launch_description():
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'bluerov2', 'model.sdf'),
                    '-name', 'bluerov2',
-                   '-x', '-35.4', '-y', '0', '-z', '6.6155'],
+                   '-x', '-35.1', '-y', '0', '-z', '6.5155'],
         output='screen',
     )
 
