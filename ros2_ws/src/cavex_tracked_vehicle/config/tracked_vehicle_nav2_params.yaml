@@ -38,6 +38,19 @@ bt_navigator:
       plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
     navigate_through_poses:
       plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
+    # Real request: "when blocked, backup and search another corridor"
+    # during autonomous exploration. Overrides Nav2's stock default BT
+    # (see this file's own header comment) with one real, measured
+    # change: BackUp's distance sized for this vehicle's real ~1.19m
+    # hull, not the TurtleBot-scale 0.30m Nav2 ships by default -- see
+    # tracked_vehicle_nav_to_pose_bt.xml's own header comment for the
+    # full reasoning, including why "search another corridor" needs no
+    # new code (explore_lite's own blacklist-on-abort logic already
+    # handles it). Same repo-absolute-path convention this project
+    # already uses elsewhere for paths a plain YAML file can't resolve
+    # dynamically (gazebo_tracked_vehicle.launch.py's own WORKTREE_ROOT
+    # comment documents the same real constraint).
+    default_nav_to_pose_bt_xml: /home/parvu/CaveX-Explorer-Pro/ros2_ws/install/cavex_tracked_vehicle/share/cavex_tracked_vehicle/config/tracked_vehicle_nav_to_pose_bt.xml
 
 controller_server:
   ros__parameters:

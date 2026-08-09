@@ -1,0 +1,76 @@
+<!--
+  Real request: "when blocked, backup and search another corridor" during
+  autonomous exploration. Both halves of this already exist as standard
+  mechanisms in this stack; this file is a real, measured tuning fix on
+  top of them, not new logic. (Note for anyone editing this comment: XML
+  forbids a double hyphen anywhere inside a comment body, per the XML
+  spec, so this file uses semicolons/parens in place of this project's
+  usual em-dash convention; an earlier version of this exact comment used
+  that convention literally and failed to parse as a result.)
+
+  1. "Backup when blocked": this is Nav2's own stock default BT
+     (/opt/ros/jazzy/share/nav2_bt_navigator/behavior_trees/
+     navigate_to_pose_w_replanning_and_recovery.xml, unmodified until this
+     file), copied here verbatim except for one real, measured change:
+     RoundRobin's BackUp action already fires whenever FollowPath/
+     ComputePathToPose report a controller/planner failure (i.e. actually
+     blocked, not just re-planning). Its stock backup_dist=0.30m is sized
+     for a TurtleBot-class robot (~0.3m footprint); this vehicle's real
+     hull is ~1.19m long (bounding box x:[-0.60,0.59], see
+     model.sdf.tracked's own mount-height derivation comment), so 0.30m is
+     barely a quarter of the hull length, unlikely to clear it from
+     whatever it's flush against before the very next replan attempt.
+     Increased to 0.6m (roughly half the hull length plus margin) so a
+     backup maneuver has a real chance of actually creating clearance.
+
+  2. "Search another corridor": explore_lite's own vendored source
+     (m-explore-ros2/explore/src/explore.cpp) already blacklists a
+     frontier goal once Nav2 fully aborts it (RecoveryNode's
+     number_of_retries="6" exhausted below) and calls makePlan() again,
+     which picks a different, non-blacklisted frontier: a real,
+     already-working mechanism, not something this file adds.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+            <Sequence>
+              <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
+          <Sequence>
+            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+          </Sequence>
+        </RecoveryNode>
+      </PipelineSequence>
+      <Sequence>
+        <Fallback>
+          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+        </Fallback>
+        <ReactiveFallback name="RecoveryFallback">
+          <GoalUpdated/>
+          <RoundRobin name="RecoveryActions">
+            <Sequence name="ClearingActions">
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+            <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+            <Wait wait_duration="5.0"/>
+            <BackUp backup_dist="0.60" backup_speed="0.15" error_code_id="{backup_code_id}"/>
+          </RoundRobin>
+        </ReactiveFallback>
+      </Sequence>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>
