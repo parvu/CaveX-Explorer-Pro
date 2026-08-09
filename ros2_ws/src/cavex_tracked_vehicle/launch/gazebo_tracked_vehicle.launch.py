@@ -153,13 +153,13 @@ def generate_launch_description():
     #
     # z: base height 6.3155 (ROV top flush with the hull's own top, see the
     # raise-request comment below for the derivation), raised +0.3m to
-    # 6.6155 in an earlier request, then moved down 0.1m per this request:
-    # 6.6155 - 0.1 = 6.5155. Both x and z moves deliberately NOT re-checked
-    # against the hull's own collision geometry (real request: move the ROV
-    # "indifferent from collisions" for this dry-cave-phase adjustment; the
-    # rigid DetachableJoint lock, not this spawn placement or the tether, is
-    # what actually holds the ROV during the dry section -- see
-    # vehicle_switch_node.py).
+    # 6.6155, then moved down 0.1m to 6.5155, then moved down a further
+    # 0.02m per this request: 6.5155 - 0.02 = 6.4955. All x and z moves
+    # deliberately NOT re-checked against the hull's own collision geometry
+    # (real request: move the ROV "indifferent from collisions" for this
+    # dry-cave-phase adjustment; the rigid DetachableJoint lock, not this
+    # spawn placement or the tether, is what actually holds the ROV during
+    # the dry section -- see vehicle_switch_node.py).
     # (This is still only accurate at the moment the hull finishes
     # settling -- the ROV is on a real motorized tether, not rigidly
     # attached, so real buoyancy is free to drift it away from this

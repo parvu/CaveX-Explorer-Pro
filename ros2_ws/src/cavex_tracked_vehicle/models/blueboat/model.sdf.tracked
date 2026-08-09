@@ -564,8 +564,39 @@
         <gz_frame_id>lidar_link</gz_frame_id>
         <ray>
           <scan>
+            <!-- Horizontal samples raised 360 -> 720 (real request: match
+                 OpenRobotics' vendored coro_hd2_sensor_config_2 Fuel model,
+                 fuel.gazebosim.org/OpenRobotics/models/coro_hd2_sensor_config_2
+                 -- a real SubT-challenge sensor config for the Coordinated
+                 Robotics HD2 tracked robot (based on Marble's HD2), a directly
+                 comparable subterranean tracked-vehicle platform, whose own
+                 front_laser gpu_lidar uses 1800 horizontal samples and an
+                 identical vertical FOV -- 16 samples, +-0.2618 rad -- to what
+                 this vehicle already had). Tried CoRo's exact 1800 first and
+                 live-verified it as a REAL regression in this environment: 5x
+                 the point count per scan (28800 vs 5760) made RTAB-Map's own
+                 Conversion step balloon to 0.5-0.6s per scan (vs the sensor's
+                 0.1s/10Hz interval), backing up the whole pipeline and leaving
+                 icp_odometry permanently stuck at ratio=0.0 with repeated
+                 "RegistrationIcp cannot do registration with a null guess"
+                 errors -- SLAM never bootstrapped at all. 720 (2x the
+                 original, real resolution gain, still 2.5x below CoRo's
+                 count) was live-verified to fix the bootstrap failure:
+                 icp_odometry producing real, healthy match ratios (0.77-0.88,
+                 matching this project's usual baseline), zero registration
+                 errors. Conversion time is still elevated (0.66-1.24s per
+                 scan, not back to the pre-change ~0.15-0.3s baseline) -- a
+                 real, honest tradeoff of the extra points, compounded by this
+                 environment's already-documented variable CPU load, not a
+                 blocking problem since RTAB-Map keeps up functionally even
+                 if slower than its nominal 10Hz target under load. Kept this
+                 vehicle's own
+                 already-justified min/max range (0.4-30m, see below) rather
+                 than copying CoRo's 0.05-100m verbatim, since those were
+                 derived from this specific world's real self-occlusion and
+                 corridor-length findings, not arbitrary. -->
             <horizontal>
-              <samples>360</samples>
+              <samples>720</samples>
               <resolution>1</resolution>
               <min_angle>-3.14159</min_angle>
               <max_angle>3.14159</max_angle>
