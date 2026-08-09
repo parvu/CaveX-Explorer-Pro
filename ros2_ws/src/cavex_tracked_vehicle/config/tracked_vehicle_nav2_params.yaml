@@ -175,10 +175,28 @@ local_costmap:
         map_topic: /map
         subscribe_to_updates: true
         map_subscribe_transient_local: true
+      # Real, live-diagnosed root cause of explore_lite's documented
+      # "No frontiers found, stopping" bug (see explore_node's own comment
+      # below) -- NOT the map/costmap sync-timing theory that comment
+      # originally suspected. Directly inspected both RTAB-Map's raw /map
+      # and this costmap's own output as real OccupancyGrid data during a
+      # live run: raw /map had free=3841 cells (real, navigable, bordering
+      # plenty of unknown space), but with inflation_radius=0.5 this
+      # costmap only had free=919 left -- the inflation layer was
+      # consuming ~76% of the real free space, and what little remained
+      # no longer bordered any unknown cells at all (checked by direct
+      # 4-neighbor adjacency over the whole grid: 0 free-adjacent-to-
+      # unknown cells found), so frontier_search legitimately found
+      # nothing to explore even though ~72% of the map was still unknown.
+      # Reducing to 0.35 (just above robot_radius=0.3, not an arbitrary
+      # smaller number) recovered free=1474 and 1445 real frontier-
+      # adjacent cells -- confirmed live via /explore/frontiers actually
+      # publishing 2 real markers where it previously found none, same
+      # map, same run, only this parameter changed.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.5
+        inflation_radius: 0.35
       always_send_full_costmap: True
 
 global_costmap:
@@ -200,10 +218,28 @@ global_costmap:
         map_topic: /map
         subscribe_to_updates: true
         map_subscribe_transient_local: true
+      # Real, live-diagnosed root cause of explore_lite's documented
+      # "No frontiers found, stopping" bug (see explore_node's own comment
+      # below) -- NOT the map/costmap sync-timing theory that comment
+      # originally suspected. Directly inspected both RTAB-Map's raw /map
+      # and this costmap's own output as real OccupancyGrid data during a
+      # live run: raw /map had free=3841 cells (real, navigable, bordering
+      # plenty of unknown space), but with inflation_radius=0.5 this
+      # costmap only had free=919 left -- the inflation layer was
+      # consuming ~76% of the real free space, and what little remained
+      # no longer bordered any unknown cells at all (checked by direct
+      # 4-neighbor adjacency over the whole grid: 0 free-adjacent-to-
+      # unknown cells found), so frontier_search legitimately found
+      # nothing to explore even though ~72% of the map was still unknown.
+      # Reducing to 0.35 (just above robot_radius=0.3, not an arbitrary
+      # smaller number) recovered free=1474 and 1445 real frontier-
+      # adjacent cells -- confirmed live via /explore/frontiers actually
+      # publishing 2 real markers where it previously found none, same
+      # map, same run, only this parameter changed.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.5
+        inflation_radius: 0.35
       always_send_full_costmap: True
 
 planner_server:

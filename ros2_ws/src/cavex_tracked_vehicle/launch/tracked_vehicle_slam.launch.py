@@ -192,6 +192,20 @@ def generate_launch_description():
     # Fix: delay explore_node's own start until after bootstrap_nudge's
     # real driving window has completed and RTAB-Map has had time to
     # publish a stable `map` frame from that real motion.
+    #
+    # This fix genuinely works -- re-verified live in a later session:
+    # explore_node now connects AFTER a real `map` frame exists, no more
+    # lookupTransform failure. But "No frontiers found, stopping" still
+    # reproduced anyway, from a SECOND, independent real bug: the
+    # inflation_layer's own inflation_radius (see
+    # tracked_vehicle_nav2_params.yaml's own comment on that parameter for
+    # the full data) was consuming nearly all of the map's real free
+    # space, leaving no free cells bordering unknown ones for
+    # frontier_search to find -- fixed there, not here. Both bugs produced
+    # the identical-looking symptom ("No frontiers found, stopping" after
+    # a normal-looking connection), which is why the first fix looked
+    # complete at the time it landed but didn't actually resolve
+    # autonomous exploration on its own.
     explore_node = TimerAction(
         period=320.0,
         actions=[Node(
