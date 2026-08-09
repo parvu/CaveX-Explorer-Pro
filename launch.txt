@@ -84,16 +84,30 @@ cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
 # neutrally buoyant, not a clean floating-waterline case) for 2s continuously. The
 # motorized tether (motorized_tether_control.py) stays active throughout -- the
 # rigid joint dominates while it holds, and becomes the operative restraint again
-# once unlocked. Docked/retracted tether length (MIN_PAYOUT_LENGTH/
-# TETHER_LENGTH_DOCKED) is 0.55m -- the real geometrically-derived minimum (anchor
-# local z=0.05, hull collision bottom z=-0.376, ROV's own collision top +0.0925
-# above its origin: 0.05-(-0.376)+0.0925=0.5185m, below which the ROV's collision
-# box would overlap the hull's solid collision), not an arbitrary "looks snug"
-# number -- an earlier 0.05m only avoided a real collision because the rigid lock,
-# not tether tension, is what actually holds the ROV during docking. One-way
-# handoff -- no automatic re-dock/re-lock. ArduSub is NOT started or managed by
-# vehicle_switch_node (explicit scope choice) -- see section 8b for controlling
-# the released BlueROV2 separately.
+# once unlocked. bluerov2 spawns at x=-35.1 (0.3m forward of its original stern
+# placement), z=6.4755 -- three successive "move N cm" requests moved it there
+# from an original hull-top-flush position, done indifferent to the hull's own
+# collision geometry each time (only the rigid lock, not spawn placement or the
+# tether, is what actually holds the ROV during the dry section). Docked/
+# retracted tether length (MIN_PAYOUT_LENGTH/TETHER_LENGTH_DOCKED) is 0.12m,
+# recomputed to match that final spawn position's own real anchor-to-ROV
+# distance each time it moved -- NOT the earlier 0.55m hull-collision-safe
+# floor (see motorized_tether_control.py's own comment for the full derivation
+# history and why that floor no longer applies). One-way handoff -- no automatic
+# re-dock/re-lock. ArduSub is NOT started or managed by vehicle_switch_node
+# (explicit scope choice) -- see section 8b for controlling the released
+# BlueROV2 separately.
+#
+# Track visuals remodeled (real request, referencing OpenRobotics'
+# coro_hd2_sensor_config_2 and MARBLE_HD2_VISUALS_ONLY Fuel models -- neither
+# actually had usable track geometry to copy, see model.sdf.tracked's own
+# comments): lidar horizontal resolution raised 360->720 (tried the coro_hd2
+# reference's exact 1800 first, found it broke SLAM bootstrap in this
+# resource-constrained environment -- see below). Each track's tread is now a
+# 24-segment stadium-shaped wrap all the way around both wheels (extends over
+# the sprocket, not just the straight runs), and each sprocket has 24 teeth
+# (one per segment) instead of a plain roller -- all purely cosmetic, collision
+# unchanged.
 #
 # bluerov2 not spawning: did not reproduce in a clean single-launch test (confirmed
 # present via `gz model --list` and a real settled pose). If this happens to you,

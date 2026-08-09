@@ -125,17 +125,19 @@ stays active throughout -- the rigid joint dominates while it holds, and
 becomes the operative restraint again once unlocked, the same way a real
 ROV stays connected by its umbilical even once released to operate
 independently. Track retraction + tether payout are triggered independently,
-keyed to the water-boundary x crossing alone. Docked/retracted tether
-length (`MIN_PAYOUT_LENGTH`/`TETHER_LENGTH_DOCKED`) is 0.55m -- the real
-geometrically-derived minimum, not an arbitrary "looks snug" number:
-`tether_anchor_link` sits at local z=0.05, the hull's own collision mesh
-bottom is at local z=-0.376, and the ROV's own collision box top sits
-0.0925m above its origin, so 0.05-(-0.376)+0.0925 = 0.5185m is the real
-floor below which the ROV's collision volume would overlap the hull's
-solid collision -- rounded up to 0.55m for margin. An earlier 0.05m value
-only avoided a real collision in practice because the rigid lock, not
-tether tension, is what actually holds the ROV still in the dry section.
-Live-verified: both
+keyed to the water-boundary x crossing alone. bluerov2's spawn (originally
+hull-top-flush) moved through several successive requests, each done
+indifferent to the hull's own collision geometry, to its current x=-35.1,
+z=6.4755. Docked/retracted tether length (`MIN_PAYOUT_LENGTH`/
+`TETHER_LENGTH_DOCKED`) is 0.12m, recomputed each time the spawn moved to
+match that position's own real anchor-to-ROV distance -- an earlier, more
+conservative 0.55m value (the real hull-collision-safe geometric floor:
+`tether_anchor_link` at local z=0.05, hull collision bottom at local
+z=-0.376, ROV collision top +0.0925m above its origin, giving
+0.05-(-0.376)+0.0925 = 0.5185m below which the ROV's collision volume
+would overlap the hull's) no longer applies at 0.12m -- safe only because
+the rigid DetachableJoint lock, not tether tension or spawn placement, is
+what actually holds the ROV still in the dry section. Live-verified: both
 entities spawn together without a physics crash, settle rigidly attached
 (constant z offset -- ~0.4m at the mount height first tested, ~0.03m at the
 current, deck-flush mount height after a later fix; see "Deployment
@@ -332,6 +334,23 @@ received last 3secs, stopping" -- rate-limited to one retry per 2s
 place: a clean single launch (no duplicate processes -- see this project's
 own documented flakiness around that) drove the vehicle 13.4m of
 continuous, unobstructed real forward progress toward the water boundary.
+
+**Track visuals remodeled** — per real request, referencing two OpenRobotics
+Fuel models that turned out to have no usable track geometry to copy
+(`coro_hd2_sensor_config_2` and `MARBLE_HD2_VISUALS_ONLY` -- see
+`model.sdf.tracked`'s own comments for the full investigation). The
+lidar's horizontal resolution was raised `360 -> 720`, informed by
+`coro_hd2_sensor_config_2`'s real gpu_lidar spec (1800 samples): tried
+that exact value first and live-verified it as a real regression --
+5x the point count per scan overwhelmed this environment's compute,
+breaking RTAB-Map/icp_odometry SLAM bootstrap entirely -- scaled back to
+720, a real resolution gain that stays healthy. Each track's segmented
+tread (added earlier this session, replacing a plain-plank look) was
+regenerated as a 24-segment stadium-shaped wrap all the way around both
+wheels, extending it visually over the sprocket rather than stopping at
+the straight runs, and each sprocket now has 24 teeth (one per segment,
+up from 6) to match. All purely cosmetic -- collision geometry
+unchanged, zero physics impact.
 
 Historical obstacle-avoidance verification (superseded by obstacle
 removal above, kept for context): Task 9's four fuel-model obstacles in
