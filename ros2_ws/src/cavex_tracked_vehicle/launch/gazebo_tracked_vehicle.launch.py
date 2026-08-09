@@ -153,10 +153,13 @@ def generate_launch_description():
     #
     # z: base height 6.3155 (ROV top flush with the hull's own top, see the
     # raise-request comment below for the derivation), raised +0.3m to
-    # 6.6155, then moved down 0.1m to 6.5155, then moved down a further
-    # 0.02m per this request: 6.5155 - 0.02 = 6.4955. All x and z moves
-    # deliberately NOT re-checked against the hull's own collision geometry
-    # (real request: move the ROV "indifferent from collisions" for this
+    # 6.6155, then moved down 0.1m to 6.5155. A prior "move 2cm down" request
+    # (intended result 6.4955) only got applied to THIS comment, not the
+    # actual '-z' argument below -- a real bug, caught and fixed here along
+    # with this turn's own further 2cm-down request: 6.5155 - 0.02 (missed
+    # fix) - 0.02 (this request) = 6.4755. All x and z moves deliberately
+    # NOT re-checked against the hull's own collision geometry (real
+    # request: move the ROV "indifferent from collisions" for this
     # dry-cave-phase adjustment; the rigid DetachableJoint lock, not this
     # spawn placement or the tether, is what actually holds the ROV during
     # the dry section -- see vehicle_switch_node.py).
@@ -181,7 +184,7 @@ def generate_launch_description():
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'bluerov2', 'model.sdf'),
                    '-name', 'bluerov2',
-                   '-x', '-35.1', '-y', '0', '-z', '6.5155'],
+                   '-x', '-35.1', '-y', '0', '-z', '6.4755'],
         output='screen',
     )
 
