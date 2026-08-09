@@ -60,20 +60,12 @@ export PATH=/home/parvu/CaveX-Explorer-Pro/Micro-XRCE-DDS-Gen/scripts:$PATH
 # real non-zero GPU utilization/VRAM while `gz sim` runs, instead of
 # 0%/0MiB.
 #
-# Disabled again -- inconclusive, not fixed. History: disabled by default
-# after it appeared to reliably crash Gazebo's server (~10-20s in,
-# "Escalating to SIGKILL on [Gazebo Sim Server]") on the real
-# cavex_world.world. Re-enabled a session later after that crash was
-# suspected to be caused by an unrelated orphaned `find /` process eating
-# 58% CPU during the original test (load average >12) -- retested clean
-# and it stayed up twice. Then crashed again, same signature, with normal
-# system load (~1.3) and no runaway process found. So the "it was just
-# system overload" theory does NOT fully explain it -- the real failure
-# mode still isn't understood, and the crash is apparently intermittent
-# either way. Left disabled since an unreliable renderer is worse than a
-# slower, reliable one for actual work; if picking this back up, treat
-# both theories as unconfirmed and look for a third explanation (timing/
-# race in D3D12's WSL translation layer under this specific heavy world
-# is the remaining real suspect, not yet investigated).
-# export GALLIUM_DRIVER=d3d12
-# export MESA_LOADER_DRIVER_OVERRIDE=d3d12
+# Re-enabled again, per explicit request -- known intermittent (crashed
+# twice, ran clean twice, no fully confirmed root cause -- see this
+# session's git history for the "system overload" theory that didn't
+# fully hold up). If it crashes again: check `uptime`/`ps aux` for
+# runaway processes first (confirmed contributor at least once), and if
+# none are found, that's real evidence for a genuine D3D12/WSL timing
+# issue under this specific heavy world, not yet root-caused.
+export GALLIUM_DRIVER=d3d12
+export MESA_LOADER_DRIVER_OVERRIDE=d3d12
