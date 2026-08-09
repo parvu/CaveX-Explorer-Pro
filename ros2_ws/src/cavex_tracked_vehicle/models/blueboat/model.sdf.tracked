@@ -874,5 +874,36 @@
       <detach_topic>/cavex/x500_release/detach</detach_topic>
     </plugin>
 
+    <!-- ROV lock/unlock (real request): while in the dry cave section, the
+         BlueROV2 is now RIGIDLY LOCKED to the hull -- not just held by
+         tether tension (see the tether comment above; the tether stays
+         active in parallel, and becomes the operative restraint again
+         once unlocked, mimicking a real ROV's tether/umbilical staying
+         connected even once it's released to operate). Real mechanism:
+         the same gz-sim-detachable-joint-system plugin x500 already uses
+         above, but with a real <attach_topic> too (confirmed via
+         `strings` on the installed .so during an earlier session, same
+         verification discipline as every other plugin in this project) --
+         x500's own block never needed one because it spawns BEFORE the
+         boat, so Configure() finds it and auto-attaches; bluerov2 spawns
+         AFTER the boat (see the spawn-order comment in
+         gazebo_tracked_vehicle.launch.py), so Configure() runs with no
+         bluerov2 to find, and vehicle_switch_node.py has to explicitly
+         publish to attach_topic once bluerov2 actually exists to
+         establish the initial lock. Real release condition (per this
+         session's request): vehicle_switch_node.py only unlocks once the
+         boat has BOTH crossed the water boundary AND is genuinely afloat
+         (not just past an x threshold) -- see that node's own comment for
+         how "afloat" is determined, a real empirical finding, not
+         assumed. -->
+    <plugin filename="gz-sim-detachable-joint-system"
+            name="gz::sim::systems::DetachableJoint">
+      <parent_link>base_link</parent_link>
+      <child_model>bluerov2</child_model>
+      <child_link>base_link</child_link>
+      <attach_topic>/cavex/rov_lock/attach</attach_topic>
+      <detach_topic>/cavex/rov_lock/detach</detach_topic>
+    </plugin>
+
   </model>
 </sdf>

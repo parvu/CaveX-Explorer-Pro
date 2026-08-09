@@ -84,3 +84,24 @@
   ros_type_name: "std_msgs/msg/Empty"
   gz_type_name: "gz.msgs.Empty"
   direction: ROS_TO_GZ
+
+# ROV lock/unlock (real request): model.sdf.tracked's bluerov2
+# DetachableJoint plugin's real attach_topic/detach_topic, both
+# gz.msgs.Empty (confirmed via `strings` -- OnDetachRequest's real,
+# demangled signature takes gz::msgs::Empty; attach_topic's own default
+# name string, /detachable_joint/attach, follows the same convention).
+# vehicle_switch_node.py publishes attach once at startup to establish
+# the initial dry-section lock (bluerov2 spawns after the boat, so
+# Configure()-time auto-attach can't apply here the way it does for
+# x500), then detach once the real release condition is met.
+- ros_topic_name: "cavex/rov_lock/attach"
+  gz_topic_name: "/cavex/rov_lock/attach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "cavex/rov_lock/detach"
+  gz_topic_name: "/cavex/rov_lock/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
