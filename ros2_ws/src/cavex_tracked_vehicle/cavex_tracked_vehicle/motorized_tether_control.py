@@ -51,20 +51,21 @@ GZ_POSE_TOPIC = '/world/cavex_world/pose/info'
 ANCHOR_LOCAL_OFFSET = (-0.2, 0.0, 0.05)
 
 # Motorized winch: max reel rate (m/s) and payout length bounds (m).
-# MIN_PAYOUT_LENGTH is the real geometric floor, not an arbitrary "looks
-# snug" number: tether_anchor_link sits at local z=0.05 (model.sdf.tracked),
-# the hull's own collision mesh bottom is at local z=-0.376 (same file's
-# mount-height derivation comment, bbox z:[-0.376,0]), and the ROV's own
-# collision box top sits 0.0925m above its origin (bluerov2/model.sdf,
-# box center z=0.06, half-height 0.0325). A tether shorter than
-# 0.05 - (-0.376) + 0.0925 = 0.5185m would pull the ROV's collision volume
-# up into the hull's solid collision -- an earlier 0.05m value only avoided
-# this in practice because the rigid DetachableJoint lock (not tether
-# tension) is what holds the ROV during docking; this floor is what
-# actually protects it if that lock is ever not engaged (e.g. before the
-# initial-lock retry burst completes). 0.55m rounds up with real margin.
+# MIN_PAYOUT_LENGTH: real request -- ROV spawn raised +0.3m (see
+# gazebo_tracked_vehicle.launch.py's spawn_bluerov2 z, now 6.6155) and the
+# dry-phase tether shortened to match, explicitly WITHOUT re-checking
+# against the hull's own collision geometry (an earlier 0.5185m-derived
+# floor accounted for that; this value does not). Real straight-line
+# anchor-to-ROV distance at the new spawn: anchor world z ~= hull's own
+# settled z (6.408, see launch.txt) + ANCHOR_LOCAL_OFFSET's z (0.05) =
+# 6.458; dz = 6.6155-6.458 = 0.1575, dx = 0.2 (anchor local x=-0.2 vs ROV
+# spawn local x=-0.4) -> sqrt(0.2^2+0.1575^2) = 0.2546m, rounded to 0.25m.
+# Safe only because the rigid DetachableJoint lock, not tether tension, is
+# what actually holds the ROV during the dry section (vehicle_switch_node.py)
+# -- this value gives no hull-collision protection if that lock is ever not
+# engaged, unlike the geometric floor it replaces.
 MAX_REEL_RATE = 0.15
-MIN_PAYOUT_LENGTH = 0.55
+MIN_PAYOUT_LENGTH = 0.25
 MAX_PAYOUT_LENGTH = 8.0
 
 # Spring-damper constraint, engaged only once distance > current payout
