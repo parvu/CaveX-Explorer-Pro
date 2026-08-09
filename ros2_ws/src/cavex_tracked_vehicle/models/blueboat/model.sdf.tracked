@@ -325,16 +325,79 @@
            box-primitive comment above this whole assembly). Purely
            cosmetic, makes the silhouette read as a track instead of a
            plain plank. -->
-      <visual name="left_track_wheel_fore_visual">
+      <!-- Fore wheel re-labeled "sprocket" (real request: visible sprocket/roller
+           detail) -- same idler-wheel cylinder as before, now with 6 small radial
+           tooth nubs added around its rim to read as a drive sprocket rather than
+           a plain roller. Aft wheel stays a plain idler wheel, unchanged. -->
+      <visual name="left_track_sprocket_fore_visual">
         <pose>0.28 0 0 1.5708 0 0</pose>
         <geometry><cylinder><radius>0.075</radius><length>0.13</length></cylinder></geometry>
         <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+      <visual name="left_track_sprocket_fore_tooth_0">
+        <pose>0.3675 0 0 0 0 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
+      </visual>
+      <visual name="left_track_sprocket_fore_tooth_1">
+        <pose>0.32375 0 0.0758 0 1.0472 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
+      </visual>
+      <visual name="left_track_sprocket_fore_tooth_2">
+        <pose>0.23625 0 0.0758 0 2.0944 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
+      </visual>
+      <visual name="left_track_sprocket_fore_tooth_3">
+        <pose>0.1925 0 0 0 3.1416 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
+      </visual>
+      <visual name="left_track_sprocket_fore_tooth_4">
+        <pose>0.23625 0 -0.0758 0 4.1888 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
+      </visual>
+      <visual name="left_track_sprocket_fore_tooth_5">
+        <pose>0.32375 0 -0.0758 0 5.2360 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
       </visual>
       <visual name="left_track_wheel_aft_visual">
         <pose>-0.28 0 0 1.5708 0 0</pose>
         <geometry><cylinder><radius>0.075</radius><length>0.13</length></cylinder></geometry>
         <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
       </visual>
+      <!-- Two mid-track support rollers, smaller/plain, resting along the bottom
+           run between the sprocket and idler -- same real request. -->
+      <visual name="left_track_roller_0">
+        <pose>-0.1 0 -0.075 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.04</radius><length>0.10</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+      <visual name="left_track_roller_1">
+        <pose>0.1 0 -0.075 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.04</radius><length>0.10</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+      <!-- Segmented tread links (real request: replace the plain-plank look with
+           a chain of tread plates) along the top and bottom straight runs --
+           purely cosmetic, same established box-primitive-for-unmodeled-hardware
+           convention as the rest of this track assembly; the functional collision
+           stays the single simple box above. -->
+      <visual name="left_track_tread_top_0"><pose>-0.25 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_top_1"><pose>-0.15 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_top_2"><pose>-0.05 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_top_3"><pose>0.05 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_top_4"><pose>0.15 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_top_5"><pose>0.25 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_bottom_0"><pose>-0.25 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_bottom_1"><pose>-0.15 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_bottom_2"><pose>-0.05 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_bottom_3"><pose>0.05 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_bottom_4"><pose>0.15 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="left_track_tread_bottom_5"><pose>0.25 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
     </link>
     <joint name="left_track_fixed" type="fixed">
       <parent>left_track_retract_mount</parent>
@@ -425,16 +488,70 @@
           <diffuse>0.1 0.1 0.1 1</diffuse>
         </material>
       </visual>
-      <visual name="right_track_wheel_fore_visual">
+      <!-- Same sprocket/roller/tread-link detail as left_track above -- see
+           its own comments for the full rationale. -->
+      <visual name="right_track_sprocket_fore_visual">
         <pose>0.28 0 0 1.5708 0 0</pose>
         <geometry><cylinder><radius>0.075</radius><length>0.13</length></cylinder></geometry>
         <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+      <visual name="right_track_sprocket_fore_tooth_0">
+        <pose>0.3675 0 0 0 0 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
+      </visual>
+      <visual name="right_track_sprocket_fore_tooth_1">
+        <pose>0.32375 0 0.0758 0 1.0472 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
+      </visual>
+      <visual name="right_track_sprocket_fore_tooth_2">
+        <pose>0.23625 0 0.0758 0 2.0944 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
+      </visual>
+      <visual name="right_track_sprocket_fore_tooth_3">
+        <pose>0.1925 0 0 0 3.1416 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
+      </visual>
+      <visual name="right_track_sprocket_fore_tooth_4">
+        <pose>0.23625 0 -0.0758 0 4.1888 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
+      </visual>
+      <visual name="right_track_sprocket_fore_tooth_5">
+        <pose>0.32375 0 -0.0758 0 5.2360 0</pose>
+        <geometry><box><size>0.025 0.10 0.018</size></box></geometry>
+        <material><ambient>0.05 0.05 0.05 1</ambient><diffuse>0.08 0.08 0.08 1</diffuse></material>
       </visual>
       <visual name="right_track_wheel_aft_visual">
         <pose>-0.28 0 0 1.5708 0 0</pose>
         <geometry><cylinder><radius>0.075</radius><length>0.13</length></cylinder></geometry>
         <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
       </visual>
+      <visual name="right_track_roller_0">
+        <pose>-0.1 0 -0.075 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.04</radius><length>0.10</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+      <visual name="right_track_roller_1">
+        <pose>0.1 0 -0.075 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.04</radius><length>0.10</length></cylinder></geometry>
+        <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
+      </visual>
+      <visual name="right_track_tread_top_0"><pose>-0.25 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_top_1"><pose>-0.15 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_top_2"><pose>-0.05 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_top_3"><pose>0.05 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_top_4"><pose>0.15 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_top_5"><pose>0.25 0 0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_bottom_0"><pose>-0.25 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_bottom_1"><pose>-0.15 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_bottom_2"><pose>-0.05 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_bottom_3"><pose>0.05 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_bottom_4"><pose>0.15 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
+      <visual name="right_track_tread_bottom_5"><pose>0.25 0 -0.08 0 0 0</pose><geometry><box><size>0.06 0.13 0.01</size></box></geometry><material><ambient>0.03 0.03 0.03 1</ambient><diffuse>0.05 0.05 0.05 1</diffuse></material></visual>
     </link>
     <joint name="right_track_fixed" type="fixed">
       <parent>right_track_retract_mount</parent>
