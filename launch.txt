@@ -50,10 +50,11 @@ cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
 # FIXED: RTAB-Map's map->odom TF was only published at its default 1Hz
 # (Rtabmap/DetectionRate), causing intermittent "could not transform ... to map"
 # flicker in rviz/costmap TF lookups whenever a lidar/odom message landed between
-# publishes -- not a one-off startup transient as first assumed. Raised to 5Hz
-# (Rtabmap/DetectionRate: 5.0 in tracked_vehicle_slam.launch.py). Live-verified:
-# rtabmap's own log now shows "Rate=0.20s" and tf2_echo updates every 0.2s with no
-# extrapolation errors once locked on.
+# publishes -- not a one-off startup transient as first assumed. Raised to 10Hz
+# (Rtabmap/DetectionRate: 10.0 in tracked_vehicle_slam.launch.py, matching
+# lidar_sensor's own real update_rate -- an earlier intermediate fix used 5Hz).
+# Live-verified: rtabmap's own log now shows "Rate=0.10s" and tf2_echo updates
+# every 0.1s with no extrapolation errors once locked on.
 #
 # ALSO FLAKY: icp_odometry's ICP registration bootstrap (needed before
 # /cavex/slam/odom publishes anything, which ATE eval -- section 7 -- depends on)
@@ -83,11 +84,45 @@ cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
 # neutrally buoyant, not a clean floating-waterline case) for 2s continuously. The
 # motorized tether (motorized_tether_control.py) stays active throughout -- the
 # rigid joint dominates while it holds, and becomes the operative restraint again
-# once unlocked. Docked/retracted tether length tightened to 0.05m (was 0.15m) now
-# that the rigid lock, not tether tension, is what actually holds the ROV still.
-# One-way handoff -- no automatic re-dock/re-lock. ArduSub is NOT started or managed
-# by vehicle_switch_node (explicit scope choice) -- see section 8b for controlling
+# once unlocked. Docked/retracted tether length (MIN_PAYOUT_LENGTH/
+# TETHER_LENGTH_DOCKED) is 0.55m -- the real geometrically-derived minimum (anchor
+# local z=0.05, hull collision bottom z=-0.376, ROV's own collision top +0.0925
+# above its origin: 0.05-(-0.376)+0.0925=0.5185m, below which the ROV's collision
+# box would overlap the hull's solid collision), not an arbitrary "looks snug"
+# number -- an earlier 0.05m only avoided a real collision because the rigid lock,
+# not tether tension, is what actually holds the ROV during docking. One-way
+# handoff -- no automatic re-dock/re-lock. ArduSub is NOT started or managed by
+# vehicle_switch_node (explicit scope choice) -- see section 8b for controlling
 # the released BlueROV2 separately.
+#
+# bluerov2 not spawning: did not reproduce in a clean single-launch test (confirmed
+# present via `gz model --list` and a real settled pose). If this happens to you,
+# check section 2's process hygiene FIRST -- the most likely real cause is this
+# project's own documented duplicate-launch/orphaned-process flakiness, not a
+# defect in the spawn chain (spawn_x500_cargo -> spawn_entity -> spawn_bluerov2,
+# all via OnProcessExit) itself.
+#
+# FIXED (real drive-stalling bug): cmd_vel_to_ardupilot.py's arm/mode retry used to
+# fire on EVERY /cmd_vel callback (5-20Hz) whenever not yet confirmed armed. An
+# already-armed vehicle returns result=False on a redundant arm request (not a real
+# rejection) -- so arming the vehicle by ANY means other than this node's own first
+# successful call (e.g. a manual `ros2 service call .../arm_motors`) left it
+# retrying forever, flooding the DDS bridge. Live-confirmed this flood starves the
+# same channel /ap/cmd_vel needs, tripping ArduPilot's own "target not received
+# last 3secs, stopping" and stalling real driving. Rate-limited to one retry
+# attempt per 2s (ARM_RETRY_MIN_INTERVAL_S). If you ever need to arm/mode-switch
+# manually (section 5a), let cmd_vel_to_ardupilot.py do it itself by just starting
+# your /cmd_vel publisher -- don't call /ap/arm_motors directly first, or you'll
+# reproduce the exact race that surfaced this bug.
+#
+# Obstacles 1-4 removed from cavex_world.world -- the dry-section corridor (spawn
+# x=-35 to water boundary x=15) is now clear of Nav2 costmap/explore_lite
+# obstacles. Live-verified: the vehicle made 13.4m of continuous, unobstructed
+# forward progress in one test run.
+#
+# Lidar max range extended 12.0m -> 30.0m (model.sdf.tracked) -- matches real
+# mid-range 3D lidars, gives RTAB-Map/explore_lite more corridor advance warning
+# across this world's real ~50m spawn-to-water span.
 
 # NOTE (GPU rendering): ardupilot_gazebo_env.sh sets GALLIUM_DRIVER=d3d12 and
 # MESA_LOADER_DRIVER_OVERRIDE=d3d12 (WSL2 GPU passthrough) -- generally stable but
@@ -254,37 +289,39 @@ cat cavex_ate_runs.csv
 python3 src/cavex_slam_nav/cavex_slam_nav/analyze_ate_runs.py cavex_ate_runs.csv
 
 # Obstacle-avoidance cross-check: does NOT need SLAM/ATE, only /odom_ground_truth.
+# NOTE: obstacle_1-4 have been REMOVED from cavex_world.world (real request, clears
+# the dry-section corridor) -- this cross-check no longer has anything to check
+# against. Skip it, or re-add obstacles first if you specifically need this test.
 ros2 bag record -o /tmp/gt_run /odom_ground_truth &
 BAGPID=$!
 sleep 120
 kill -SIGINT $BAGPID   # SIGINT/SIGTERM, NOT -9 -- a -9 kill leaves the .mcap unreadable
-# Cross-check against Task 9's real obstacle centers (now repositioned onto
-# cave_floor_patch): obstacle_1 (-30,3), obstacle_2 (-20,-5), obstacle_3 (-10,6),
-# obstacle_4 (0,-3) — via a min-distance-to-obstacle-centers script reading the bag
-# through rosbag2_py + mcap storage.
 
 # ============================================================
-# 7b. BlueROV2 carry/release mechanism (part of section 3's launch — real, live-tested)
+# 7b. BlueROV2 lock/unlock mechanism (part of section 3's launch — real, live-tested)
 # ============================================================
-# bluerov2 is already spawned+attached by section 3's launch (before the tracked
-# vehicle itself). Confirm rigid attachment:
+# bluerov2 is already spawned+rigidly-locked by section 3's launch (before the
+# tracked vehicle's own vehicle_switch_node.py locks it via a retry burst -- see
+# section 0). Confirm rigid attachment:
 gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A5 'name: "bluerov2"\|name: "cavex_tracked_blueboat"'
-# Expect near-identical x,y and a constant ~0.4m z offset (bluerov2 above the boat).
+# Expect near-identical x,y and a constant z offset (bluerov2 near-flush with the
+# tether_anchor_link mount, not the old ~0.4m rigid-carry offset).
 
-# Exercise the real handoff directly (without waiting for a full drive to x=15):
-ros2 topic pub --once /cavex/tracks/command std_msgs/msg/String "{data: 'retracted'}"
-ros2 topic pub --once /cavex/rov_release/detach std_msgs/msg/Empty "{}"
+# Exercise the real lock/unlock directly (without waiting for a full drive to x=15):
+ros2 topic pub --once /cavex/rov_lock/detach std_msgs/msg/Empty "{}"
 sleep 20
 gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A5 'name: "bluerov2"\|name: "cavex_tracked_blueboat"'
 # Expect: the z offset between the two should now be GROWING over repeated samples
-# (real divergence, not a fixed rigid offset) — that's the real signal detachment
-# worked, not just that the topic publish succeeded.
+# (real divergence, not a fixed rigid offset) — that's the real signal the joint
+# was actually removed, not just that the topic publish succeeded. To re-lock:
+# ros2 topic pub --once /cavex/rov_lock/attach std_msgs/msg/Empty "{}"
 #
 # For the REAL, automatic trigger (vehicle_switch_node watching /odom_ground_truth,
-# no manual publish needed): drive the vehicle (section 5) from spawn (x=-35) to
-# x>=15, ~50m — slow at low RTF, budget real time accordingly. Not live-tested
-# end-to-end this session; the trigger logic and the release mechanism it calls were
-# each verified separately (see the SDD ledger for the full trail).
+# releasing only once past x=15 AND genuinely afloat -- see section 0): drive the
+# vehicle (section 5) from spawn (x=-35) to x>=15, ~50m — slow at low RTF, budget
+# real time accordingly. Live-verified this session: 13.4m of continuous,
+# unobstructed forward progress in one test run (see section 0's obstacle-removal
+# and cmd_vel_to_ardupilot fixes).
 #
 # x500 (helipad-carried PX4 drone) release — same pattern, separate topic:
 ros2 topic pub --once /cavex/x500_release/detach std_msgs/msg/Empty "{}"

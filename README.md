@@ -126,9 +126,16 @@ becomes the operative restraint again once unlocked, the same way a real
 ROV stays connected by its umbilical even once released to operate
 independently. Track retraction + tether payout are triggered independently,
 keyed to the water-boundary x crossing alone. Docked/retracted tether
-length is tightened to 0.05m (`MIN_PAYOUT_LENGTH`/`TETHER_LENGTH_DOCKED`,
-down from an earlier 0.15m) now that the rigid lock, not tether tension, is
-what actually holds the ROV still in the dry section. Live-verified: both
+length (`MIN_PAYOUT_LENGTH`/`TETHER_LENGTH_DOCKED`) is 0.55m -- the real
+geometrically-derived minimum, not an arbitrary "looks snug" number:
+`tether_anchor_link` sits at local z=0.05, the hull's own collision mesh
+bottom is at local z=-0.376, and the ROV's own collision box top sits
+0.0925m above its origin, so 0.05-(-0.376)+0.0925 = 0.5185m is the real
+floor below which the ROV's collision volume would overlap the hull's
+solid collision -- rounded up to 0.55m for margin. An earlier 0.05m value
+only avoided a real collision in practice because the rigid lock, not
+tether tension, is what actually holds the ROV still in the dry section.
+Live-verified: both
 entities spawn together without a physics crash, settle rigidly attached
 (constant z offset -- ~0.4m at the mount height first tested, ~0.03m at the
 current, deck-flush mount height after a later fix; see "Deployment
@@ -299,20 +306,41 @@ retries a different frontier once Nav2 aborts one. Also fixed: RTAB-Map's
 `map`->`odom` TF was only published at its default 1Hz (`Rtabmap/
 DetectionRate`), causing intermittent "could not transform ... to map"
 flicker whenever a lidar/odom message landed between publishes -- raised to
-5Hz, live-verified via `rtabmap`'s own "Rate=0.20s" log line and a
-`tf2_echo` stream updating every 0.2s with no extrapolation errors once
-locked on. Obstacle-avoidance verification
-(Task 9's four fuel-model obstacles in the dry section) used a
-min-distance-to-obstacle-centers check against a recorded `/odom_ground_truth`
-bag; the manually-driven verification run never came within collision range
-of any obstacle (closest approach ~7.7m), which confirms no collisions but
-is a weaker exercise of close-proximity avoidance than a route that
-deliberately threads between them. **Stale as of final review**: that
-~7.7m figure was measured against the obstacles' original positions
-(`x∈[-45,-12]`) and the original spawn (`x=-60`); the floor-collision fix
-below moved both the obstacles (`x∈[-30,0]`) and the spawn (`x=-35`), so
-that specific number no longer describes a check against the current
-world -- re-run the same bag-based check if you need current numbers.
+10Hz (matching `lidar_sensor`'s own real `update_rate`; an earlier
+intermediate fix used 5Hz), live-verified via `rtabmap`'s own "Rate=0.10s"
+log line and a `tf2_echo` stream updating every 0.1s with no extrapolation
+errors once locked on.
+
+**Obstacles removed** — `obstacle_1`-`obstacle_4` (the four Fuel-sourced
+cinder blocks/barrel used for the Nav2 costmap/explore_lite obstacle
+verification below) have been removed from `cavex_world.world` by real
+request, clearing the dry-section corridor from spawn (`x=-35`) to the
+water boundary (`x=15`). The obstacle-avoidance cross-check described next
+is now historical -- there is nothing left in the corridor to check
+against unless obstacles are re-added. Along with this, the lidar's max
+range was extended `12.0m -> 30.0m` (`model.sdf.tracked`) to give RTAB-Map/
+explore_lite more advance warning across this world's real ~50m
+spawn-to-water span, and a real drive-stalling bug was found and fixed in
+`cmd_vel_to_ardupilot.py`: its arm/mode retry used to fire on every
+`/cmd_vel` callback (5-20Hz) whenever not yet confirmed armed, and since an
+already-armed vehicle returns `result=False` on a redundant arm request
+(not a genuine rejection), arming by any means other than this node's own
+first successful call left it retrying forever, DDS-flooding the same
+channel `/ap/cmd_vel` needs and tripping ArduPilot's own "target not
+received last 3secs, stopping" -- rate-limited to one retry per 2s
+(`ARM_RETRY_MIN_INTERVAL_S`). Live-verified end to end with these fixes in
+place: a clean single launch (no duplicate processes -- see this project's
+own documented flakiness around that) drove the vehicle 13.4m of
+continuous, unobstructed real forward progress toward the water boundary.
+
+Historical obstacle-avoidance verification (superseded by obstacle
+removal above, kept for context): Task 9's four fuel-model obstacles in
+the dry section used a min-distance-to-obstacle-centers check against a
+recorded `/odom_ground_truth` bag; the manually-driven verification run
+never came within collision range of any obstacle (closest approach
+~7.7m against the obstacles' now-removed positions), which confirmed no
+collisions but was a weaker exercise of close-proximity avoidance than a
+route that deliberately threads between them.
 
 **Water region** — re-derived a second time after a real bug was found: the
 tracked vehicle (and everything else) turned out to be resting on
