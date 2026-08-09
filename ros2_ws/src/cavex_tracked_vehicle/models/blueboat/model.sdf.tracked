@@ -582,7 +582,13 @@
                  remaining close-range self-hit noise without excluding real near-range cave
                  features (cave walls/obstacles can legitimately be within 1-2m). -->
             <min>0.4</min>
-            <max>12.0</max>
+            <!-- max extended from 12.0 to 30.0 -- the dry-section corridor (spawn x=-35 to
+                 water boundary x=15) is a real ~50m span; 12m only saw the immediate
+                 surroundings, giving RTAB-Map/explore_lite very little advance warning of
+                 corridor structure. 30m matches real mid-range 3D lidars used in subterranean
+                 robotics (e.g. Velodyne Puck/Ouster OS0-class, not a long-range unit), well
+                 within gpu_lidar's simulated range accuracy. -->
+            <max>30.0</max>
           </range>
         </ray>
       </sensor>

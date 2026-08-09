@@ -131,11 +131,13 @@ def generate_launch_description():
             # it publishes the map->odom TF. Lidar/odom messages land between
             # those publishes, so rviz/costmap TF lookups at those in-between
             # stamps intermittently hit "frame does not exist" or
-            # extrapolation errors even once SLAM is healthy. Raised to 5Hz
-            # to shrink that gap; 0 (uncapped) was considered but risks
-            # starving loop-closure/graph-optimization CPU time for no real
-            # benefit here.
-            'Rtabmap/DetectionRate': '5.0',
+            # extrapolation errors even once SLAM is healthy. Raised to
+            # 10Hz (further raised from an earlier 5Hz fix) -- matches
+            # lidar_sensor's own real update_rate (model.sdf.tracked, also
+            # 10Hz), so RTAB-Map now processes every incoming scan rather
+            # than every other one; 0 (uncapped) was considered but there's
+            # no new data to process faster than the sensor itself produces.
+            'Rtabmap/DetectionRate': '10.0',
         }],
         remappings=[
             ('rgb/image', '/camera/color/image_raw'),

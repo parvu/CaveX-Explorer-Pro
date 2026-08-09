@@ -157,37 +157,10 @@
       </link>
     </model>
 
-    <!-- Fuel-sourced obstacles for Nav2 costmap / explore_lite frontiers.
-         Real, confirmed-to-exist OpenRobotics Fuel models (no <static> tag,
-         real mass+inertia, so they fall and settle under gravity). Positions
-         moved from the original x [-45,-12] to x [-30,0] (commit re-deriving
-         cave_floor_patch above) -- the original positions predated
-         cave_floor_patch and were never actually verified to land on real
-         floor (this world's ground_plane sat at z=0 back then too, so a
-         "settled" reading could equally have been the same ground-plane
-         mix-up documented on ground_plane's own comment). Spawn z raised to
-         CAVE_FLOOR_Z + 2 = 7.9 (was 8, arbitrary/pre-dates the floor fix) so
-         they fall a short, controlled distance onto cave_floor_patch. -->
-    <include>
-      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Cinder%20Block%202</uri>
-      <name>obstacle_1</name>
-      <pose>-30 3 7.9 0 0 0</pose>
-    </include>
-    <include>
-      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Cinder%20block%20wide</uri>
-      <name>obstacle_2</name>
-      <pose>-20 -5 7.9 0 0 0</pose>
-    </include>
-    <include>
-      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Wood%20cube%2010cm</uri>
-      <name>obstacle_3</name>
-      <pose>-10 6 7.9 0 0 0</pose>
-    </include>
-    <include>
-      <uri>https://fuel.gazebosim.org/1.0/openrobotics/models/Construction%20Barrel</uri>
-      <name>obstacle_4</name>
-      <pose>0 -3 7.9 0 0 0</pose>
-    </include>
+    <!-- obstacle_1..4 (Fuel-sourced cinder blocks/barrel) removed by real
+         request -- the dry-section corridor between the spawn (x=-35) and
+         the water boundary (x=15) is now clear of Nav2 costmap/explore_lite
+         obstacles. -->
 
     <!-- Flooded water region, re-anchored to cave_floor_patch's real
          CAVE_FLOOR_Z=5.9 (see that model's own comment for the full

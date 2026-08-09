@@ -15,8 +15,11 @@
 # merging both processes into this one file / one parameter_bridge
 # process, with exactly one /clock entry -- confirmed live afterward:
 # `ros2 topic info /clock -v` shows exactly 1 publisher.
-- topic_name: "/world/cavex_world/model/cavex_tracked_blueboat/link/imu_link/sensor/imu_sensor/imu"
-  ros_topic_name: "/imu"
+# Found and fixed alongside this session's other changes: topic_name and
+# ros_topic_name are mutually exclusive (bridge config parse error every
+# launch, "Could not parse entry") -- ros_topic_name + gz_topic_name is the
+# correct pair, already used by every other entry in this file.
+- ros_topic_name: "/imu"
   gz_topic_name: "/world/cavex_world/model/cavex_tracked_blueboat/link/imu_link/sensor/imu_sensor/imu"
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"

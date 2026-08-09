@@ -51,12 +51,20 @@ GZ_POSE_TOPIC = '/world/cavex_world/pose/info'
 ANCHOR_LOCAL_OFFSET = (-0.2, 0.0, 0.05)
 
 # Motorized winch: max reel rate (m/s) and payout length bounds (m).
-# MIN_PAYOUT_LENGTH tightened to 0.05: in the dry section the rigid
-# DetachableJoint lock (vehicle_switch_node.py) is what actually holds the
-# ROV still now, not tether tension -- this floor just keeps the tether
-# itself snug against the hull rather than dictating dock stability.
+# MIN_PAYOUT_LENGTH is the real geometric floor, not an arbitrary "looks
+# snug" number: tether_anchor_link sits at local z=0.05 (model.sdf.tracked),
+# the hull's own collision mesh bottom is at local z=-0.376 (same file's
+# mount-height derivation comment, bbox z:[-0.376,0]), and the ROV's own
+# collision box top sits 0.0925m above its origin (bluerov2/model.sdf,
+# box center z=0.06, half-height 0.0325). A tether shorter than
+# 0.05 - (-0.376) + 0.0925 = 0.5185m would pull the ROV's collision volume
+# up into the hull's solid collision -- an earlier 0.05m value only avoided
+# this in practice because the rigid DetachableJoint lock (not tether
+# tension) is what holds the ROV during docking; this floor is what
+# actually protects it if that lock is ever not engaged (e.g. before the
+# initial-lock retry burst completes). 0.55m rounds up with real margin.
 MAX_REEL_RATE = 0.15
-MIN_PAYOUT_LENGTH = 0.05
+MIN_PAYOUT_LENGTH = 0.55
 MAX_PAYOUT_LENGTH = 8.0
 
 # Spring-damper constraint, engaged only once distance > current payout

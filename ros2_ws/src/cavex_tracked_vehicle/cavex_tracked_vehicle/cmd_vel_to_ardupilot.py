@@ -26,11 +26,27 @@ assumed:
 """
 import rclpy
 from rclpy.node import Node
+from rclpy.duration import Duration
 from geometry_msgs.msg import Twist, TwistStamped
 from ardupilot_msgs.srv import ArmMotors
 from ardupilot_msgs.srv import ModeSwitch
 
 ROVER_MODE_GUIDED = 15
+
+# Real bug found and fixed: arm=true on an ALREADY-armed vehicle returns
+# result=False (confirmed live: a manual `ros2 service call .../arm_motors
+# "{arm: true}"` on an already-armed SITL instance returns False, not a
+# genuine rejection) -- this node used to treat every False as "not armed,
+# retry," so any external arm (a manual service call, or a re-arm after this
+# node's own first success) left `self._armed` permanently False, and
+# _ensure_armed_and_guided retried on EVERY /cmd_vel callback (5-20Hz)
+# forever. That DDS-flood competes with /ap/cmd_vel on the same DDS/
+# micro_ros_agent bridge, and was directly observed live to starve real
+# velocity commands badly enough to trip ArduPilot's own 3s GUIDED-target
+# timeout ("target not received last 3secs, stopping") -- a real driving
+# stall, not a cave-geometry problem. Rate-limited instead of removed
+# entirely: a genuine transient failure should still eventually retry.
+ARM_RETRY_MIN_INTERVAL_S = 2.0
 
 
 class CmdVelToArduPilot(Node):
@@ -46,8 +62,10 @@ class CmdVelToArduPilot(Node):
         # _ensure_armed_and_guided retries on every subsequent /cmd_vel.
         self._mode_set = False
         self._mode_pending = False
+        self._mode_last_attempt = None
         self._armed = False
         self._armed_pending = False
+        self._armed_last_attempt = None
         self.arm_client = self.create_client(ArmMotors, '/ap/arm_motors')
         self.mode_client = self.create_client(ModeSwitch, '/ap/mode_switch')
         self.get_logger().info(
@@ -58,7 +76,12 @@ class CmdVelToArduPilot(Node):
     def _ensure_armed_and_guided(self):
         if self._mode_set and self._armed:
             return
-        if not self._mode_set and not self._mode_pending:
+        now = self.get_clock().now()
+        min_interval = Duration(seconds=ARM_RETRY_MIN_INTERVAL_S)
+        if (not self._mode_set and not self._mode_pending
+                and (self._mode_last_attempt is None
+                     or now - self._mode_last_attempt >= min_interval)):
+            self._mode_last_attempt = now
             if self.mode_client.wait_for_service(timeout_sec=1.0):
                 req = ModeSwitch.Request()
                 req.mode = ROVER_MODE_GUIDED
@@ -67,9 +90,11 @@ class CmdVelToArduPilot(Node):
                     self._on_mode_switch_response)
             else:
                 self.get_logger().warn(
-                    "/ap/mode_switch service not available; will retry on "
-                    "next /cmd_vel.")
-        if not self._armed and not self._armed_pending:
+                    "/ap/mode_switch service not available; will retry.")
+        if (not self._armed and not self._armed_pending
+                and (self._armed_last_attempt is None
+                     or now - self._armed_last_attempt >= min_interval)):
+            self._armed_last_attempt = now
             if self.arm_client.wait_for_service(timeout_sec=1.0):
                 req = ArmMotors.Request()
                 req.arm = True
@@ -78,8 +103,7 @@ class CmdVelToArduPilot(Node):
                     self._on_arm_response)
             else:
                 self.get_logger().warn(
-                    "/ap/arm_motors service not available; will retry on "
-                    "next /cmd_vel.")
+                    "/ap/arm_motors service not available; will retry.")
 
     def _on_mode_switch_response(self, future):
         self._mode_pending = False
@@ -95,7 +119,7 @@ class CmdVelToArduPilot(Node):
         else:
             self.get_logger().warn(
                 f"ArduPilot mode switch to GUIDED failed (status=False, "
-                f"curr_mode={resp.curr_mode}); will retry on next /cmd_vel.")
+                f"curr_mode={resp.curr_mode}); will retry.")
 
     def _on_arm_response(self, future):
         self._armed_pending = False

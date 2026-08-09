@@ -52,8 +52,11 @@ from std_msgs.msg import Empty, Float64, String
 # that file's own comments for the full derivation.
 WATER_BOUNDARY_X = 15.0
 
-# Matches motorized_tether_control.py's own MIN/MAX_PAYOUT_LENGTH bounds.
-TETHER_LENGTH_DOCKED = 0.05
+# Matches motorized_tether_control.py's own MIN_PAYOUT_LENGTH -- the real
+# geometric floor (see that module's own derivation comment), not an
+# arbitrary "docked" number. Setting this any lower would just get
+# silently clamped up to MIN_PAYOUT_LENGTH anyway.
+TETHER_LENGTH_DOCKED = 0.55
 TETHER_LENGTH_DEPLOYED = 8.0
 
 # "Fully afloat" threshold -- a real, empirically-derived value, not
