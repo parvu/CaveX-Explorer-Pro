@@ -131,12 +131,23 @@ controller_server:
       CostCritic:
         enabled: true
         cost_power: 1
-        # Raised 3.81 -> 7.0 alongside local_costmap's own inflation_radius
-        # increase above -- real request: keep the vehicle centered in the
-        # corridor. Still well under PathAlignCritic's 14.0, so this doesn't
-        # fight following the planned path outright, just pulls harder
-        # toward the middle when there's room to.
-        cost_weight: 7.0
+        # Raised 3.81 -> 7.0 -> 10.0 alongside local_costmap's own
+        # inflation_radius/cost_scaling_factor increases above -- real
+        # request: keep the vehicle centered in the corridor, strengthened
+        # again after it still got physically wedged against a wall at 7.0.
+        # Real root cause found for a later "strange preference to go to
+        # walls" report: this stayed BELOW PathAlignCritic's 14.0 the whole
+        # time, so path-following could -- and did -- outweigh centering.
+        # global_costmap's own inflation is deliberately kept low (0.35,
+        # see that block's comment -- raising it broke frontier detection),
+        # which leaves most of a corridor's global-costmap cost at zero, so
+        # the PLANNED path itself has no incentive to be centered and can
+        # legally hug a wall. PathAlignCritic then rewarded following that
+        # wall-hugging plan more than CostCritic rewarded centering away
+        # from it. Fixed at the critic-weight level (see PathAlignCritic's
+        # own reduced weight below) rather than touching global_costmap,
+        # to avoid re-breaking frontier detection.
+        cost_weight: 10.0
         near_collision_cost: 253
         critical_cost: 300.0
         consider_footprint: false
@@ -146,7 +157,15 @@ controller_server:
       PathAlignCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 14.0
+        # Reduced 14.0 -> 8.0, below CostCritic's 10.0 -- was the real cause
+        # of a "strange preference to go to walls": at 14.0 this outweighed
+        # CostCritic, so the controller preferred hugging the global plan
+        # (which itself has no centering incentive, see CostCritic's own
+        # comment) over actually centering in the corridor. Still enabled
+        # and still a real contributor (above every other critic except
+        # CostCritic), so the vehicle doesn't ignore the plan outright --
+        # just no longer lets path-hugging beat corridor-centering.
+        cost_weight: 8.0
         max_path_occupancy_ratio: 0.05
         trajectory_point_step: 4
         threshold_to_consider: 0.5
@@ -193,8 +212,13 @@ local_costmap:
       # first processed frame under this environment's real_time_factor.
       initial_transform_timeout: 60.0
       rolling_window: true
-      width: 6
-      height: 6
+      # Doubled 6 -> 12 alongside cave_world's own 2x mesh scale -- this is
+      # a rolling window's real coverage radius around the vehicle, not a
+      # vehicle-size parameter, so it needs to track the doubled cave
+      # geometry the same way inflation_radius above did (corridor
+      # features/junctions are now roughly twice as far apart).
+      width: 12
+      height: 12
       resolution: 0.05
       robot_radius: 0.3
       plugins: ["static_layer", "inflation_layer"]
@@ -229,15 +253,33 @@ local_costmap:
       # CostCritic for real-time driving), not what explore_lite's frontier
       # search reads (that's global_costmap below, deliberately left
       # unchanged at 0.35 -- see that block's own comment for why raising it
-      # broke frontier detection). Raising just this one to 0.6 -- roughly
-      # half a typical corridor width here -- makes each wall's inflation
-      # zone reach toward the middle, so CostCritic's own gradient now
-      # actually favors the center rather than being flat (zero pull) once
-      # clear of the immediate wall.
+      # broke frontier detection).
+      # Raised further, 0.6 -> 0.9, after the vehicle still got physically
+      # wedged against a wall with 0.6/cost_scaling_factor=3.0 -- that
+      # combination only put real cost within roughly half a typical
+      # corridor width, and cost_scaling_factor=3.0's exponential decay
+      # concentrates nearly all of it within the first ~0.3m of the wall,
+      # leaving most of the corridor still a flat near-zero-cost region.
+      # cost_scaling_factor lowered 3.0 -> 1.5 as the real fix for that --
+      # this is the exponential decay rate (cost = 253 * exp(-factor *
+      # (distance - robot_radius))), so a lower value spreads meaningful
+      # cost much further from the wall instead of collapsing it into a
+      # thin band right at the surface, giving CostCritic a real gradient
+      # to climb across most of the corridor width, not just the last few
+      # centimeters before contact.
+      # Raised again, 0.9 -> 1.8, after the cave_world mesh itself was
+      # scaled 2x (see models/cave_world/model.sdf) -- real corridors here
+      # are now roughly twice as wide as when 0.9 was derived, so 0.9m of
+      # inflation from each wall no longer reached the new corridor's
+      # middle at all: a flat, zero-cost band sat there with nothing for
+      # CostCritic to act on regardless of its weight, the real cause of a
+      # "still hugging walls" report even after fixing the CostCritic vs
+      # PathAlignCritic weight ordering. Doubled to track the doubled
+      # geometry, same reasoning as that earlier fix, not a new one.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.6
+        cost_scaling_factor: 1.5
+        inflation_radius: 1.8
       always_send_full_costmap: True
 
 global_costmap:
@@ -334,16 +376,15 @@ collision_monitor:
     # height at typical bubble-range distances while excluding ground-plane
     # hits, so it does not false-stop on the floor.
     #
-    # Added Bubble2m: a "circle" polygon (static radius, unlike the
+    # Added ObstacleBubble: a "circle" polygon (static radius, unlike the
     # footprint-shaped polygons above) giving the vehicle a real, fixed
     # detect-and-avoid bubble -- the mechanism this project didn't have
-    # before. radius=2.3 = 2.0m of clearance beyond the 0.3m robot_radius
-    # footprint edge, i.e. genuinely "2m outside the vehicle" as requested,
-    # measured from base_link. action_type "slowdown" (not "stop") so it
-    # eases the vehicle down in a corridor rather than halting it dead the
-    # moment a wall enters 2m, which cave corridors do constantly; the
-    # tighter PolygonStop-equivalent behavior for imminent contact is still
-    # covered by FootprintApproach below.
+    # before. Reduced 2.3->0.8: radius=0.8 = 0.5m of clearance beyond the
+    # 0.3m robot_radius footprint edge (was 2.0m clearance, found too eager
+    # in cave-corridor-width testing). action_type "slowdown" (not "stop")
+    # so it eases the vehicle down rather than halting it dead the moment a
+    # wall enters range; the tighter PolygonStop-equivalent behavior for
+    # imminent contact is still covered by FootprintApproach below.
     base_frame_id: "base_link"
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
@@ -353,15 +394,15 @@ collision_monitor:
     source_timeout: 1.0
     base_shift_correction: True
     stop_pub_timeout: 2.0
-    polygons: ["Bubble2m", "FootprintApproach"]
-    Bubble2m:
+    polygons: ["ObstacleBubble", "FootprintApproach"]
+    ObstacleBubble:
       type: "circle"
-      radius: 2.3
+      radius: 0.8
       action_type: "slowdown"
       slowdown_ratio: 0.5
       min_points: 4
       visualize: True
-      polygon_pub_topic: "polygon_bubble_2m"
+      polygon_pub_topic: "polygon_obstacle_bubble"
       enabled: True
     FootprintApproach:
       type: "polygon"

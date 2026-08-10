@@ -57,7 +57,13 @@ SPAWN_RETRIES = 5
 SPAWN_RETRY_DELAY_S = 2.0
 # Matches gazebo_tracked_vehicle.launch.py's own current spawn_bluerov2 pose
 # -- see that file's own comment for the real derivation of these numbers.
-SPAWN_X, SPAWN_Y, SPAWN_Z = -35.1, 0.0, 6.4755
+SPAWN_X, SPAWN_Y, SPAWN_Z = -88.88, -31.4, 6.4755  # kept in sync with
+                                                    # spawn_bluerov2's own
+                                                    # '-x'/'-y'/'-z' args in
+                                                    # gazebo_tracked_vehicle.launch.py
+                                                    # -- see that comment for
+                                                    # why this moved (cave_world
+                                                    # 2x scale)
 
 
 def _model_seen(node: Node, model_name: str, window_s: float) -> bool:

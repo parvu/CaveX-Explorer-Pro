@@ -108,6 +108,24 @@
          Real, measured world-frame bounds after this pose: x [-75.17,75.17],
          y [-51.16,51.16], z [0,36.18] (height is 36.18m, not the nominal
          33m -- >1m off nominal; x/y match nominal within ~0.2m). -->
+    <!-- Scaled 2x by real request (persistent tight-corridor stuck issues --
+         testing whether a proportionally larger cave gives real working
+         room). <scale> as a direct child of <include> does NOT work in this
+         installed sdformat/gz-sim version -- confirmed live: it produced a
+         real "XML Element[scale] ... not defined in SDF" parser warning
+         (same class as this session's other confirmed-real SDF bugs, not a
+         harmless vendor-extension warning), and the vehicle's spawn height
+         came out pixel-identical to every prior unscaled run, proving it was
+         silently ignored. The real, working mechanism is <scale> inside
+         <mesh> geometry (models/cave_world/model.sdf's own collision+visual
+         mesh elements) -- see that file for the actual scale. Scaling
+         happens around the mesh's local origin, NOT around the vehicle
+         spawn or cave_floor_patch below -- those keep their original
+         absolute positions, so the actual corridor geometry at any given
+         world position shifts, not just widens in place. Live
+         re-verification of spawn/floor alignment against the now-doubled
+         mesh is required after this change, same as every other floor/water
+         derivation in this file. -->
     <include>
       <uri>model://cave_world</uri>
       <name>cave_world</name>
@@ -152,6 +170,45 @@
         </collision>
         <visual name="visual">
           <geometry><box><size>110 24 1</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Second floor patch for the cave_world 2x mesh scale (real request --
+         see model.sdf.tracked -- err, models/cave_world/model.sdf's own
+         comment for the scale itself, and gazebo_tracked_vehicle.launch.py's
+         spawn_entity comment for the full re-derivation). The mesh scale is
+         a global rigid+uniform transform around the cave_world include's own
+         local origin, not around cave_floor_patch above -- so the real
+         corridor (and the vehicle spawn moved to follow it) is now at
+         world x~-88.78 y~-31.4, nowhere near this patch's x[-40,70] y[-12,12]
+         coverage. Precisely computed (not guessed): inverted the SDF pose's
+         rotation+translation to get the documented x=-37 floor point's real
+         LOCAL mesh coordinate, re-applied the same transform with scale=2 ->
+         real floor at world (-92.78, -31.4, ~5.98), i.e. barely different in
+         z from the original ~5.9 (the pose's own z, 5.9826, sits almost
+         exactly at floor height, so points near the floor barely move in z
+         under scaling around it). This patch covers x [-120,-60] y [-46,-17]
+         at top surface z=5.9 (box center z=5.4, matching the original
+         patch's own convention), generously sized around the new spawn/
+         corridor location for initial driving/testing -- not yet extended
+         to cover the whole doubled corridor the way the original patch
+         covers its own x[-40,70] stretch; widen this if testing moves
+         further along the corridor and falls off the edge. -->
+    <model name="cave_floor_patch_scaled">
+      <static>true</static>
+      <pose>-90 -31.4 5.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>60 29 1</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>0.01</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>60 29 1</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>

@@ -267,32 +267,88 @@ this vehicle's ~1.19m hull. RTAB-Map's `map`->`odom` TF publishes at 10Hz
 dead-end mitigation (its frontier blacklist only avoids a goal Nav2 already
 aborted, no physical escape behavior). This node is the real mitigation:
 1. **Trigger — closed corridor only, not staleness.** A costmap-blocked wall
-   within 2m ahead with no lateral opening at the current position either.
+   within 1m ahead with no lateral opening at the current position either.
    No reactive "no progress for N seconds" fallback — a stall that isn't a
    genuinely closed corridor is left to Nav2's own progress checker and
    recovery behaviors.
-2. **Retreat 1m** straight back — the only reverse driving anywhere in this
-   node — so the vehicle has room to rotate in place without the hull
-   clipping the wall that triggered the response.
-3. **360° survey**, rotating CW or CCW — whichever side has more real
-   clearance in the costmap — checking every ~15° for a real corridor. Hands
-   control back to Nav2/explore_lite immediately if one is found.
+2. **Retreat until there's real room to rotate** — adaptive, not a fixed
+   distance. Backs straight up (the same path it entered on) checking the
+   costmap every 0.2m for a real, obstruction-free circle around the
+   vehicle (0.45m radius, matching `robot_radius=0.3` plus margin), capped
+   at 12m before giving up. The only reverse driving anywhere in this node.
+3. **Full 360° survey** — always completes the whole sweep (no early stop
+   at the first candidate), scoring every ~15° direction's real clear
+   distance, then turns to face whichever direction had the best (widest)
+   opening. Direction of rotation (CW/CCW) is chosen once at the start,
+   toward whichever side has more real clearance — this only affects sweep
+   order, not coverage, since the full 360° is always completed. Hands
+   control back to Nav2/explore_lite once done.
 4. **Backtrack only if the full sweep finds nothing**: turn to face back
    along the recorded trail of waypoints, then drive forward along it (no
    reverse driving here either), checking the costmap periodically for a
-   lateral opening, capped at 6m.
+   lateral opening, capped at 12m.
 
 Core grid-math logic (`find_lateral_opening`, `ray_is_clear`,
-`clearance_on_side`) is pure-function and covered by a synthetic self-check
+`clearance_on_side`, `ray_clear_distance`, `can_rotate_freely`) is
+pure-function and covered by a synthetic self-check
 (`dead_end_backtrack_node.py --self-check`).
 
 **Obstacle avoidance** — Nav2's `collision_monitor` is wired to this
 vehicle's real 3D lidar (`/lidar/points`, height-filtered to exclude ground
-hits) with a `Bubble2m` circular slowdown polygon (2.3m radius from
-`base_link`, i.e. ~2m clearance beyond the 0.3m footprint) plus a
+hits) with an `ObstacleBubble` circular slowdown polygon (0.8m radius from
+`base_link`, i.e. ~0.5m clearance beyond the 0.3m footprint) plus a
 footprint-based `approach` polygon for imminent-contact braking. This is
 independent of the local costmap's own inflation-based avoidance used by the
-MPPI controller during normal path following.
+MPPI controller during normal path following (`inflation_radius=1.8`,
+`cost_scaling_factor=1.5`, tuned for corridor centering — `CostCritic`
+weight 10.0 kept above `PathAlignCritic`'s 8.0 so centering wins over
+blindly hugging the global plan, which itself has no centering incentive
+since `global_costmap` inflation stays low to protect frontier detection).
+
+**Cave scaled 2x** (`ros2_ws/src/cavex_slam_nav/models/cave_world/model.sdf`)
+— the vendored mesh's `<collision>`/`<visual>` geometry carries a real
+`<scale>2 2 2</scale>` (the only place scale actually works in this
+sdformat version — a `<scale>` on the world file's `<include>` is silently
+ignored). Scaling happens around the mesh's own local origin, not around
+any fixed world position, so the real corridor moved: the vehicle now
+spawns around `x=-88.78 y=-31.4` (was `x=-35 y=0`), with a second
+supplementary floor patch (`cave_floor_patch_scaled`) covering that area
+since the original patch's coverage doesn't reach it. Every environment
+detection range that used to be tuned for the un-scaled cave was doubled
+alongside it: local costmap rolling-window size, lidar max range (60m),
+RTAB-Map's `Grid/RangeMax`, and the dead-end node's own lookahead/survey/
+retreat/backtrack distances. Vehicle-size parameters (`robot_radius`,
+`ObstacleBubble`, the dead-end node's rotation-clearance radius) were
+deliberately **not** doubled — the vehicle itself didn't get bigger, only
+the cave did.
+
+**ArduPilot heading drift** (fixed in `cmd_vel_to_ardupilot.py` and
+`track_cmd_vel_bridge.py`) — this vehicle has no GPS/navsat sensor (removed
+as orphaned; the original vendored `navsat_link`/sensor was never wired
+into `ArduPilotPlugin` or bridged to ROS at all), so ArduPilot's own EKF
+runs on pure IMU dead-reckoning and drifts over distance with nothing to
+correct it — measured live at ~91° of heading drift from Gazebo's real
+ground truth after a modest drive. That drift corrupted driving direction
+on both sides of the ArduPilot round-trip: `cmd_vel_to_ardupilot.py` now
+rotates outgoing `/cmd_vel` from body-frame to world-frame using Gazebo's
+own ground-truth heading (read live via gz-transport,
+`/world/<world>/pose/info`) before sending it to `/ap/cmd_vel` with
+`frame_id=map` (bypassing ArduPilot's own drifted-heading conversion for
+commands sent as `frame_id=base_link`); `track_cmd_vel_bridge.py` does the
+same in reverse for `/ap/twist/filtered`'s reported world-frame velocity
+(itself `ahrs.get_velocity_NED()` converted to ROS ENU, despite the
+message's `frame_id` claiming `base_link`) before handing it to Gazebo's
+`TrackedVehicle` plugin. Both self-check (`--self-check`), including a
+round-trip check between the two files' rotation functions.
+
+**Note on the water region below**: its `x=15`/`x=-35`-spawn coordinates
+predate the cave 2x scale above and were not re-derived against it — the
+water surface, `cave_floor_patch`, and their boundary are separate, fixed
+SDF models untouched by the mesh scale, while the vehicle's own spawn moved
+to a different part of the now-larger cave. Whether the dry-section
+corridor still actually connects the new spawn to this water region needs
+live re-verification before trusting the water-boundary handoff instructions
+below as-is.
 
 **BlueROV2 spawn reliability** — the primary spawn chain
 (`spawn_x500_cargo -> spawn_entity -> spawn_bluerov2`, sequenced via

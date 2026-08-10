@@ -911,8 +911,13 @@
                  surroundings, giving RTAB-Map/explore_lite very little advance warning of
                  corridor structure. 30m matches real mid-range 3D lidars used in subterranean
                  robotics (e.g. Velodyne Puck/Ouster OS0-class, not a long-range unit), well
-                 within gpu_lidar's simulated range accuracy. -->
-            <max>30.0</max>
+                 within gpu_lidar's simulated range accuracy.
+                 Doubled again, 30.0 -> 60.0, alongside cave_world's own 2x mesh scale --
+                 the same real corridor span is now ~100m, and this is a sensor-range
+                 parameter tracking real environment distance (not a vehicle-size
+                 parameter), so it needs to double the same way the other cave-scale
+                 detection ranges did. -->
+            <max>60.0</max>
           </range>
         </ray>
       </sensor>
@@ -1093,18 +1098,46 @@
       <fdm_port_in>9002</fdm_port_in>
       <connectionTimeoutMaxCount>5</connectionTimeoutMaxCount>
       <lock_step>1</lock_step>
-      <!-- yaw=90 here is unmodified from the original motored BlueBoat and is
-           WRONG for this ground-rover repurposing (confirmed live in Task 7:
-           commanding /cmd_vel linear.x produced ArduPilot-reported velocity
-           almost entirely on gazebo's y-axis, not x). NOT fixed here on
-           purpose -- changing this term risks breaking the EKF convergence
-           already verified live in Task 3/6, and re-verifying that was out
-           of scope for the fix. Instead compensated downstream with a +90
-           deg yaw rotation in track_cmd_vel_bridge.py
-           (cavex_tracked_vehicle/cavex_tracked_vehicle/track_cmd_vel_bridge.py)
-           before the twist is republished to /track_cmd_vel. If this term
-           is ever touched, track_cmd_vel_bridge.py's rotation must be
-           revisited (and removed/adjusted) in the same change. -->
+      <!-- Real request: fix the "moving sideways not forward" bug at its
+           root. Two live-tested attempts at THESE two parameters both
+           failed and were fully reverted (values below are original/
+           working, do not carry an unhelpful change): (1) this term's yaw
+           90->0, (2) modelXYZToAirplaneXForwardZDown's yaw 0->90. Both
+           left /ap/twist/filtered unchanged, (x=-0.03, y=0.40) for a
+           commanded pure-forward (x=0.4) -- neither parameter is what
+           causes the swap. Arming/GUIDED kept working through both (the
+           flagged EKF risk never materialized).
+
+           The REAL root cause was found by reading ArduPilot's own AP_DDS
+           source directly (ardupilot/libraries/AP_DDS/AP_DDS_Client.cpp,
+           update_topic(TwistStamped&)): /ap/twist/filtered's linear.x/y is
+           ahrs.get_velocity_NED() converted to ROS's ENU convention -- real
+           WORLD-FRAME ground velocity (East/North), not body-frame
+           forward/lateral, despite the message's own frame_id saying
+           base_link. Fixed for real in track_cmd_vel_bridge.py: it now
+           rotates that world-frame velocity into body-frame using the
+           vehicle's LIVE yaw (from /ap/pose/filtered, same AHRS source),
+           not a fixed constant -- verified correct end-to-end
+           (/track_cmd_vel and the raw gz-transport
+           /model/cavex_tracked_blueboat/cmd_vel command both showed the
+           right sign/magnitude for commanded forward and reverse).
+
+           KNOWN OPEN ISSUE, not caused by any of the above: even with a
+           fully verified-correct command reaching the TrackedVehicle
+           plugin, the vehicle's actual WORLD-frame motion direction was
+           measured live at a consistent ~60deg offset from its own
+           reported heading (repeatable across multiple independent
+           straight-line tests, at a location confirmed clear of any
+           obstruction). Ruled out: left_track/right_track link poses both
+           have zero rotation relative to base_link (checked directly in
+           this file -- not a static mounting-angle bug); yaw was stable
+           during each measurement window (not an active-turning/momentum
+           artifact). Not yet investigated: Gazebo's own physics
+           contact/friction model for the tracks (TrackedVehicle's
+           track-ground interaction), which is a genuinely different,
+           deeper layer than anything ROS/SDF-frame-convention related
+           above. Left open by real request rather than guessed at
+           further. -->
       <gazeboXYZToNED degrees="true">0 0 0 180 0 90</gazeboXYZToNED>
       <modelXYZToAirplaneXForwardZDown degrees="true">0 0 0 180 0 0</modelXYZToAirplaneXForwardZDown>
       <imuName>imu_link::imu_sensor</imuName>

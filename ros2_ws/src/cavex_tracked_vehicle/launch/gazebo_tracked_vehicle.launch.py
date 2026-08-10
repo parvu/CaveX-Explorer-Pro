@@ -142,12 +142,30 @@ def generate_launch_description():
     # vertex-confirmed height CAVE_FLOOR_Z=5.9. Spawn moved to x=-35 (inside
     # that coverage, west of all four dry-section obstacles), z = 5.9 + 0.75
     # clearance = 6.65.
+    # Moved for the cave_world 2x mesh scale (real request, models/cave_world/
+    # model.sdf's own comment has the full story): scaling happens around the
+    # include's local origin, not around this spawn point, so the real
+    # corridor that used to be here moved. Re-derived precisely, not guessed
+    # -- inverted this exact SDF pose's rotation+translation to get the old
+    # spawn point's LOCAL mesh coordinate, then re-applied the same
+    # transform with scale=2 (round-trip-verified against the documented
+    # x=-37 floor point first). That's a global rigid+uniform-scale
+    # transform, so it's topology-preserving: the old spawn point was real,
+    # empirically-verified open air, and its image under this transform is
+    # therefore also real open air, not a guess. New position: old (-35, 0)
+    # + delta (-53.78, -31.4) = (-88.78, -31.4). z kept at 6.65 unchanged --
+    # the transform pose's own z (5.9826) sits almost exactly at floor
+    # height, so points near the floor barely move in z when scaled around
+    # it (computed real floor at the new location: ~5.98, vs 5.9 before).
+    # See cave_floor_patch_scaled below for the supplementary floor
+    # collision added at this new location (the original patch's coverage,
+    # x[-40,70] y[-12,12], does not reach here).
     spawn_entity = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=['-world', 'cavex_world', '-file', generated_sdf_file,
                    '-name', VEHICLE_MODEL_NAME,
-                   '-x', '-35', '-y', '0', '-z', '6.65'],
+                   '-x', '-88.78', '-y', '-31.4', '-z', '6.65'],
         output='screen',
     )
 
@@ -192,13 +210,15 @@ def generate_launch_description():
     # rigid-carry design too (flagged there for the same reason) -- not introduced
     # by the tether change, still not physically correct, still flagged rather
     # than silently accepted.
+    # Shifted by the same delta as spawn_entity above (cave_world 2x scale),
+    # preserving the exact same relative offset from the tracked vehicle.
     spawn_bluerov2 = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'bluerov2', 'model.sdf'),
                    '-name', 'bluerov2',
-                   '-x', '-35.1', '-y', '0', '-z', '6.4755'],
+                   '-x', '-88.88', '-y', '-31.4', '-z', '6.4755'],
         output='screen',
     )
 

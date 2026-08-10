@@ -36,8 +36,12 @@ sleep 25
 ps aux | grep -iE "gz sim|ardurover|micro_ros_agent|mavproxy" | grep -v grep
 ros2 topic info /clock -v   # confirm exactly ONE publisher (gz_bridge)
 gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A4 'name: "cavex_tracked_blueboat"'
-# Expected z ~6.4 (settled on cave_floor_patch, CAVE_FLOOR_Z=5.9 + hull rest height) —
-# NOT z~0 (that would mean it's back on ground_plane / the floor fix regressed).
+# Expected x~-88.78 y~-31.4 z~6.4 (cave_world scaled 2x -- spawn moved from the
+# original x=-35 y=0; z settles on cave_floor_patch_scaled, same ~6.4 height as
+# before since that patch's z barely shifted under the scale -- see README's
+# "Cave scaled 2x" section) — NOT z~0 (that would mean it's back on
+# ground_plane / the floor fix regressed), and NOT near the old x=-35 (that
+# would mean the spawn args reverted).
 
 # ============================================================
 # 4. Launch SLAM + Nav2 + explore_lite (RTAB-Map 3D lidar SLAM, costmap)
@@ -70,7 +74,7 @@ sleep 15
 kill -9 $DRIVEPID
 
 gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A4 'name: "cavex_tracked_blueboat"'
-# Expect real x movement from the spawn point (-35).
+# Expect real movement from the spawn point (x=-88.78 y=-31.4, see section 3).
 
 # Confirm ArduPilot state directly if needed:
 ros2 service call /ap/mode_switch ardupilot_msgs/srv/ModeSwitch "{mode: 15}"   # 15 = GUIDED (Rover)
@@ -458,3 +462,90 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # "track_retract" -- always check its full output, don't assume a clean launch
 # means no leftovers from a PREVIOUS launch.
 
+
+# ============================================================
+# Dead-end redesign, cave 2x scale, corridor centering, ArduPilot heading
+# drift fix (this session)
+# ============================================================
+#
+# DEAD-END ALGORITHM REDESIGNED (dead_end_backtrack_node.py): retreat is now
+# adaptive (backs up along the same path entered on until the costmap shows
+# real room to rotate -- can_rotate_freely(), 0.45m radius -- capped at
+# 12m), not a fixed distance. The 360 survey always completes the FULL
+# sweep now (no early stop at the first candidate), scoring every ~15deg
+# direction's real clear distance (ray_clear_distance()) and turning to
+# face the single best opening once done. Trigger lookahead 0.5->1.0m,
+# backtrack cap 6->12m -- doubled alongside the cave scale below.
+#
+# OBSTACLE AVOIDANCE FIXED (collision_monitor): was wired to a "scan"
+# LaserScan source this 3D-lidar-only vehicle never publishes -- present in
+# config but never actually detecting anything, a real no-op the whole
+# time. Switched to a "pointcloud" source on /lidar/points, added a real
+# ObstacleBubble circle polygon (0.8m radius, ~0.5m clearance beyond the
+# 0.3m footprint) for slowdown-on-approach.
+#
+# CAVE SCALED 2x (models/cave_world/model.sdf): real <scale>2 2 2</scale>
+# inside the mesh's own <collision>/<visual> geometry -- <scale> on the
+# world file's <include> does NOT work in this sdformat version (silently
+# ignored, confirmed live via a real parser warning). Scaling happens
+# around the mesh's own local origin, so the real corridor moved: vehicle
+# spawn is now x=-88.78 y=-31.4 (was x=-35 y=0), precisely re-derived (not
+# guessed) by inverting the SDF pose transform on known real-mesh points
+# and reapplying with scale=2. A second floor patch
+# (cave_floor_patch_scaled) covers the new area. Every environment
+# detection range doubled to match: local costmap width/height (6->12),
+# inflation_radius (0.9->1.8), lidar max range (30->60m), RTAB-Map
+# Grid/RangeMax, and the dead-end node's own lookahead/survey/retreat/
+# backtrack distances above. Vehicle-size parameters (robot_radius,
+# ObstacleBubble, the dead-end node's rotation-clearance radius) were
+# deliberately left unchanged -- the vehicle didn't get bigger, only the
+# cave did. The water region (section 8 below)'s x=15/x=-35 coordinates
+# were NOT re-derived against this scale -- needs live re-verification
+# before trusting the water-boundary handoff as-is.
+#
+# CORRIDOR CENTERING: local_costmap cost_scaling_factor 3.0->1.5 (spreads
+# real cost across most of the corridor width instead of collapsing it near
+# the wall surface) alongside the inflation_radius doubling above.
+# CostCritic weight 3.81->7.0->10.0, PathAlignCritic 14.0->8.0 -- real
+# request: the global plan itself has no centering incentive (global
+# costmap inflation stays low on purpose, to protect frontier detection),
+# so PathAlignCritic previously outweighing CostCritic meant the controller
+# preferred hugging that uncentered plan over actually centering.
+#
+# ARDUPILOT HEADING DRIFT (real root cause, found by reading ArduPilot's
+# own AP_DDS source directly, ardupilot/libraries/AP_DDS/): this vehicle
+# has no GPS/navsat (removed as orphaned -- the vendored navsat sensor was
+# never wired to ArduPilotPlugin or bridged to ROS), so ArduPilot's own EKF
+# is pure IMU dead-reckoning and drifts with nothing to correct it --
+# measured live at ~91deg of heading drift from Gazebo's real ground truth
+# after a modest drive. This corrupted driving direction on BOTH sides of
+# the ArduPilot round-trip, not just one: cmd_vel_to_ardupilot.py now
+# rotates outgoing /cmd_vel body-frame->world-frame using Gazebo's own
+# ground-truth heading (gz-transport, /world/<world>/pose/info) before
+# sending to /ap/cmd_vel with frame_id=map (AP_DDS's handle_velocity_control
+# has a real ENU-input branch that bypasses its own EKF-based rotation
+# entirely for this case); track_cmd_vel_bridge.py does the same in reverse
+# for /ap/twist/filtered's reported velocity (itself ahrs.get_velocity_NED()
+# in ROS ENU convention -- real world-frame ground velocity despite the
+# message's own frame_id claiming base_link) before handing it to Gazebo's
+# TrackedVehicle plugin. Two earlier attempts at fixing this via
+# ArduPilotPlugin's own gazeboXYZToNED/modelXYZToAirplaneXForwardZDown
+# parameters were live-tested and failed (both fully reverted, see that
+# plugin's own comment in model.sdf.tracked) before the real cause was
+# found by reading ArduPilot's C++ source instead of guessing at more SDF
+# parameters. Live-verified: displacement-vs-heading offset went from ~180
+# (completely wrong) through ~22deg -> ~13deg -> converging to ~11-12deg
+# over a sustained drive, consistent with ordinary tracked-vehicle
+# skid/slip, not a remaining frame bug. Both fixed nodes self-check
+# (--self-check), including a round-trip check between the two files' own
+# rotation functions.
+#
+# SDF PARSER WARNINGS investigated: 3 of 4 recurring warnings
+# (gz_frame_id x2, top-level ros2_control) are legitimate, documented
+# gz-sim/gz_ros2_control vendor extensions, not part of the official
+# SDFormat schema by design -- left alone, changing them would break TF
+# frame naming and joint control. The 4th (navsat's <gps><fix>...) was a
+# real bug -- invalid fields not in the real navsat.sdf schema, doing
+# nothing -- and the whole navsat_link/navsat_sensor/navsat_joint was
+# removed entirely once confirmed orphaned (see ArduPilot heading-drift
+# entry above for why that removal mattered more than expected).

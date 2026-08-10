@@ -24,7 +24,9 @@ an actual dead-end tunnel. This node handles the longer case, in four
 stages:
 
 1. TRIGGER -- closed corridor only, not staleness: check the global
-   costmap ~2m ahead along the current heading (DEAD_END_LOOKAHEAD_M). If
+   costmap ~0.5m ahead along the current heading (DEAD_END_LOOKAHEAD_M,
+   reduced from 2.0m -- found too eager, triggering well before the
+   vehicle was actually close to a wall). If
    that's blocked AND there's no lateral opening at the current position
    either, that's a genuinely closed corridor -- cancel the active Nav2
    goal. There is deliberately no reactive "no progress for N seconds"
@@ -33,20 +35,31 @@ stages:
    business per the real request; Nav2's own progress checker and
    recovery behaviors already exist for that.
 
-2. RETREAT 1m: back straight up REVERSE_RETREAT_M before surveying --
-   real request -- so the vehicle has room to rotate in place without
-   the hull clipping the wall that triggered this in the first place.
-   The only reverse driving anywhere in this node.
+2. RETREAT -- adaptive, not a fixed distance (real request: "retreat as
+   much as needed for the vehicle to rotate freely; if not enough space,
+   keep backing up along the same path it entered on until there is").
+   Backs straight up (never turns during this phase, so it's physically
+   retracing the same line it just drove in on) checking the costmap
+   every RETREAT_CHECK_EVERY_M for a real, obstruction-free circle around
+   the vehicle (can_rotate_freely, radius ROTATE_CLEARANCE_RADIUS_M --
+   sized to this vehicle's real hull half-diagonal). Stops as soon as
+   that's true, however little or much that took; gives up if it exceeds
+   MAX_RETREAT_DISTANCE_M without ever finding room. The only reverse
+   driving anywhere in this node.
 
-3. SURVEY: rotate in place through a full 360 deg, checking at each ~15
-   deg increment whether a real corridor (a clear run of
-   SURVEY_FORWARD_CHECK_M) opens up in that direction. Direction is
-   chosen once, at the start of the survey, not hardcoded: whichever
-   side (left/right of the current heading) has more real lateral
-   clearance in the costmap is the direction rotated toward -- "away
-   from the walls," per the real request, not blindly always the same
-   way. If a corridor is found, stop rotating and hand control back to
-   Nav2/explore_lite immediately.
+3. SURVEY: rotate in place through the FULL 360 deg -- always, never
+   stopping early at the first candidate (real request: "rotate 360 deg
+   on spot and then choose the best opening available") -- checking at
+   each ~15 deg increment how far a real corridor extends in that
+   direction (ray_clear_distance, capped at SURVEY_FORWARD_CHECK_M).
+   Direction of rotation is chosen once, at the start, not hardcoded:
+   whichever side (left/right of the current heading) has more real
+   lateral clearance in the costmap is rotated toward -- "away from the
+   walls" -- but this only affects sweep order, not coverage, since the
+   full 360 deg is always completed either way. Once the sweep is done,
+   turn in place to face whichever direction had the greatest clear
+   distance (the real "best opening"), then hand control back to
+   Nav2/explore_lite.
 
 4. BACKTRACK only if the full sweep finds nothing: turn to face back
    along the recorded trail (a single discrete turn, not per-waypoint),
@@ -73,23 +86,53 @@ from geometry_msgs.msg import Twist
 from action_msgs.srv import CancelGoal
 
 # --- Trail recording ---
-WAYPOINT_SPACING_M = 0.3        # record a trail waypoint every this many meters of real travel
-TRAIL_MAX_WAYPOINTS = 300       # ~90m of trail, comfortably covers this world's real corridors
+WAYPOINT_SPACING_M = 0.3        # record a trail waypoint every this many meters of real travel --
+                                 # a resolution parameter, not an environment-scale one, left as-is
+                                 # under the cave_world 2x mesh scale (see below).
+TRAIL_MAX_WAYPOINTS = 600       # ~180m of trail -- doubled 300->600 alongside cave_world's own 2x
+                                 # mesh scale (models/cave_world/model.sdf), since real corridors
+                                 # here are now roughly twice as long at the same WAYPOINT_SPACING_M.
 
 # --- Trigger: closed corridor only, no staleness/stall fallback (real request) ---
-DEAD_END_LOOKAHEAD_M = 2.0
+# Doubled 0.5 -> 1.0 alongside cave_world's 2x mesh scale -- this is a real
+# environment-distance detection range (how far ahead a wall is), not a
+# vehicle-size parameter, so it tracks the doubled cave the same way
+# local_costmap's inflation_radius and the lidar's own max range did.
+DEAD_END_LOOKAHEAD_M = 1.0
 LOOKAHEAD_STEP_M = 0.1
 LOOKAHEAD_CHECK_MIN_INTERVAL_S = 0.5  # don't re-run the lookahead check on every single tick
 
-# --- Retreat 1m before surveying (real request) ---
-REVERSE_RETREAT_M = 1.0
-RETREAT_SPEED = 0.2             # m/s, gentle -- this is a short, blind straight-back nudge
+# --- Retreat until there's real room to rotate, not a fixed distance (real request) ---
+RETREAT_SPEED = 0.2             # m/s, gentle -- this is a blind straight-back nudge
+# 0.7m (this vehicle's real hull half-diagonal) turned out impractical live --
+# retreated the full MAX_RETREAT_DISTANCE_M cap without ever finding a spot
+# that cleared it anywhere in this cave, meaning most of this world's real
+# corridors are narrower than a 1.4m-diameter clear circle even where the
+# vehicle drives through them just fine day to day. Reduced to 0.45 = this
+# project's own already-established robot_radius=0.3 (used throughout the
+# Nav2 costmap/collision config for this exact vehicle) plus a real 0.15m
+# margin, instead of a separately-derived hull-diagonal estimate -- accepts
+# that the hull's ends may swing close to the walls during the pivot, same
+# safety margin already trusted everywhere else in this stack. NOT doubled
+# under the cave_world 2x mesh scale below -- this is the VEHICLE's own real
+# physical hull size, which did not change, only the cave did.
+ROTATE_CLEARANCE_RADIUS_M = 0.45
+ROTATE_CLEARANCE_SAMPLES = 12    # every 30 deg around the circle
+RETREAT_CHECK_EVERY_M = 0.2      # re-check rotate-clearance every this many meters of retreat
+# Doubled 6.0 -> 12.0 alongside cave_world's 2x mesh scale -- a real distance
+# budget along the (now roughly twice as long) corridor, not a vehicle-size
+# parameter.
+MAX_RETREAT_DISTANCE_M = 12.0    # real cap -- give up rather than reversing forever if no spot
+                                  # along the path back ever clears enough to rotate
 
 # --- 360 deg survey, direction chosen away from the walls (real request) ---
 SURVEY_ANGULAR_SPEED = 0.5       # rad/s while rotating in place to survey
 SURVEY_CHECK_INTERVAL_RAD = math.radians(15.0)  # test for a corridor every ~15 deg of rotation
-SURVEY_FORWARD_CHECK_M = 2.5     # a direction counts as a real corridor if clear at least this far
-SURVEY_CLEARANCE_RADIUS_M = 1.2  # how far each side is checked to decide which way is more open
+# Both doubled alongside cave_world's 2x mesh scale -- real environment
+# detection ranges (how far a real corridor/opening must extend to count),
+# not vehicle-size parameters.
+SURVEY_FORWARD_CHECK_M = 5.0     # a direction counts as a real corridor if clear at least this far
+SURVEY_CLEARANCE_RADIUS_M = 2.4  # how far each side is checked to decide which way is more open
 SURVEY_CLEARANCE_STEP_M = 0.1
 
 # --- Backtrack driving (fallback once the survey finds nothing) ---
@@ -100,10 +143,17 @@ BACKUP_SPEED = 0.3              # m/s, FORWARD drive speed while backtracking (p
 HEADING_KP = 1.2                # P gain correcting heading error while driving toward a waypoint
 MAX_ANGULAR_Z = 0.8
 WAYPOINT_REACHED_M = 0.2        # advance to the next trail waypoint within this radius
-MAX_BACKTRACK_DISTANCE_M = 6.0  # real cap -- give up rather than retracing the whole trail
+# Doubled 6.0 -> 12.0 alongside cave_world's 2x mesh scale, same reasoning as
+# MAX_RETREAT_DISTANCE_M above -- a real corridor-length budget, not a
+# vehicle-size parameter.
+MAX_BACKTRACK_DISTANCE_M = 12.0  # real cap -- give up rather than retracing the whole trail
 
 # --- Opening detection (shared by the survey's forward check and backtrack's lateral check) ---
-OPENING_SCAN_RADIUS_M = 1.2     # how far laterally (each side) to scan the costmap
+# Doubled 1.2 -> 2.4 alongside cave_world's 2x mesh scale -- how far to look
+# for a real branch opening, an environment detection range like the ones
+# above, not the OPENING_MIN_WIDTH_M vehicle-footprint threshold below
+# (left unchanged -- the vehicle itself didn't get bigger).
+OPENING_SCAN_RADIUS_M = 2.4     # how far laterally (each side) to scan the costmap
 OPENING_SCAN_STEP_M = 0.1
 OPENING_MIN_WIDTH_M = 1.2       # this vehicle's own real track separation (~0.76m) plus real
                                  # margin -- a shorter free run is just the corridor itself, not
@@ -197,6 +247,48 @@ def ray_is_clear(costmap: OccupancyGrid, x, y, yaw, distance_m,
     return True
 
 
+def can_rotate_freely(costmap: OccupancyGrid, x, y,
+                       radius_m=ROTATE_CLEARANCE_RADIUS_M,
+                       samples=ROTATE_CLEARANCE_SAMPLES,
+                       free_max=COSTMAP_FREE_MAX):
+    """Real check for whether the vehicle has enough room to rotate in
+    place without clipping a wall: passable at `samples` points evenly
+    spaced around a circle of `radius_m` centered at (x, y). Used by the
+    adaptive RETREATING stage to decide when it has backed up far enough
+    -- not a fixed distance. Pure function, no ROS dependency."""
+    info = costmap.info
+    if info.resolution <= 0.0 or info.width == 0 or info.height == 0:
+        return False
+    for i in range(samples):
+        angle = 2.0 * math.pi * i / samples
+        wx = x + radius_m * math.cos(angle)
+        wy = y + radius_m * math.sin(angle)
+        if not _passable(costmap, wx, wy, free_max):
+            return False
+    return True
+
+
+def ray_clear_distance(costmap: OccupancyGrid, x, y, yaw, max_distance_m,
+                        step_m=LOOKAHEAD_STEP_M, free_max=COSTMAP_FREE_MAX):
+    """How far the straight line from (x, y) along `yaw` stays passable,
+    capped at max_distance_m. Used by the 360 deg survey to score every
+    candidate direction after the full sweep and pick the widest/clearest
+    real opening, rather than just the first direction that happened to
+    clear SURVEY_FORWARD_CHECK_M. Pure function, no ROS dependency."""
+    info = costmap.info
+    if info.resolution <= 0.0 or info.width == 0 or info.height == 0:
+        return 0.0
+    dx, dy = math.cos(yaw), math.sin(yaw)
+    n_steps = max(1, int(round(max_distance_m / step_m)))
+    clear = 0.0
+    for i in range(1, n_steps + 1):
+        d = i * step_m
+        if not _passable(costmap, x + dx * d, y + dy * d, free_max):
+            break
+        clear = d
+    return clear
+
+
 def clearance_on_side(costmap: OccupancyGrid, x, y, yaw, side,
                        radius_m=SURVEY_CLEARANCE_RADIUS_M,
                        step_m=SURVEY_CLEARANCE_STEP_M,
@@ -234,12 +326,16 @@ class DeadEndBacktrackNode(Node):
         # RETREATING state
         self._retreat_distance_traveled = 0.0
         self._retreat_last_pos = None
+        self._retreat_last_check_m = 0.0
 
         # SURVEYING state
         self._survey_direction = 1.0  # +1 = CCW (left), -1 = CW (right)
         self._survey_rotated_rad = 0.0
         self._survey_last_check_rad = 0.0
         self._survey_last_yaw = None
+        self._survey_best_clearance = 0.0
+        self._survey_best_yaw = None
+        self._survey_turning_to_best = False
 
         # BACKTRACKING state
         self._backtrack_target = None
@@ -263,11 +359,15 @@ class DeadEndBacktrackNode(Node):
             f"dead_end_backtrack_node ready: watching {DEAD_END_LOOKAHEAD_M}m "
             "ahead for a genuinely closed corridor (no reactive stall/staleness "
             "trigger). On trigger: cancel the active Nav2 goal, retreat "
-            f"{REVERSE_RETREAT_M}m, then 360 deg survey (rotating whichever way "
-            "-- CW or CCW -- has more real clearance) for an alternate "
-            "corridor; only if that finds nothing, turn to face back along "
-            "the recorded trail and drive forward along it (no reverse "
-            f"driving there), capped at {MAX_BACKTRACK_DISTANCE_M}m.")
+            "straight back along the same path it entered on -- however far "
+            "needed, not a fixed distance -- until the costmap shows real room "
+            f"to rotate (capped at {MAX_RETREAT_DISTANCE_M}m), then rotate a "
+            "FULL 360 deg on the spot (no early stop) scoring every "
+            "direction's real clear distance, then turn to face whichever "
+            "direction had the best opening; only if nothing at all opened "
+            "up, turn to face back along the recorded trail and drive forward "
+            f"along it (no reverse driving there), capped at "
+            f"{MAX_BACKTRACK_DISTANCE_M}m.")
 
     # --- subscriptions ---
 
@@ -310,12 +410,14 @@ class DeadEndBacktrackNode(Node):
 
     def _enter_retreat(self, reason: str):
         self.get_logger().warn(f"Closed corridor detected ({reason}) -- cancelling "
-                                f"the current Nav2 goal and retreating "
-                                f"{REVERSE_RETREAT_M}m before surveying.")
+                                f"the current Nav2 goal and retreating straight back "
+                                "(same path it entered on) until there's real room "
+                                "to rotate.")
         self._cancel_active_nav2_goal()
         self._state = _State.RETREATING
         self._retreat_distance_traveled = 0.0
         self._retreat_last_pos = None
+        self._retreat_last_check_m = 0.0
 
     # --- resolving back to NORMAL ---
 
@@ -326,7 +428,8 @@ class DeadEndBacktrackNode(Node):
         self._cooldown_until = self.get_clock().now().nanoseconds / 1e9 + RETRIGGER_COOLDOWN_S
         self.cmd_vel_pub.publish(Twist())
 
-    # --- RETREATING (1m straight back, real request, before surveying) ---
+    # --- RETREATING (adaptive distance, real request: back up along the same
+    # path entered on until the costmap shows real room to rotate) ---
 
     def _tick_retreat(self, x, y, yaw):
         if self._retreat_last_pos is not None:
@@ -334,8 +437,20 @@ class DeadEndBacktrackNode(Node):
             self._retreat_distance_traveled += math.hypot(x - lx, y - ly)
         self._retreat_last_pos = (x, y)
 
-        if self._retreat_distance_traveled >= REVERSE_RETREAT_M:
-            self._enter_survey(x, y, yaw)
+        if (self._latest_costmap is not None
+                and self._retreat_distance_traveled - self._retreat_last_check_m >= RETREAT_CHECK_EVERY_M):
+            self._retreat_last_check_m = self._retreat_distance_traveled
+            if can_rotate_freely(self._latest_costmap, x, y):
+                self.get_logger().info(
+                    f"Retreated {self._retreat_distance_traveled:.2f}m -- real room to "
+                    "rotate now, starting the 360 survey.")
+                self._enter_survey(x, y, yaw)
+                return
+
+        if self._retreat_distance_traveled >= MAX_RETREAT_DISTANCE_M:
+            self._resolve(
+                f"retreated the {MAX_RETREAT_DISTANCE_M}m cap along the entry path "
+                "without ever finding enough room to rotate -- giving up.")
             return
 
         twist = Twist()
@@ -351,26 +466,45 @@ class DeadEndBacktrackNode(Node):
             right = clearance_on_side(self._latest_costmap, x, y, yaw, side=-1.0)
         self._survey_direction = 1.0 if left >= right else -1.0
         self.get_logger().info(
-            f"Surveying 360 deg, rotating {'CCW (left)' if self._survey_direction > 0 else 'CW (right)'} "
-            f"-- more real clearance that way (left={left:.2f}m, right={right:.2f}m).")
+            f"Surveying full 360 deg (no early stop), rotating "
+            f"{'CCW (left)' if self._survey_direction > 0 else 'CW (right)'} first "
+            f"-- more real clearance that way (left={left:.2f}m, right={right:.2f}m). "
+            "Will choose the best opening found once the sweep completes.")
         self._state = _State.SURVEYING
         self._survey_rotated_rad = 0.0
         self._survey_last_check_rad = 0.0
         self._survey_last_yaw = yaw
+        self._survey_best_clearance = 0.0
+        self._survey_best_yaw = None
+        self._survey_turning_to_best = False
 
     def _tick_survey(self, x, y, yaw):
+        if self._survey_turning_to_best:
+            error = _wrap_angle(self._survey_best_yaw - yaw)
+            if abs(error) <= TURN_TOLERANCE_RAD:
+                self._resolve(
+                    f"360 survey complete -- chose the best opening found "
+                    f"(clear {self._survey_best_clearance:.2f}m) and turned to "
+                    "face it; handing control back to Nav2/explore_lite.")
+                return
+            twist = Twist()
+            twist.angular.z = TURN_SPEED if error > 0 else -TURN_SPEED
+            self.cmd_vel_pub.publish(twist)
+            return
+
         if (self._latest_costmap is not None
                 and self._survey_rotated_rad - self._survey_last_check_rad >= SURVEY_CHECK_INTERVAL_RAD):
             self._survey_last_check_rad = self._survey_rotated_rad
-            if ray_is_clear(self._latest_costmap, x, y, yaw, SURVEY_FORWARD_CHECK_M):
-                self._resolve(
-                    f"360 survey found a real corridor after rotating "
-                    f"{math.degrees(self._survey_rotated_rad):.0f} deg -- handing "
-                    "control back to Nav2/explore_lite facing that direction.")
-                return
+            clearance = ray_clear_distance(self._latest_costmap, x, y, yaw, SURVEY_FORWARD_CHECK_M)
+            if clearance > self._survey_best_clearance:
+                self._survey_best_clearance = clearance
+                self._survey_best_yaw = yaw
 
         if self._survey_rotated_rad >= 2.0 * math.pi:
-            self._start_backtrack(yaw)
+            if self._survey_best_yaw is not None and self._survey_best_clearance > 0.0:
+                self._survey_turning_to_best = True
+            else:
+                self._start_backtrack(yaw)
             return
 
         # Track cumulative rotation via wrapped per-tick yaw delta (robust to the
@@ -562,6 +696,27 @@ def _self_check():
     right_clear = clearance_on_side(lopsided, 0.0, 0.0, 0.0, side=-1.0)
     assert left_clear > right_clear, \
         f"expected more clearance on the open left side (left={left_clear}, right={right_clear})"
+
+    # ray_clear_distance: a wall 1m ahead should report ~1.0m of clearance
+    # (capped there, not the full 1.5m requested), and a fully open direction
+    # should report the full requested distance -- used by the 360 survey to
+    # score and pick the best opening, not just the first one that clears a
+    # fixed threshold.
+    blocked_clear = ray_clear_distance(wall_ahead, 0.0, 0.0, 0.0, 1.5)
+    assert abs(blocked_clear - 1.0) < 0.15, \
+        f"expected ~1.0m clearance before the wall, got {blocked_clear}"
+    open_clear = ray_clear_distance(wide_open, 0.0, 0.0, 0.0, 1.5)
+    assert abs(open_clear - 1.5) < 0.15, \
+        f"expected the full 1.5m requested distance in open space, got {open_clear}"
+
+    # can_rotate_freely: wide-open space clears at the vehicle's rotation
+    # radius, a fully-blocked grid does not -- used by the adaptive RETREATING
+    # stage to decide when it has backed up far enough.
+    assert can_rotate_freely(wide_open, 0.0, 0.0) is True, \
+        "wide-open grid should have room to rotate"
+    fully_blocked = _make_grid(40, 40, 0.1, -2.0, -2.0, 100)
+    assert can_rotate_freely(fully_blocked, 0.0, 0.0) is False, \
+        "fully-blocked grid should not have room to rotate"
 
     print("dead_end_backtrack_node self-check: OK")
 

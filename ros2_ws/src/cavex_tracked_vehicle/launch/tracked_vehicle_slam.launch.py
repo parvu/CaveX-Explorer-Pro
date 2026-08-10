@@ -110,6 +110,13 @@ def generate_launch_description():
             'qos_scan_cloud': 2,
             'Grid/FromDepth': 'false',
             'Grid/3D': 'true',
+            # Explicit, not relying on RTAB-Map's own default (0 = uncapped,
+            # tracks the sensor's own reported max range) -- matches
+            # lidar_sensor's own max range in model.sdf.tracked (doubled
+            # 30.0 -> 60.0 alongside cave_world's 2x mesh scale), spelled
+            # out here so this doesn't silently drift out of sync if either
+            # one changes again.
+            'Grid/RangeMax': '60.0',
             'Icp/PointToPlane': 'true',
             'Icp/VoxelSize': '0.1',
             # Task 11 fix round 1: RTAB-Map's WM stayed at 1 forever despite real,
