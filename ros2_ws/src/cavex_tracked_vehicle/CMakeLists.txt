@@ -41,6 +41,7 @@ install(PROGRAMS
   cavex_tracked_vehicle/run_tracked_vehicle_ate_eval.py
   cavex_tracked_vehicle/motorized_tether_control.py
   cavex_tracked_vehicle/dead_end_backtrack_node.py
+  cavex_tracked_vehicle/spawn_bluerov2_retry.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

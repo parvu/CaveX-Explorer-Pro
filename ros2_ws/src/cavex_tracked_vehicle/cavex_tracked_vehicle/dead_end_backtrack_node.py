@@ -2,35 +2,59 @@
 """
 dead_end_backtrack_node.py
 
-Real request: "implement dead end algorithm: backtrack until another
-opening or corridor is found," later refined: "activate at 2m from
-possible dead end, do a 360 deg survey of the surroundings to find
-alternate corridors and only upon not finding [one] backtrack."
+Real request history: "implement dead end algorithm: backtrack until
+another opening or corridor is found" -> "activate at 2m from possible
+dead end, do a 360 deg survey ... only upon not finding backtrack" ->
+"check if explore_lite has a built in dead-end mitigation" (it doesn't --
+its own vendored source, m-explore-ros2/explore/src/explore.cpp, only
+blacklists a frontier goal once Nav2 aborts it; there is no physical
+escape/backtrack behavior anywhere else in this stack, this node is the
+real mitigation) "and rebuild the algorithm to not backtrack more than
+6m and to avoid reverse, just turn 180 deg" -> latest refinement: "do not
+activate dead end algorithm for any stale, only if in a closed corridor.
+modify the dead end algorithm to reverse only 1m, do a 360 degree survey,
+cw or ccw, whichever sends vehicle away from the walls, and if no other
+corridor is found turn back on the same path going only forward (rotate
+the vehicle not to go reverse)."
 
 Nav2's own stock recovery (RecoveryNode's RoundRobin -> BackUp, see
 tracked_vehicle_nav_to_pose_bt.xml) already backs the vehicle up a fixed
 0.60m when a single plan/control attempt fails -- real, but not enough for
-an actual dead-end tunnel, which can be many meters deep. This node
-handles the longer case, in two stages:
+an actual dead-end tunnel. This node handles the longer case, in four
+stages:
 
-1. PROACTIVE detection: while driving, check the global costmap ~2m ahead
-   along the current heading (DEAD_END_LOOKAHEAD_M). If that's blocked and
-   there's no lateral opening at the current position either, that's a
-   possible dead end -- stop and cancel the active Nav2 goal before
-   actually running into it.
-   (A reactive fallback stays too: genuine no-progress-while-driven stalls
-   the lookahead didn't catch -- e.g. a diagonal obstacle -- trigger the
-   same response.)
+1. TRIGGER -- closed corridor only, not staleness: check the global
+   costmap ~2m ahead along the current heading (DEAD_END_LOOKAHEAD_M). If
+   that's blocked AND there's no lateral opening at the current position
+   either, that's a genuinely closed corridor -- cancel the active Nav2
+   goal. There is deliberately no reactive "no progress for N seconds"
+   fallback trigger anymore -- a real stall that isn't a closed corridor
+   (transient CPU contention, a temporary obstacle) is not this node's
+   business per the real request; Nav2's own progress checker and
+   recovery behaviors already exist for that.
 
-2. SURVEY first: rotate in place through a full 360 deg, checking at each
-   ~15 deg increment whether a real corridor (a clear run of
-   SURVEY_FORWARD_CHECK_M) opens up in that direction. If one is found,
-   stop rotating and hand control back to Nav2/explore_lite immediately --
-   no backtracking needed, the vehicle just hadn't turned to see the way
-   out. Only once the full sweep completes with nothing found does this
-   fall back to the original behavior: reverse along the recorded trail of
-   waypoints, checking the costmap periodically for a lateral opening,
-   until one is found or the trail (and thus the backtrack) is exhausted.
+2. RETREAT 1m: back straight up REVERSE_RETREAT_M before surveying --
+   real request -- so the vehicle has room to rotate in place without
+   the hull clipping the wall that triggered this in the first place.
+   The only reverse driving anywhere in this node.
+
+3. SURVEY: rotate in place through a full 360 deg, checking at each ~15
+   deg increment whether a real corridor (a clear run of
+   SURVEY_FORWARD_CHECK_M) opens up in that direction. Direction is
+   chosen once, at the start of the survey, not hardcoded: whichever
+   side (left/right of the current heading) has more real lateral
+   clearance in the costmap is the direction rotated toward -- "away
+   from the walls," per the real request, not blindly always the same
+   way. If a corridor is found, stop rotating and hand control back to
+   Nav2/explore_lite immediately.
+
+4. BACKTRACK only if the full sweep finds nothing: turn to face back
+   along the recorded trail (a single discrete turn, not per-waypoint),
+   then drive FORWARD along it -- no reverse driving here, matching the
+   real request ("rotate the vehicle not to go reverse"). Checks the
+   costmap periodically for a lateral opening. Capped at
+   MAX_BACKTRACK_DISTANCE_M (6m): gives up rather than retracing the
+   whole trail if nothing is found within that distance.
 
 Pose source: /cavex/slam/odom (slam_pose_publisher's republish of RTAB-Map's
 map->base_link chain, frame_id "map") -- the same frame the global costmap
@@ -38,7 +62,6 @@ and explore_lite both operate in, not /odom_ground_truth (world-frame,
 not map-frame, and not what Nav2's own planning trusts).
 """
 import math
-import time
 from collections import deque
 from enum import Enum, auto
 
@@ -53,29 +76,31 @@ from action_msgs.srv import CancelGoal
 WAYPOINT_SPACING_M = 0.3        # record a trail waypoint every this many meters of real travel
 TRAIL_MAX_WAYPOINTS = 300       # ~90m of trail, comfortably covers this world's real corridors
 
-# --- Proactive dead-end lookahead ---
-DEAD_END_LOOKAHEAD_M = 2.0      # real request: check this far ahead, not just react once stuck
+# --- Trigger: closed corridor only, no staleness/stall fallback (real request) ---
+DEAD_END_LOOKAHEAD_M = 2.0
 LOOKAHEAD_STEP_M = 0.1
 LOOKAHEAD_CHECK_MIN_INTERVAL_S = 0.5  # don't re-run the lookahead check on every single tick
 
-# --- Reactive stuck detection (fallback trigger) ---
-STUCK_WINDOW_S = 8.0            # real progress is checked over this trailing window
-STUCK_DISPLACEMENT_M = 0.2      # below this net displacement in the window counts as "no progress"
-CMD_VEL_ACTIVE_TIMEOUT_S = 1.0  # something must have commanded nonzero motion this recently
-                                 # for "not moving" to mean "stuck", not "idle by choice"
+# --- Retreat 1m before surveying (real request) ---
+REVERSE_RETREAT_M = 1.0
+RETREAT_SPEED = 0.2             # m/s, gentle -- this is a short, blind straight-back nudge
 
-# --- 360 deg survey (real request: try this before backtracking) ---
+# --- 360 deg survey, direction chosen away from the walls (real request) ---
 SURVEY_ANGULAR_SPEED = 0.5       # rad/s while rotating in place to survey
 SURVEY_CHECK_INTERVAL_RAD = math.radians(15.0)  # test for a corridor every ~15 deg of rotation
 SURVEY_FORWARD_CHECK_M = 2.5     # a direction counts as a real corridor if clear at least this far
-                                  # -- deliberately more than DEAD_END_LOOKAHEAD_M so the survey
-                                  # doesn't just re-find the same near-wall that triggered it
+SURVEY_CLEARANCE_RADIUS_M = 1.2  # how far each side is checked to decide which way is more open
+SURVEY_CLEARANCE_STEP_M = 0.1
 
 # --- Backtrack driving (fallback once the survey finds nothing) ---
-BACKUP_SPEED = 0.3              # m/s, reverse drive speed while backtracking
-HEADING_KP = 1.2                # P gain correcting heading error while reversing toward a waypoint
+# Real request: no reverse driving here -- turn once, then drive forward.
+TURN_SPEED = 0.6                # rad/s while turning to face back along the trail
+TURN_TOLERANCE_RAD = math.radians(5.0)  # close enough to the turn target to call it done
+BACKUP_SPEED = 0.3              # m/s, FORWARD drive speed while backtracking (post-turn)
+HEADING_KP = 1.2                # P gain correcting heading error while driving toward a waypoint
 MAX_ANGULAR_Z = 0.8
 WAYPOINT_REACHED_M = 0.2        # advance to the next trail waypoint within this radius
+MAX_BACKTRACK_DISTANCE_M = 6.0  # real cap -- give up rather than retracing the whole trail
 
 # --- Opening detection (shared by the survey's forward check and backtrack's lateral check) ---
 OPENING_SCAN_RADIUS_M = 1.2     # how far laterally (each side) to scan the costmap
@@ -88,7 +113,8 @@ OPENING_MIN_WIDTH_M = 1.2       # this vehicle's own real track separation (~0.7
 COSTMAP_FREE_MAX = 50
 OPENING_CHECK_EVERY_M = 0.5     # test for a lateral opening every this many meters of backtrack
 
-CONTROL_PERIOD_S = 0.1
+CONTROL_PERIOD_S = 0.2          # CPU optimization: 5Hz, not 10 -- this vehicle drives at
+                                 # 0.3-0.6 m/s, real responsiveness doesn't need faster
 RETRIGGER_COOLDOWN_S = 5.0      # after resolving (survey success, backtrack success, or giving
                                  # up), don't re-trigger for this long -- give Nav2/explore_lite
                                  # real time to plan afresh
@@ -96,6 +122,7 @@ RETRIGGER_COOLDOWN_S = 5.0      # after resolving (survey success, backtrack suc
 
 class _State(Enum):
     NORMAL = auto()
+    RETREATING = auto()
     SURVEYING = auto()
     BACKTRACKING = auto()
 
@@ -170,32 +197,62 @@ def ray_is_clear(costmap: OccupancyGrid, x, y, yaw, distance_m,
     return True
 
 
+def clearance_on_side(costmap: OccupancyGrid, x, y, yaw, side,
+                       radius_m=SURVEY_CLEARANCE_RADIUS_M,
+                       step_m=SURVEY_CLEARANCE_STEP_M,
+                       free_max=COSTMAP_FREE_MAX):
+    """How far the costmap stays passable from (x, y) outward on one lateral
+    side (side=+1 -> left of `yaw`, side=-1 -> right), up to radius_m. Used
+    to pick which way the 360 survey should rotate -- real request: "cw or
+    ccw, whichever sends vehicle away from the walls." Pure function, no ROS
+    dependency."""
+    info = costmap.info
+    if info.resolution <= 0.0 or info.width == 0 or info.height == 0:
+        return 0.0
+    perp = yaw + side * (math.pi / 2.0)
+    dx, dy = math.cos(perp), math.sin(perp)
+    n_steps = max(1, int(round(radius_m / step_m)))
+    clear = 0.0
+    for i in range(1, n_steps + 1):
+        d = i * step_m
+        if not _passable(costmap, x + dx * d, y + dy * d, free_max):
+            break
+        clear = d
+    return clear
+
+
 class DeadEndBacktrackNode(Node):
     def __init__(self):
         super().__init__('dead_end_backtrack_node')
         self._trail = deque(maxlen=TRAIL_MAX_WAYPOINTS)
-        self._recent_poses = deque()  # (monotonic_time, x, y), trimmed to STUCK_WINDOW_S
-        self._last_active_cmd_time = 0.0
         self._last_lookahead_check_time = 0.0
         self._latest_costmap = None
         self._state = _State.NORMAL
         self._cooldown_until = 0.0
         self._pose = None  # (x, y, yaw)
 
+        # RETREATING state
+        self._retreat_distance_traveled = 0.0
+        self._retreat_last_pos = None
+
         # SURVEYING state
-        self._survey_start_yaw = None
+        self._survey_direction = 1.0  # +1 = CCW (left), -1 = CW (right)
         self._survey_rotated_rad = 0.0
         self._survey_last_check_rad = 0.0
+        self._survey_last_yaw = None
 
         # BACKTRACKING state
         self._backtrack_target = None
         self._distance_since_opening_check = 0.0
+        self._backtrack_turning = False
+        self._backtrack_turn_target_yaw = None
+        self._backtrack_distance_traveled = 0.0
+        self._backtrack_last_pos = None
 
         qos_transient = QoSProfile(depth=1,
                                     durability=DurabilityPolicy.TRANSIENT_LOCAL,
                                     reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(Odometry, '/cavex/slam/odom', self._odom_cb, 10)
-        self.create_subscription(Twist, '/cmd_vel', self._cmd_vel_cb, 10)
         self.create_subscription(OccupancyGrid, '/global_costmap/costmap',
                                   self._costmap_cb, qos_transient)
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
@@ -203,12 +260,14 @@ class DeadEndBacktrackNode(Node):
 
         self.create_timer(CONTROL_PERIOD_S, self._control_tick)
         self.get_logger().info(
-            "dead_end_backtrack_node ready: watching "
-            f"{DEAD_END_LOOKAHEAD_M}m ahead for a possible dead end (plus a "
-            f"reactive fallback: no progress > {STUCK_DISPLACEMENT_M}m over "
-            f"{STUCK_WINDOW_S}s while actively driven). On trigger: 360 deg "
-            "survey for an alternate corridor first, reverse along the "
-            "recorded trail only if that finds nothing.")
+            f"dead_end_backtrack_node ready: watching {DEAD_END_LOOKAHEAD_M}m "
+            "ahead for a genuinely closed corridor (no reactive stall/staleness "
+            "trigger). On trigger: cancel the active Nav2 goal, retreat "
+            f"{REVERSE_RETREAT_M}m, then 360 deg survey (rotating whichever way "
+            "-- CW or CCW -- has more real clearance) for an alternate "
+            "corridor; only if that finds nothing, turn to face back along "
+            "the recorded trail and drive forward along it (no reverse "
+            f"driving there), capped at {MAX_BACKTRACK_DISTANCE_M}m.")
 
     # --- subscriptions ---
 
@@ -218,44 +277,24 @@ class DeadEndBacktrackNode(Node):
         yaw = _yaw_from_quat(msg.pose.pose.orientation)
         self._pose = (x, y, yaw)
 
-        now = time.monotonic()
-        self._recent_poses.append((now, x, y))
-        while self._recent_poses and now - self._recent_poses[0][0] > STUCK_WINDOW_S:
-            self._recent_poses.popleft()
-
         if self._state == _State.NORMAL:
             if not self._trail or math.hypot(x - self._trail[-1][0], y - self._trail[-1][1]) >= WAYPOINT_SPACING_M:
                 self._trail.append((x, y))
 
-    def _cmd_vel_cb(self, msg: Twist):
-        if self._state == _State.NORMAL and (abs(msg.linear.x) > 1e-3 or abs(msg.angular.z) > 1e-3):
-            self._last_active_cmd_time = time.monotonic()
-
     def _costmap_cb(self, msg: OccupancyGrid):
         self._latest_costmap = msg
 
-    # --- trigger conditions (NORMAL state only) ---
+    # --- trigger condition (NORMAL state only): closed corridor, not staleness ---
 
-    def _approaching_dead_end(self, x, y, yaw):
-        """Proactive check: a wall within DEAD_END_LOOKAHEAD_M ahead, with no
-        lateral opening at the current position either."""
+    def _in_closed_corridor(self, x, y, yaw):
+        """A wall within DEAD_END_LOOKAHEAD_M ahead, with no lateral opening
+        at the current position either -- a genuinely closed corridor, not
+        just a momentary stall."""
         if self._latest_costmap is None:
             return False
         if ray_is_clear(self._latest_costmap, x, y, yaw, DEAD_END_LOOKAHEAD_M):
             return False
         return not find_lateral_opening(self._latest_costmap, x, y, yaw)
-
-    def _is_stuck(self):
-        now = time.monotonic()
-        if now - self._last_active_cmd_time > CMD_VEL_ACTIVE_TIMEOUT_S:
-            return False  # nothing is actively trying to drive it -- not stuck, just idle
-        if len(self._recent_poses) < 2:
-            return False
-        if now - self._recent_poses[0][0] < STUCK_WINDOW_S:
-            return False  # not enough history yet to judge
-        _, x0, y0 = self._recent_poses[0]
-        _, x1, y1 = self._recent_poses[-1]
-        return math.hypot(x1 - x0, y1 - y0) < STUCK_DISPLACEMENT_M
 
     def _cancel_active_nav2_goal(self):
         if self._cancel_client.service_is_ready():
@@ -269,15 +308,14 @@ class DeadEndBacktrackNode(Node):
                                     "proceeding anyway, but Nav2's own controller "
                                     "may fight for /cmd_vel until its goal times out.")
 
-    def _enter_survey(self, reason: str):
-        self.get_logger().warn(f"Possible dead end ({reason}) -- cancelling the "
-                                "current Nav2 goal and surveying 360 deg for an "
-                                "alternate corridor before considering a backtrack.")
+    def _enter_retreat(self, reason: str):
+        self.get_logger().warn(f"Closed corridor detected ({reason}) -- cancelling "
+                                f"the current Nav2 goal and retreating "
+                                f"{REVERSE_RETREAT_M}m before surveying.")
         self._cancel_active_nav2_goal()
-        self._state = _State.SURVEYING
-        self._survey_start_yaw = None
-        self._survey_rotated_rad = 0.0
-        self._survey_last_check_rad = 0.0
+        self._state = _State.RETREATING
+        self._retreat_distance_traveled = 0.0
+        self._retreat_last_pos = None
 
     # --- resolving back to NORMAL ---
 
@@ -285,17 +323,79 @@ class DeadEndBacktrackNode(Node):
         self.get_logger().info(f"Dead-end handling finished: {reason}")
         self._state = _State.NORMAL
         self._backtrack_target = None
-        self._cooldown_until = time.monotonic() + RETRIGGER_COOLDOWN_S
+        self._cooldown_until = self.get_clock().now().nanoseconds / 1e9 + RETRIGGER_COOLDOWN_S
         self.cmd_vel_pub.publish(Twist())
+
+    # --- RETREATING (1m straight back, real request, before surveying) ---
+
+    def _tick_retreat(self, x, y, yaw):
+        if self._retreat_last_pos is not None:
+            lx, ly = self._retreat_last_pos
+            self._retreat_distance_traveled += math.hypot(x - lx, y - ly)
+        self._retreat_last_pos = (x, y)
+
+        if self._retreat_distance_traveled >= REVERSE_RETREAT_M:
+            self._enter_survey(x, y, yaw)
+            return
+
+        twist = Twist()
+        twist.linear.x = -RETREAT_SPEED
+        self.cmd_vel_pub.publish(twist)
+
+    # --- SURVEYING (rotate in place, direction chosen away from the walls) ---
+
+    def _enter_survey(self, x, y, yaw):
+        left = right = 0.0
+        if self._latest_costmap is not None:
+            left = clearance_on_side(self._latest_costmap, x, y, yaw, side=1.0)
+            right = clearance_on_side(self._latest_costmap, x, y, yaw, side=-1.0)
+        self._survey_direction = 1.0 if left >= right else -1.0
+        self.get_logger().info(
+            f"Surveying 360 deg, rotating {'CCW (left)' if self._survey_direction > 0 else 'CW (right)'} "
+            f"-- more real clearance that way (left={left:.2f}m, right={right:.2f}m).")
+        self._state = _State.SURVEYING
+        self._survey_rotated_rad = 0.0
+        self._survey_last_check_rad = 0.0
+        self._survey_last_yaw = yaw
+
+    def _tick_survey(self, x, y, yaw):
+        if (self._latest_costmap is not None
+                and self._survey_rotated_rad - self._survey_last_check_rad >= SURVEY_CHECK_INTERVAL_RAD):
+            self._survey_last_check_rad = self._survey_rotated_rad
+            if ray_is_clear(self._latest_costmap, x, y, yaw, SURVEY_FORWARD_CHECK_M):
+                self._resolve(
+                    f"360 survey found a real corridor after rotating "
+                    f"{math.degrees(self._survey_rotated_rad):.0f} deg -- handing "
+                    "control back to Nav2/explore_lite facing that direction.")
+                return
+
+        if self._survey_rotated_rad >= 2.0 * math.pi:
+            self._start_backtrack(yaw)
+            return
+
+        # Track cumulative rotation via wrapped per-tick yaw delta (robust to the
+        # +-pi wraparound, unlike a raw absolute-yaw difference).
+        delta = _wrap_angle(yaw - self._survey_last_yaw)
+        self._survey_last_yaw = yaw
+        self._survey_rotated_rad += abs(delta)
+
+        twist = Twist()
+        twist.angular.z = self._survey_direction * SURVEY_ANGULAR_SPEED
+        self.cmd_vel_pub.publish(twist)
 
     # --- BACKTRACKING (fallback once the survey finds nothing) ---
 
-    def _start_backtrack(self):
+    def _start_backtrack(self, yaw):
         self.get_logger().warn(
-            f"360 survey found no alternate corridor -- backtracking along "
-            f"{len(self._trail)} recorded waypoints.")
+            f"360 survey found no alternate corridor -- turning to face back "
+            f"along the recorded trail, then driving forward along it "
+            f"(capped at {MAX_BACKTRACK_DISTANCE_M}m).")
         self._state = _State.BACKTRACKING
         self._distance_since_opening_check = 0.0
+        self._backtrack_distance_traveled = 0.0
+        self._backtrack_last_pos = None
+        self._backtrack_turning = True
+        self._backtrack_turn_target_yaw = _wrap_angle(yaw + math.pi)
         if self._trail:
             self._trail.pop()  # drop the waypoint at/near the current position itself
         self._backtrack_target = self._trail[-1] if self._trail else None
@@ -304,6 +404,29 @@ class DeadEndBacktrackNode(Node):
         if self._backtrack_target is None:
             self._resolve("trail exhausted without finding an opening -- "
                            "giving up rather than backtracking past the start.")
+            return
+
+        if self._backtrack_turning:
+            error = _wrap_angle(self._backtrack_turn_target_yaw - yaw)
+            if abs(error) <= TURN_TOLERANCE_RAD:
+                self._backtrack_turning = False
+                self._backtrack_last_pos = (x, y)
+            else:
+                twist = Twist()
+                twist.angular.z = TURN_SPEED if error > 0 else -TURN_SPEED
+                self.cmd_vel_pub.publish(twist)
+                return
+
+        # Track real distance traveled while driving forward, capped -- a real
+        # dead-end tunnel deeper than this is left for explore_lite to route
+        # around some other way rather than blindly retreating further.
+        if self._backtrack_last_pos is not None:
+            lx, ly = self._backtrack_last_pos
+            self._backtrack_distance_traveled += math.hypot(x - lx, y - ly)
+        self._backtrack_last_pos = (x, y)
+        if self._backtrack_distance_traveled >= MAX_BACKTRACK_DISTANCE_M:
+            self._resolve(f"backtracked the {MAX_BACKTRACK_DISTANCE_M}m cap without "
+                           "finding an opening -- giving up.")
             return
 
         tx, ty = self._backtrack_target
@@ -328,52 +451,19 @@ class DeadEndBacktrackNode(Node):
                                "-- handing control back to Nav2/explore_lite.")
                 return
 
-        # Reversing: the target should end up directly behind the vehicle. Heading
-        # error is between the current heading and the reverse of the bearing to
-        # the target.
+        # Driving FORWARD toward the target (already turned to face it, so the
+        # trail is ahead now) -- no reverse driving, per the real request.
         bearing_to_target = math.atan2(ty - y, tx - x)
-        heading_error = _wrap_angle(yaw - (bearing_to_target + math.pi))
+        heading_error = _wrap_angle(yaw - bearing_to_target)
         twist = Twist()
-        twist.linear.x = -BACKUP_SPEED
+        twist.linear.x = BACKUP_SPEED
         twist.angular.z = max(-MAX_ANGULAR_Z, min(MAX_ANGULAR_Z, -HEADING_KP * heading_error))
-        self.cmd_vel_pub.publish(twist)
-
-    # --- SURVEYING (rotate in place, look for a real corridor before backtracking) ---
-
-    def _tick_survey(self, x, y, yaw):
-        if self._survey_start_yaw is None:
-            self._survey_start_yaw = yaw
-            self._survey_rotated_rad = 0.0
-            self._survey_last_check_rad = 0.0
-
-        if (self._latest_costmap is not None
-                and self._survey_rotated_rad - self._survey_last_check_rad >= SURVEY_CHECK_INTERVAL_RAD):
-            self._survey_last_check_rad = self._survey_rotated_rad
-            if ray_is_clear(self._latest_costmap, x, y, yaw, SURVEY_FORWARD_CHECK_M):
-                self._resolve(
-                    f"360 survey found a real corridor after rotating "
-                    f"{math.degrees(self._survey_rotated_rad):.0f} deg -- handing "
-                    "control back to Nav2/explore_lite facing that direction.")
-                return
-
-        if self._survey_rotated_rad >= 2.0 * math.pi:
-            self._start_backtrack()
-            return
-
-        # Track cumulative rotation via wrapped per-tick yaw delta (robust to the
-        # +-pi wraparound, unlike a raw absolute-yaw difference).
-        delta = _wrap_angle(yaw - getattr(self, '_survey_last_yaw', yaw))
-        self._survey_last_yaw = yaw
-        self._survey_rotated_rad += abs(delta)
-
-        twist = Twist()
-        twist.angular.z = SURVEY_ANGULAR_SPEED
         self.cmd_vel_pub.publish(twist)
 
     # --- main loop ---
 
     def _control_tick(self):
-        now = time.monotonic()
+        now = self.get_clock().now().nanoseconds / 1e9
 
         if self._state == _State.NORMAL:
             if now < self._cooldown_until:
@@ -381,19 +471,18 @@ class DeadEndBacktrackNode(Node):
             if self._pose is not None and now - self._last_lookahead_check_time >= LOOKAHEAD_CHECK_MIN_INTERVAL_S:
                 self._last_lookahead_check_time = now
                 x, y, yaw = self._pose
-                if self._approaching_dead_end(x, y, yaw):
-                    self._enter_survey(f"costmap blocked within {DEAD_END_LOOKAHEAD_M}m ahead, "
-                                        "no lateral opening at current position")
-                    return
-            if self._is_stuck():
-                self._enter_survey(f"no real progress over {STUCK_WINDOW_S}s while actively driven")
+                if self._in_closed_corridor(x, y, yaw):
+                    self._enter_retreat(f"costmap blocked within {DEAD_END_LOOKAHEAD_M}m ahead, "
+                                         "no lateral opening at current position")
             return
 
         if self._pose is None:
             return
         x, y, yaw = self._pose
 
-        if self._state == _State.SURVEYING:
+        if self._state == _State.RETREATING:
+            self._tick_retreat(x, y, yaw)
+        elif self._state == _State.SURVEYING:
             self._tick_survey(x, y, yaw)
         elif self._state == _State.BACKTRACKING:
             self._tick_backtrack(x, y, yaw)
@@ -429,9 +518,9 @@ def _make_grid(width, height, resolution, origin_x, origin_y, fill_value):
 
 def _self_check():
     """Ponytail: the smallest runnable check for the non-trivial,
-    dependency-free logic here (the grid math behind find_lateral_opening and
-    ray_is_clear). Run directly: `python3 dead_end_backtrack_node.py
-    --self-check`."""
+    dependency-free logic here (the grid math behind find_lateral_opening,
+    ray_is_clear, and clearance_on_side). Run directly:
+    `python3 dead_end_backtrack_node.py --self-check`."""
     # 40x40 grid, 0.1m resolution, centered on the vehicle at (0,0) -- covers
     # the full +-1.2m scan radius / 2m lookahead in both axes regardless of yaw.
     wide_open = _make_grid(40, 40, 0.1, -2.0, -2.0, 0)  # all free
@@ -462,6 +551,17 @@ def _self_check():
         "a wall 1m ahead must block a 1.5m forward ray"
     assert ray_is_clear(wall_ahead, 0.0, 0.0, math.pi / 2.0, 1.5) is True, \
         "a wall ahead in +X must not block a ray cast sideways in +Y"
+
+    # Left (yaw+90deg, +Y direction) wide open, right (yaw-90deg, -Y) blocked
+    # close in -- clearance_on_side should report more clearance on the left.
+    lopsided = _make_grid(40, 40, 0.1, -2.0, -2.0, 0)  # all free by default
+    for row in range(0, 15):  # blocks y < -0.5 (right side, since right = -Y at yaw=0)
+        for col in range(40):
+            lopsided.data[row * 40 + col] = 100
+    left_clear = clearance_on_side(lopsided, 0.0, 0.0, 0.0, side=1.0)
+    right_clear = clearance_on_side(lopsided, 0.0, 0.0, 0.0, side=-1.0)
+    assert left_clear > right_clear, \
+        f"expected more clearance on the open left side (left={left_clear}, right={right_clear})"
 
     print("dead_end_backtrack_node self-check: OK")
 

@@ -1,7 +1,8 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, RegisterEventHandler, SetEnvironmentVariable
+from launch.actions import (IncludeLaunchDescription, RegisterEventHandler,
+                             SetEnvironmentVariable, TimerAction)
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
@@ -82,11 +83,24 @@ def generate_launch_description():
     # Structure copied from cavex_slam_nav/launch/gazebo_walker.launch.py
     # (real, proven pattern): gz_sim server-only, same world (dry-cave section
     # has room at this spawn point; Task 8 replaces the placeholder geometry).
+    #
+    # Real fix (memory/CPU optimization): this comment already said
+    # "server-only" but gz_args never actually included -s -- the full
+    # GUI-attached process (Ogre2 rendering, this environment's own
+    # GALLIUM_DRIVER=d3d12 software translation path) was launching by
+    # default every single time. Measured live this session: the GUI
+    # process alone was consuming 7.5GB+ RSS and contributing directly to
+    # repeated CPU-saturation stalls (system load observed as high as
+    # 39 on an 8-core box with it running). Headless is now the real
+    # default, matching the comment's own stated intent; attach a GUI on
+    # demand exactly as launch.txt's own section 6 already documents:
+    # `gz sim -g &` connects to this already-running headless server, no
+    # separate world/relaunch needed.
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={'gz_args': f'-r {world_file}'}.items(),
+        launch_arguments={'gz_args': f'-r -s {world_file}'}.items(),
     )
 
     # gz_ros2_control's real, reproduced behavior (Task 5 finding, contradicts
@@ -186,6 +200,28 @@ def generate_launch_description():
                    '-name', 'bluerov2',
                    '-x', '-35.1', '-y', '0', '-z', '6.4755'],
         output='screen',
+    )
+
+    # Real request: "rov2 not spawen[ing] [always], try something else." The
+    # spawn_bluerov2 node above only fires once, via OnProcessExit chained off
+    # spawn_entity's own exit -- a single, unverified attempt. This is an
+    # independent safety net (NOT chained to anything else's exit, so a
+    # disrupted chain upstream can't block it either): it actively polls the
+    # world's real pose stream for the boat to actually exist before trying
+    # anything (removing the timing race a fixed delay only guesses at), does
+    # nothing if bluerov2 already exists (the fast path above already worked),
+    # and otherwise retries the real create service call for real -- not a
+    # single silent attempt. See spawn_bluerov2_retry.py's own module
+    # docstring for the full design. Started 3s in, comfortably after
+    # spawn_x500_cargo/spawn_entity's own gz-transport connections are up.
+    spawn_bluerov2_retry = TimerAction(
+        period=5.0,
+        actions=[Node(
+            package='cavex_tracked_vehicle',
+            executable='spawn_bluerov2_retry.py',
+            name='spawn_bluerov2_retry',
+            output='screen',
+        )],
     )
 
     # Carried PX4 x500 quadcopter (real, vendored fuel.gazebosim.org/PX4/models/x500)
@@ -371,6 +407,7 @@ def generate_launch_description():
         track_retract_control,
         vehicle_switch_node,
         motorized_tether_control,
+        spawn_bluerov2_retry,
         RegisterEventHandler(
             event_handler=OnProcessExit(
                 target_action=spawn_x500_cargo,

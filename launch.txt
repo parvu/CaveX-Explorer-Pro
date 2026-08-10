@@ -109,12 +109,21 @@ cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
 # (one per segment) instead of a plain roller -- all purely cosmetic, collision
 # unchanged.
 #
-# bluerov2 not spawning: did not reproduce in a clean single-launch test (confirmed
-# present via `gz model --list` and a real settled pose). If this happens to you,
-# check section 2's process hygiene FIRST -- the most likely real cause is this
-# project's own documented duplicate-launch/orphaned-process flakiness, not a
-# defect in the spawn chain (spawn_x500_cargo -> spawn_entity -> spawn_bluerov2,
-# all via OnProcessExit) itself.
+# bluerov2 not spawning: never reproduced in a clean single-launch test, and the
+# spawn chain (spawn_x500_cargo -> spawn_entity -> spawn_bluerov2, all via
+# OnProcessExit) fires on ANY process exit, success or failure, so it's not
+# structurally blockable -- the real cause remains this project's own documented
+# duplicate-launch/orphaned-process flakiness. FIXED anyway with a real safety
+# net, not just a diagnosis: spawn_bluerov2_retry.py runs independently (not
+# chained off anything else's exit), actively polls the world's real pose
+# stream for the boat to exist before attempting anything (removes the timing
+# race a fixed delay only guesses at), does nothing if bluerov2 already exists
+# (the fast path already worked), and otherwise retries the real create service
+# call up to 5 times. Live-verified: on one run it genuinely performed the
+# spawn itself after the fast path was slower than expected; Gazebo's create
+# service was also confirmed (via a deliberate duplicate-spawn test) to no-op
+# harmlessly on a name collision rather than double-spawning, so running both
+# paths together is safe even when they overlap.
 #
 # FIXED (real drive-stalling bug): cmd_vel_to_ardupilot.py's arm/mode retry used to
 # fire on EVERY /cmd_vel callback (5-20Hz) whenever not yet confirmed armed. An
@@ -137,6 +146,48 @@ cd /home/parvu/CaveX-Explorer-Pro/ros2_ws
 # Lidar max range extended 12.0m -> 30.0m (model.sdf.tracked) -- matches real
 # mid-range 3D lidars, gives RTAB-Map/explore_lite more corridor advance warning
 # across this world's real ~50m spawn-to-water span.
+#
+# Dead-end handling (dead_end_backtrack_node.py, part of section 4's launch):
+# confirmed explore_lite has NO built-in dead-end mitigation (its own vendored
+# source, m-explore-ros2/explore/src/explore.cpp, only blacklists a failed
+# frontier goal -- no physical escape behavior anywhere else in this stack).
+# This node is the real mitigation, current design: (1) trigger is a genuinely
+# CLOSED CORRIDOR only -- a costmap-blocked wall within 2m ahead with no
+# lateral opening at the current position either -- NOT staleness/no-progress;
+# a stall that isn't a closed corridor is left to Nav2's own progress checker
+# and recovery behaviors. (2) retreat 1m straight back (the only reverse
+# driving anywhere in this node) so the vehicle has room to rotate without
+# clipping the wall. (3) 360 deg survey, rotating CW or CCW -- whichever side
+# has more real costmap clearance, away from the walls, not a fixed direction
+# -- checking every ~15 deg for a real corridor; hands control back
+# immediately if found. (4) only if the full sweep finds nothing: turn to
+# face back along the recorded trail, then drive FORWARD along it (no reverse
+# here either), capped at 6m -- gives up beyond that rather than retracing a
+# whole deep tunnel. Self-check: `python3
+# install/cavex_tracked_vehicle/lib/cavex_tracked_vehicle/dead_end_backtrack_node.py
+# --self-check`.
+#
+# Memory/CPU optimization: gazebo_tracked_vehicle.launch.py's gz_args changed
+# from `-r` to `-r -s` -- headless by default now (a comment already claimed
+# "server-only" but the code never actually passed -s). A GUI-attached run was
+# measured consuming 7.5GB+ RSS and contributing directly to this session's
+# repeated CPU-saturation stalls (system load observed as high as 39 on an
+# 8-core box with it running). Attach a GUI on demand exactly as section 6
+# below does: `gz sim -g &` connects to the already-running headless server,
+# no separate world/relaunch needed.
+#
+# GPU compute investigated, not enabled: RTAB-Map/OpenCV in this environment's
+# installed ROS packages have zero CUDA/GPU compute support (`rtabmap
+# --version` shows "With CudaSift: false"; `python3 -c "import cv2;
+# print(cv2.cuda.getCudaEnabledDeviceCount())"` returns 0). A real NVIDIA GTX
+# 1050 Ti IS visible via WSL CUDA passthrough (`nvidia-smi` works) but sits
+# completely idle -- only the CUDA compute libs are present
+# (/usr/lib/wsl/lib/libcuda.so.1), not the graphics/EGL/Vulkan driver stack
+# gz sim's own rendering would need to use it (no nvidia_icd.json, no
+# libnvidia-gl). Enabling real GPU-accelerated SLAM would require a full
+# from-source rebuild of PCL/OpenCV/libpointmatcher/rtabmap with CUDA flags --
+# multi-hour, high risk of breaking the current working install, not attempted
+# without explicit confirmation.
 
 # NOTE (GPU rendering): ardupilot_gazebo_env.sh sets GALLIUM_DRIVER=d3d12 and
 # MESA_LOADER_DRIVER_OVERRIDE=d3d12 (WSL2 GPU passthrough) -- generally stable but
@@ -275,9 +326,15 @@ ros2 topic echo /joint_states --once | grep -A2 "track_retract"
 # /explore/frontiers, optional costmap overlay -- all pre-wired, Fixed Frame=map):
 ros2 run rviz2 rviz2 -d src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz &
 
+# Section 3 now launches gz sim HEADLESS by default (real memory/CPU
+# optimization, see section 0) -- attach a GUI on demand, only if you
+# actually want the native 3D view:
+gz sim -g &
+
 # Gazebo GUI follow mode -- locks the camera onto the boat with a trailing offset
 # (model name is "cavex_tracked_blueboat", NOT "blueboat" -- confirm with
-# `gz model --list` if unsure):
+# `gz model --list` if unsure). Needs the GUI attached above first, or
+# /gui/follow won't exist yet:
 gz service -s /gui/follow --reqtype gz.msgs.StringMsg --reptype gz.msgs.Boolean \
   --timeout 3000 --req 'data: "cavex_tracked_blueboat"'
 gz service -s /gui/follow/offset --reqtype gz.msgs.Vector3d --reptype gz.msgs.Boolean \

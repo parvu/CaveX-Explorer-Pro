@@ -173,25 +173,46 @@ ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py   # Gazebo + 
 ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py     # RTAB-Map 3D-lidar SLAM + Nav2
 ```
 
-GPU rendering is on by default (`ardupilot_gazebo_env.sh` sets
-`GALLIUM_DRIVER=d3d12`/`MESA_LOADER_DRIVER_OVERRIDE=d3d12` for WSL2 GPU
-passthrough) -- generally stable but has intermittently crashed `gz sim gui`
-for reasons never fully root-caused. Under the full stack (GPU render +
-RTAB-Map + Nav2 all together), this environment's CPU can saturate hard
-enough (observed load average 31 on an 8-core box) that Nav2's lifecycle
-bond heartbeats (4s timeout) get missed, crashing `collision_monitor`/
+**Real memory/CPU optimization**: `gazebo_tracked_vehicle.launch.py` now
+runs Gazebo headless by default (`gz_args` changed from `-r` to `-r -s` --
+a comment already claimed "server-only" but the code never actually
+passed `-s`). A GUI-attached run was measured consuming 7.5GB+ RSS and
+contributing directly to real CPU-saturation stalls this environment hit
+repeatedly (system load observed as high as 39 on an 8-core box with the
+GUI running). GPU rendering is still on by default for whichever process
+does attach a GUI (`ardupilot_gazebo_env.sh` sets `GALLIUM_DRIVER=d3d12`/
+`MESA_LOADER_DRIVER_OVERRIDE=d3d12` for WSL2 GPU passthrough) -- generally
+stable but has intermittently crashed `gz sim gui` for reasons never
+fully root-caused. Under the full stack (GPU render + RTAB-Map + Nav2 all
+together), CPU can still saturate hard enough that Nav2's lifecycle bond
+heartbeats (4s timeout) get missed, crashing `collision_monitor`/
 `waypoint_follower` and aborting Nav2 bringup entirely -- SLAM/TF/rviz are
 unaffected (no bond timeout). Retry via `ros2 service call
 /lifecycle_manager_navigation/manage_nodes
 nav2_msgs/srv/ManageLifecycleNodes "{command: 0}"` once load has settled.
 
+**GPU compute investigated, not enabled**: RTAB-Map/OpenCV in this
+environment's installed ROS packages have zero CUDA/GPU compute support
+(`rtabmap --version` shows `With CudaSift: false`; `python3 -c "import
+cv2; print(cv2.cuda.getCudaEnabledDeviceCount())"` returns 0). A real
+NVIDIA GTX 1050 Ti is visible via WSL CUDA passthrough (`nvidia-smi`
+works) but sits completely idle -- only the CUDA compute libs are present
+(`/usr/lib/wsl/lib/libcuda.so.1`), not the graphics/EGL/Vulkan driver
+stack Gazebo's own rendering would need to actually use it. Enabling
+real GPU-accelerated SLAM would need a full from-source rebuild of
+PCL/OpenCV/libpointmatcher/rtabmap with CUDA flags -- multi-hour, real
+risk of breaking the working install, not attempted without explicit
+confirmation.
+
 Visualize with the saved rviz2 config (TF, `/map`, `/lidar/points`,
-ground-truth + SLAM odometry paths, `/explore/frontiers`) and/or Gazebo's
-own GUI in follow mode (locks the camera onto the boat -- model name is
+ground-truth + SLAM odometry paths, `/explore/frontiers`) and/or attach
+Gazebo's own GUI on demand (headless by default now, see above) in follow
+mode (locks the camera onto the boat -- model name is
 `cavex_tracked_blueboat`, confirm with `gz model --list` if unsure):
 
 ```bash
 ros2 run rviz2 rviz2 -d src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz &
+gz sim -g &   # attaches to the already-running headless server
 gz service -s /gui/follow --reqtype gz.msgs.StringMsg --reptype gz.msgs.Boolean \
   --timeout 3000 --req 'data: "cavex_tracked_blueboat"'
 ```
@@ -351,6 +372,58 @@ wheels, extending it visually over the sprocket rather than stopping at
 the straight runs, and each sprocket now has 24 teeth (one per segment,
 up from 6) to match. All purely cosmetic -- collision geometry
 unchanged, zero physics impact.
+
+**Dead-end handling** (`dead_end_backtrack_node.py`, launched as part of
+`tracked_vehicle_slam.launch.py`) — confirmed `explore_lite` has no
+built-in dead-end mitigation of its own: its vendored source
+(`m-explore-ros2/explore/src/explore.cpp`) only blacklists a frontier
+goal once Nav2 aborts it, no physical escape behavior anywhere. This
+node is the real mitigation, current design after several real
+refinements:
+1. **Trigger — closed corridor only, not staleness.** A costmap-blocked
+   wall within 2m ahead with no lateral opening at the current position
+   either. Deliberately no reactive "no progress for N seconds"
+   fallback — a stall that isn't a genuinely closed corridor is left to
+   Nav2's own progress checker and recovery behaviors, not this node.
+2. **Retreat 1m** straight back — the only reverse driving anywhere in
+   this node — so the vehicle has room to rotate in place without the
+   hull clipping the wall that triggered the response.
+3. **360 deg survey**, rotating CW or CCW — whichever side has more
+   real clearance in the costmap, away from the walls, not a fixed
+   direction — checking every ~15 deg for a real corridor (a clear run
+   longer than the trigger distance, so it doesn't just re-find the
+   same near wall). Hands control back to Nav2/explore_lite immediately
+   if one is found.
+4. **Backtrack only if the full sweep finds nothing**: turn to face
+   back along the recorded trail of waypoints, then drive FORWARD along
+   it (no reverse driving here either), checking the costmap
+   periodically for a lateral opening, capped at 6m — gives up rather
+   than retracing a whole deep tunnel.
+
+Core grid-math logic (`find_lateral_opening`, `ray_is_clear`,
+`clearance_on_side`) is pure-function and covered by a synthetic
+self-check (`dead_end_backtrack_node.py --self-check`). Live-verified
+end to end across several iterations: correctly cancels the active Nav2
+goal via the `navigate_to_pose` cancel service, and one real trigger on
+actual cave geometry resolved via the 360 survey alone (found a real
+corridor after rotating 60 deg) with no backtrack needed.
+
+**BlueROV2 spawn reliability** — the spawn chain
+(`spawn_x500_cargo -> spawn_entity -> spawn_bluerov2`, all sequenced via
+`OnProcessExit`) fires on any process exit, success or failure, so it
+isn't structurally blockable, and never reproduced failing in a clean
+single-launch test; the most likely real cause of any observed failure
+remains this project's own documented duplicate-launch/orphaned-process
+flakiness. Fixed anyway with a real, independent safety net:
+`spawn_bluerov2_retry.py` runs on its own (not chained off anything
+else's exit), actively polls the world's real pose stream for the boat
+to exist before attempting anything, does nothing if bluerov2 already
+exists, and otherwise retries the real create service call up to 5
+times. Live-verified: on one run it genuinely performed the spawn
+itself after the fast path was slower than expected; a deliberate
+duplicate-spawn test also confirmed Gazebo's create service no-ops
+harmlessly on a name collision rather than double-spawning, so running
+both paths together is safe even when they overlap.
 
 Historical obstacle-avoidance verification (superseded by obstacle
 removal above, kept for context): Task 9's four fuel-model obstacles in
