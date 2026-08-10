@@ -106,55 +106,27 @@ any real sensor or ROS2 topic — don't wire them up as if they were.
 
 ## Phase 1: Tracked BlueBoat-like Vehicle + BlueROV2
 
-Complete and merged into `main`. Phase 1 uses a BlueBoat-hulled tracked ground vehicle under ArduPilot Rover
-(ArduRover) control for the dry cave section, carrying a BlueROV2 as
-physical cargo mounted just above its deck. The BlueROV2 is **rigidly
-locked** to the hull for the whole dry section (Gazebo's real
-`gz-sim-detachable-joint-system` plugin, added to `model.sdf.tracked`,
-confirmed against the actual upstream reference example at
-`/usr/share/gz/gz-sim8/worlds/detachable_joint.sdf` -- real `attach_topic`
-AND `detach_topic`, `/cavex/rov_lock/attach`/`/cavex/rov_lock/detach`), not
-just carried by tether tension. `vehicle_switch_node.py` locks it once at
-startup (a short retry burst, since bluerov2 spawns after the tracked
-vehicle) and releases it ONLY once BOTH real conditions hold: past the
-water boundary (x=15, `cave_floor_patch`'s own vertex-confirmed edge) AND
-the boat has been genuinely afloat (z > 6.5, empirically derived -- this
-hull turns out close to neutrally buoyant, not a clean floating-waterline
-case) for 2s continuously. The motorized tether (`motorized_tether_control.py`)
-stays active throughout -- the rigid joint dominates while it holds, and
-becomes the operative restraint again once unlocked, the same way a real
-ROV stays connected by its umbilical even once released to operate
-independently. Track retraction + tether payout are triggered independently,
-keyed to the water-boundary x crossing alone. bluerov2's spawn (originally
-hull-top-flush) moved through several successive requests, each done
-indifferent to the hull's own collision geometry, to its current x=-35.1,
-z=6.4755. Docked/retracted tether length (`MIN_PAYOUT_LENGTH`/
-`TETHER_LENGTH_DOCKED`) is 0.12m, recomputed each time the spawn moved to
-match that position's own real anchor-to-ROV distance -- an earlier, more
-conservative 0.55m value (the real hull-collision-safe geometric floor:
-`tether_anchor_link` at local z=0.05, hull collision bottom at local
-z=-0.376, ROV collision top +0.0925m above its origin, giving
-0.05-(-0.376)+0.0925 = 0.5185m below which the ROV's collision volume
-would overlap the hull's) no longer applies at 0.12m -- safe only because
-the rigid DetachableJoint lock, not tether tension or spawn placement, is
-what actually holds the ROV still in the dry section. Live-verified: both
-entities spawn together without a physics crash, settle rigidly attached
-(constant z offset -- ~0.4m at the mount height first tested, ~0.03m at the
-current, deck-flush mount height after a later fix; see "Deployment
-mechanism, helipad, and PX4 x500" below), and a manual detach produces
-genuine, growing positional divergence between them within seconds — not
-inferred from code alone.
+A BlueBoat-hulled tracked ground vehicle under ArduPilot Rover (ArduRover)
+control handles the dry cave section, carrying a BlueROV2 as physical cargo
+mounted just above its deck. The BlueROV2 is rigidly locked to the hull for
+the whole dry section via Gazebo's `gz-sim-detachable-joint-system` plugin
+(`/cavex/rov_lock/attach`/`/cavex/rov_lock/detach`), not tether tension alone.
+`vehicle_switch_node.py` locks it once at startup and releases it only once
+both hold: past the water boundary (x=15) and the boat has been afloat
+(z > 6.5) for 2s continuously. The motorized tether
+(`motorized_tether_control.py`) stays active throughout — the rigid joint
+dominates while it holds, and becomes the operative restraint again once
+unlocked. Track retraction and tether payout trigger independently, keyed to
+the water-boundary crossing.
 
 **Known limitations**: the handoff is one-way — no automatic re-lock/re-dock
 once released. `cavex_world.world`'s Buoyancy plugin applies its water
-density by world-frame z alone, not scoped to the real water region's x/y
-extent, so the carried BlueROV2 technically experiences buoyancy forces
-throughout dry-section transport too (absorbed as extra load on the rigid
-joint while locked — not visibly wrong, but not physically correct either).
-Controlling the BlueROV2 once released still needs ArduSub, which has its
-own separate, unresolved limitation — see "BlueROV2 / ArduSub" below;
-`vehicle_switch_node.py` does not start or manage ArduSub itself, by
-explicit design.
+density by world-frame z alone, not scoped to the water region's x/y extent,
+so the carried BlueROV2 experiences buoyancy forces during dry-section
+transport too (absorbed as extra load on the rigid joint while locked).
+Controlling the BlueROV2 once released still needs ArduSub — see "BlueROV2 /
+ArduSub" below; `vehicle_switch_node.py` does not start or manage ArduSub
+itself.
 
 **Build** (from the repo root):
 
@@ -173,41 +145,29 @@ ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py   # Gazebo + 
 ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py     # RTAB-Map 3D-lidar SLAM + Nav2
 ```
 
-**Real memory/CPU optimization**: `gazebo_tracked_vehicle.launch.py` now
-runs Gazebo headless by default (`gz_args` changed from `-r` to `-r -s` --
-a comment already claimed "server-only" but the code never actually
-passed `-s`). A GUI-attached run was measured consuming 7.5GB+ RSS and
-contributing directly to real CPU-saturation stalls this environment hit
-repeatedly (system load observed as high as 39 on an 8-core box with the
-GUI running). GPU rendering is still on by default for whichever process
-does attach a GUI (`ardupilot_gazebo_env.sh` sets `GALLIUM_DRIVER=d3d12`/
-`MESA_LOADER_DRIVER_OVERRIDE=d3d12` for WSL2 GPU passthrough) -- generally
-stable but has intermittently crashed `gz sim gui` for reasons never
-fully root-caused. Under the full stack (GPU render + RTAB-Map + Nav2 all
-together), CPU can still saturate hard enough that Nav2's lifecycle bond
-heartbeats (4s timeout) get missed, crashing `collision_monitor`/
-`waypoint_follower` and aborting Nav2 bringup entirely -- SLAM/TF/rviz are
-unaffected (no bond timeout). Retry via `ros2 service call
+**Memory/CPU**: Gazebo runs headless by default (`gz_args: -r -s`). A
+GUI-attached run consumes 7.5GB+ RSS and can push this environment into
+CPU-saturation stalls. GPU rendering is on by default for whichever process
+attaches a GUI (`ardupilot_gazebo_env.sh` sets `GALLIUM_DRIVER=d3d12`/
+`MESA_LOADER_DRIVER_OVERRIDE=d3d12` for WSL2 GPU passthrough). Under the full
+stack (GPU render + RTAB-Map + Nav2 together), CPU can still saturate hard
+enough that Nav2's lifecycle bond heartbeats (4s timeout) get missed,
+crashing `collision_monitor`/`waypoint_follower` and aborting Nav2 bringup —
+SLAM/TF/rviz are unaffected. Retry via `ros2 service call
 /lifecycle_manager_navigation/manage_nodes
 nav2_msgs/srv/ManageLifecycleNodes "{command: 0}"` once load has settled.
 
-**GPU compute investigated, not enabled**: RTAB-Map/OpenCV in this
-environment's installed ROS packages have zero CUDA/GPU compute support
-(`rtabmap --version` shows `With CudaSift: false`; `python3 -c "import
-cv2; print(cv2.cuda.getCudaEnabledDeviceCount())"` returns 0). A real
-NVIDIA GTX 1050 Ti is visible via WSL CUDA passthrough (`nvidia-smi`
-works) but sits completely idle -- only the CUDA compute libs are present
-(`/usr/lib/wsl/lib/libcuda.so.1`), not the graphics/EGL/Vulkan driver
-stack Gazebo's own rendering would need to actually use it. Enabling
-real GPU-accelerated SLAM would need a full from-source rebuild of
-PCL/OpenCV/libpointmatcher/rtabmap with CUDA flags -- multi-hour, real
-risk of breaking the working install, not attempted without explicit
-confirmation.
+**GPU compute**: RTAB-Map/OpenCV in this environment have zero CUDA/GPU
+compute support (`rtabmap --version` shows `With CudaSift: false`;
+`cv2.cuda.getCudaEnabledDeviceCount()` returns 0). An NVIDIA GTX 1050 Ti is
+visible via WSL CUDA passthrough but sits idle — only the CUDA compute libs
+are present, not the graphics/EGL/Vulkan driver stack Gazebo's rendering
+needs. Enabling real GPU-accelerated SLAM would need a full from-source
+rebuild of PCL/OpenCV/libpointmatcher/rtabmap with CUDA flags.
 
 Visualize with the saved rviz2 config (TF, `/map`, `/lidar/points`,
 ground-truth + SLAM odometry paths, `/explore/frontiers`) and/or attach
-Gazebo's own GUI on demand (headless by default now, see above) in follow
-mode (locks the camera onto the boat -- model name is
+Gazebo's own GUI on demand in follow mode (model name is
 `cavex_tracked_blueboat`, confirm with `gz model --list` if unsure):
 
 ```bash
@@ -234,20 +194,14 @@ ros2 topic pub --once /cavex/tracks/command std_msgs/msg/String "{data: 'deploye
 
 Confirm real joint motion via `/joint_states`
 (`left_track_retract_joint`/`right_track_retract_joint`, ~0 rad deployed,
-~1.4 rad retracted — live-verified round-trip).
+~1.4 rad retracted).
 
 **`tracked_vehicle_slam.launch.py` auto-drives the vehicle for the first 300
-real seconds of every launch** (undisclosed until this final review):
-`bootstrap_nudge` unconditionally publishes `/cmd_vel` (`linear.x=0.3`) for
-5 minutes starting 5s after launch, to give `icp_odometry` enough real
-parallax to bootstrap at this environment's low real_time_factor (see
-that action's own comment in the launch file for the full calibration
-history). This means: (a) any manual `/cmd_vel` publish loop started in
-that same window competes with it rather than being the only driver, and
-(b) "no autonomous driving in the loop" claims elsewhere in this README
-about specific verification runs are only true once past that 300s window
--- correct the record on both points if you're relying on either claim
-precisely.
+real seconds of every launch**: `bootstrap_nudge` unconditionally publishes
+`/cmd_vel` (`linear.x=0.3`) for 5 minutes starting 5s after launch, to give
+`icp_odometry` enough real parallax to bootstrap at this environment's low
+real_time_factor. Any manual `/cmd_vel` publish loop started in that same
+window competes with it rather than being the only driver.
 
 **ATE evaluation** (ground truth vs. RTAB-Map's SLAM estimate):
 
@@ -257,209 +211,118 @@ ros2 run cavex_tracked_vehicle run_tracked_vehicle_ate_eval.py --ros-args \
 cat cavex_ate_runs.csv
 ```
 
-This environment's real_time_factor is typically very low (~0.02-0.03, spiking
-higher under lighter CPU load) — the eval script does not drive the vehicle
-itself; run a manual `/cmd_vel` publish loop alongside it or the run just
-measures a stationary vehicle. **Known limitation, not yet resolved**:
+This environment's real_time_factor is typically very low (~0.02-0.03,
+spiking higher under lighter CPU load) — the eval script does not drive the
+vehicle itself; run a manual `/cmd_vel` publish loop alongside it or the run
+just measures a stationary vehicle. **Known limitation, not yet resolved**:
 `icp_odometry` (RTAB-Map's lidar odometry front end) does not reliably
 bootstrap its first keyframe even after well-calibrated bootstrap driving —
 symptom is `icp_inliers_ratio` staying at 0.0 and repeated "Registration
-failed: No matches available for computing distance quantiles" /
-"structural complexity is too low (corridor-like environment)" log lines.
-This is the same underlying class of issue as `explore_lite`'s parked
-costmap-coverage problem below, not a new bug. No ATE data was successfully
-produced in the verification session that added this section; rerun and
-check `icp_inliers_ratio` is nonzero (`ros2 topic echo /odom_info --once`)
-before relying on a `cavex_ate_runs.csv` result.
+failed" / "structural complexity is too low (corridor-like environment)" log
+lines. Check `icp_inliers_ratio` is nonzero (`ros2 topic echo /odom_info
+--once`) before relying on a `cavex_ate_runs.csv` result.
+
+**Navigation performance**: this environment (WSL2) commonly runs at
+CPU/scheduling oversubscription — `nproc` may report far fewer cores than
+the combined demand of Gazebo, RTAB-Map, `icp_odometry`, Nav2, and ArduPilot
+SITL running together, which shows up as elevated RTAB-Map `Conversion` time
+and general navigation sluggishness independent of any single ROS parameter.
+If navigation feels slow, check `uptime`/`nproc` before tuning sensor or
+SLAM parameters.
 
 **BlueROV2 / ArduSub** (`cmd_vel_to_ardusub.py`, second SITL instance):
-running a second ArduPilot instance (ArduSub, for the BlueROV2) alongside
-the Rover instance required three real, non-obvious fixes (corrected in
-final review -- an earlier version of this section said all three live in
-`dds_udp_instance1.parm`; two are actually launch arguments, since this
-branch has no committed launch file that brings the second instance up --
-see "Water-boundary handoff" below for the real, manually-run command that
-supplies them): (1) `DDS_UDP_PORT` (in
+running a second ArduPilot instance (ArduSub, for the BlueROV2) alongside the
+Rover instance needs: (1) `DDS_UDP_PORT` (in
 `ros2_ws/src/cavex_tracked_vehicle/config/dds_udp_instance1.parm`) plus the
 `micro_ros_agent_ns`/`master:=tcp:127.0.0.1:5770` launch arguments, to avoid
 port collisions with the Rover instance; (2) `DDS_USE_NS 1` (also in that
-parm file) -- AP_DDS's own topic/service names (`ap/cmd_vel` etc.) are
-hardcoded per-firmware regardless of which `micro_ros_agent` port bridges
-them, so two simultaneous instances collide on identical ROS 2 topic names
-unless this is enabled (verified topics land under `/ap/v1/...`, not the
-`/ap/...` of the Rover instance); (3) BlueROV2's own vendored
-`ArduPilotPlugin` FDM port was moved from the default 9002 to 9012 in
-`models/bluerov2/model.sdf` because the tracked vehicle's own (unused,
-inherited) `ArduPilotPlugin` block already binds 9002 in the same Gazebo
-process (supplied via the `sim_port_in`/`sim_port_out` launch arguments on
-the ArduSub side). With these fixes,
-DDS connectivity, the real Gazebo FDM/JSON physics link, and GUIDED mode
-switching (`/ap/v1/mode_switch`, mode 4) are all live-verified working.
-**Known limitation, not yet resolved**: arming (`/ap/v1/arm_motors`)
-is consistently rejected (`result=False`) even with `ARMING_CHECK 0`,
-`FENCE_ENABLE 0`, and a real disarm-button RC option assigned (ArduSub's
-`AP_Arming_Sub::pre_arm_checks` hard-requires one, not gated by
-`ARMING_CHECK`) -- the exact rejection reason could not be captured
-because MAVLink/SERIAL0 never produced a heartbeat to any client in this
-environment (confirmed via both `mavproxy` and a direct `pymavlink`
-connection, 30s+ waits), so `AP_Arming`'s own `check_failed()` messages
-(routed via MAVLink STATUSTEXT) were never observable. Needs a working
-MAVLink console connection to diagnose further.
+parm file) — AP_DDS's own topic/service names are hardcoded per-firmware, so
+two simultaneous instances collide on identical ROS 2 topic names unless this
+is enabled (topics land under `/ap/v1/...` instead of `/ap/...`); (3)
+BlueROV2's own vendored `ArduPilotPlugin` FDM port is 9012 (not the default
+9002), because the tracked vehicle's own `ArduPilotPlugin` block already
+binds 9002 in the same Gazebo process. With these in place, DDS connectivity,
+the Gazebo FDM/JSON physics link, and GUIDED mode switching
+(`/ap/v1/mode_switch`, mode 4) all work.
 
-**`explore_lite` (autonomous frontier exploration) — fixed, two independent
-real bugs**: it used to stop itself almost immediately ("No frontiers found,
-stopping"), traced to two separate causes, both fixed: (1) `explore_node`
-used to connect to Nav2 and call its first `makePlan()` before RTAB-Map had
-published a real `map` frame at all -- fixed by delaying `explore_node`'s
-own start (a `TimerAction`, 320s) until after the bootstrap-drive window has
-given RTAB-Map time to publish a stable map. (2) even with a real `map`
-frame, the Nav2 costmap's own `inflation_layer` (`inflation_radius=0.5`) was
-consuming ~76% of the real free space, leaving no free-cell-adjacent-to-
-unknown cells for frontier search to find -- confirmed live by direct
-OccupancyGrid inspection (raw `/map` free=3841 cells vs. costmap free=919),
-fixed by reducing to `0.35` (just above `robot_radius=0.3`), which recovered
-1445 real frontier-adjacent cells and produced actual `/explore/frontiers`
-markers. Also added a real "backup when blocked, search another corridor"
-tuning fix: Nav2's stock `BackUp` recovery distance (0.30m, sized for a
-TurtleBot-class footprint) rarely cleared this vehicle's real ~1.19m hull --
-see `config/tracked_vehicle_nav_to_pose_bt.xml` (`backup_dist=0.60m`), wired
-via `bt_navigator`'s `default_nav_to_pose_bt_xml`. "Search another corridor"
-needed no new code: `explore_lite`'s own `frontier_blacklist_` already
-retries a different frontier once Nav2 aborts one. Also fixed: RTAB-Map's
-`map`->`odom` TF was only published at its default 1Hz (`Rtabmap/
-DetectionRate`), causing intermittent "could not transform ... to map"
-flicker whenever a lidar/odom message landed between publishes -- raised to
-10Hz (matching `lidar_sensor`'s own real `update_rate`; an earlier
-intermediate fix used 5Hz), live-verified via `rtabmap`'s own "Rate=0.10s"
-log line and a `tf2_echo` stream updating every 0.1s with no extrapolation
-errors once locked on.
+**Known limitation, not yet resolved**: arming (`/ap/v1/arm_motors`) is
+consistently rejected even with `ARMING_CHECK 0`, `FENCE_ENABLE 0`, and a
+disarm-button RC option assigned (ArduSub's `AP_Arming_Sub::pre_arm_checks`
+hard-requires one, not gated by `ARMING_CHECK`) — the exact rejection reason
+requires a working MAVLink console connection to diagnose (MAVLink/SERIAL0
+has not produced a heartbeat to any client in this environment).
 
-**Obstacles removed** — `obstacle_1`-`obstacle_4` (the four Fuel-sourced
-cinder blocks/barrel used for the Nav2 costmap/explore_lite obstacle
-verification below) have been removed from `cavex_world.world` by real
-request, clearing the dry-section corridor from spawn (`x=-35`) to the
-water boundary (`x=15`). The obstacle-avoidance cross-check described next
-is now historical -- there is nothing left in the corridor to check
-against unless obstacles are re-added. Along with this, the lidar's max
-range was extended `12.0m -> 30.0m` (`model.sdf.tracked`) to give RTAB-Map/
-explore_lite more advance warning across this world's real ~50m
-spawn-to-water span, and a real drive-stalling bug was found and fixed in
-`cmd_vel_to_ardupilot.py`: its arm/mode retry used to fire on every
-`/cmd_vel` callback (5-20Hz) whenever not yet confirmed armed, and since an
-already-armed vehicle returns `result=False` on a redundant arm request
-(not a genuine rejection), arming by any means other than this node's own
-first successful call left it retrying forever, DDS-flooding the same
-channel `/ap/cmd_vel` needs and tripping ArduPilot's own "target not
-received last 3secs, stopping" -- rate-limited to one retry per 2s
-(`ARM_RETRY_MIN_INTERVAL_S`). Live-verified end to end with these fixes in
-place: a clean single launch (no duplicate processes -- see this project's
-own documented flakiness around that) drove the vehicle 13.4m of
-continuous, unobstructed real forward progress toward the water boundary.
-
-**Track visuals remodeled** — per real request, referencing two OpenRobotics
-Fuel models that turned out to have no usable track geometry to copy
-(`coro_hd2_sensor_config_2` and `MARBLE_HD2_VISUALS_ONLY` -- see
-`model.sdf.tracked`'s own comments for the full investigation). The
-lidar's horizontal resolution was raised `360 -> 720`, informed by
-`coro_hd2_sensor_config_2`'s real gpu_lidar spec (1800 samples): tried
-that exact value first and live-verified it as a real regression --
-5x the point count per scan overwhelmed this environment's compute,
-breaking RTAB-Map/icp_odometry SLAM bootstrap entirely -- scaled back to
-720, a real resolution gain that stays healthy. Each track's segmented
-tread (added earlier this session, replacing a plain-plank look) was
-regenerated as a 24-segment stadium-shaped wrap all the way around both
-wheels, extending it visually over the sprocket rather than stopping at
-the straight runs, and each sprocket now has 24 teeth (one per segment,
-up from 6) to match. All purely cosmetic -- collision geometry
-unchanged, zero physics impact.
+**`explore_lite`** (autonomous frontier exploration) starts after a delay
+(`TimerAction`, 320s) to give RTAB-Map time to publish a stable `map` frame
+first. Nav2's `global_costmap` inflation is tuned low (`0.35`, just above
+`robot_radius=0.3`) so frontier search has real free-cell-adjacent-to-unknown
+cells to find; raising it breaks frontier detection. `BackUp` recovery
+distance is `0.60m` (`config/tracked_vehicle_nav_to_pose_bt.xml`), sized for
+this vehicle's ~1.19m hull. RTAB-Map's `map`->`odom` TF publishes at 10Hz
+(`Rtabmap/DetectionRate`, matching the lidar's own update rate) to avoid
+"could not transform ... to map" flicker.
 
 **Dead-end handling** (`dead_end_backtrack_node.py`, launched as part of
-`tracked_vehicle_slam.launch.py`) — confirmed `explore_lite` has no
-built-in dead-end mitigation of its own: its vendored source
-(`m-explore-ros2/explore/src/explore.cpp`) only blacklists a frontier
-goal once Nav2 aborts it, no physical escape behavior anywhere. This
-node is the real mitigation, current design after several real
-refinements:
-1. **Trigger — closed corridor only, not staleness.** A costmap-blocked
-   wall within 2m ahead with no lateral opening at the current position
-   either. Deliberately no reactive "no progress for N seconds"
-   fallback — a stall that isn't a genuinely closed corridor is left to
-   Nav2's own progress checker and recovery behaviors, not this node.
-2. **Retreat 1m** straight back — the only reverse driving anywhere in
-   this node — so the vehicle has room to rotate in place without the
-   hull clipping the wall that triggered the response.
-3. **360 deg survey**, rotating CW or CCW — whichever side has more
-   real clearance in the costmap, away from the walls, not a fixed
-   direction — checking every ~15 deg for a real corridor (a clear run
-   longer than the trigger distance, so it doesn't just re-find the
-   same near wall). Hands control back to Nav2/explore_lite immediately
-   if one is found.
-4. **Backtrack only if the full sweep finds nothing**: turn to face
-   back along the recorded trail of waypoints, then drive FORWARD along
-   it (no reverse driving here either), checking the costmap
-   periodically for a lateral opening, capped at 6m — gives up rather
-   than retracing a whole deep tunnel.
+`tracked_vehicle_slam.launch.py`) — `explore_lite` itself has no built-in
+dead-end mitigation (its frontier blacklist only avoids a goal Nav2 already
+aborted, no physical escape behavior). This node is the real mitigation:
+1. **Trigger — closed corridor only, not staleness.** A costmap-blocked wall
+   within 2m ahead with no lateral opening at the current position either.
+   No reactive "no progress for N seconds" fallback — a stall that isn't a
+   genuinely closed corridor is left to Nav2's own progress checker and
+   recovery behaviors.
+2. **Retreat 1m** straight back — the only reverse driving anywhere in this
+   node — so the vehicle has room to rotate in place without the hull
+   clipping the wall that triggered the response.
+3. **360° survey**, rotating CW or CCW — whichever side has more real
+   clearance in the costmap — checking every ~15° for a real corridor. Hands
+   control back to Nav2/explore_lite immediately if one is found.
+4. **Backtrack only if the full sweep finds nothing**: turn to face back
+   along the recorded trail of waypoints, then drive forward along it (no
+   reverse driving here either), checking the costmap periodically for a
+   lateral opening, capped at 6m.
 
 Core grid-math logic (`find_lateral_opening`, `ray_is_clear`,
-`clearance_on_side`) is pure-function and covered by a synthetic
-self-check (`dead_end_backtrack_node.py --self-check`). Live-verified
-end to end across several iterations: correctly cancels the active Nav2
-goal via the `navigate_to_pose` cancel service, and one real trigger on
-actual cave geometry resolved via the 360 survey alone (found a real
-corridor after rotating 60 deg) with no backtrack needed.
+`clearance_on_side`) is pure-function and covered by a synthetic self-check
+(`dead_end_backtrack_node.py --self-check`).
 
-**BlueROV2 spawn reliability** — the spawn chain
-(`spawn_x500_cargo -> spawn_entity -> spawn_bluerov2`, all sequenced via
-`OnProcessExit`) fires on any process exit, success or failure, so it
-isn't structurally blockable, and never reproduced failing in a clean
-single-launch test; the most likely real cause of any observed failure
-remains this project's own documented duplicate-launch/orphaned-process
-flakiness. Fixed anyway with a real, independent safety net:
-`spawn_bluerov2_retry.py` runs on its own (not chained off anything
-else's exit), actively polls the world's real pose stream for the boat
-to exist before attempting anything, does nothing if bluerov2 already
-exists, and otherwise retries the real create service call up to 5
-times. Live-verified: on one run it genuinely performed the spawn
-itself after the fast path was slower than expected; a deliberate
-duplicate-spawn test also confirmed Gazebo's create service no-ops
-harmlessly on a name collision rather than double-spawning, so running
-both paths together is safe even when they overlap.
+**Obstacle avoidance** — Nav2's `collision_monitor` is wired to this
+vehicle's real 3D lidar (`/lidar/points`, height-filtered to exclude ground
+hits) with a `Bubble2m` circular slowdown polygon (2.3m radius from
+`base_link`, i.e. ~2m clearance beyond the 0.3m footprint) plus a
+footprint-based `approach` polygon for imminent-contact braking. This is
+independent of the local costmap's own inflation-based avoidance used by the
+MPPI controller during normal path following.
 
-Historical obstacle-avoidance verification (superseded by obstacle
-removal above, kept for context): Task 9's four fuel-model obstacles in
-the dry section used a min-distance-to-obstacle-centers check against a
-recorded `/odom_ground_truth` bag; the manually-driven verification run
-never came within collision range of any obstacle (closest approach
-~7.7m against the obstacles' now-removed positions), which confirmed no
-collisions but was a weaker exercise of close-proximity avoidance than a
-route that deliberately threads between them.
+**BlueROV2 spawn reliability** — the primary spawn chain
+(`spawn_x500_cargo -> spawn_entity -> spawn_bluerov2`, sequenced via
+`OnProcessExit`) is backed by an independent safety net,
+`spawn_bluerov2_retry.py`, which polls the world's pose stream for the boat
+to exist before attempting anything, does nothing if `bluerov2` already
+exists, and otherwise retries the create service up to 5 times. Gazebo's
+create service no-ops harmlessly on a name collision rather than
+double-spawning, so running both paths together is safe even if they
+overlap.
 
-**Water region** — re-derived a second time after a real bug was found: the
-tracked vehicle (and everything else) turned out to be resting on
-`cavex_world.world`'s flat `ground_plane` at `z=0`, not the real vendored cave
-mesh's own collision, which has genuine gaps in floor coverage across large
-areas (a probe dropped at the original spawn point fell straight through with
-`ground_plane` removed). Re-derived the real floor height (`z=5.9`,
-`CAVE_FLOOR_Z`) directly from the mesh's own dense vertex data across the
-`x=[-37,65]` corridor this project uses, added a real supplementary
-`cave_floor_patch` collision there, and moved `ground_plane` to `z=-200` as a
-pure safety net. The flooded chamber sits on that same real floor: water
-surface at `z=7.9` (a real ~2m partial flood above the real floor, not a fill
-to the ceiling), region `x∈[15,65] y∈[-10,10]`, centered `(40, 0)`. See
-`ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world`'s `cave_floor_patch`,
-`water_surface`, and `Buoyancy` plugin comments for the full derivation.
+**Water region** — the tracked vehicle rests on a supplementary
+`cave_floor_patch` collision surface (`z=5.9`, `CAVE_FLOOR_Z`) added because
+the vendored cave mesh's own collision has gaps in floor coverage; the flat
+`ground_plane` sits far below (`z=-200`) purely as a safety net. The flooded
+chamber's water surface is at `z=7.9` (a partial flood above the real floor,
+not a fill to the ceiling), region `x∈[15,65] y∈[-10,10]`, centered `(40,
+0)`. See `ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world`'s
+`cave_floor_patch`, `water_surface`, and `Buoyancy` plugin comments for the
+full derivation.
 
 **Water-boundary handoff** — end to end: build ArduSub (`cd ardupilot &&
-./waf sub`, needs `--enable-DDS` at configure time and a real
+./waf sub`, needs `--enable-DDS` at configure time and a
 `microxrceddsgen` install, see "BlueROV2 / ArduSub" above), launch the
 tracked vehicle (which also spawns the carried BlueROV2 and
-`vehicle_switch_node.py`), **and also `tracked_vehicle_slam.launch.py`** --
-`vehicle_switch_node.py`'s real trigger watches `/odom_ground_truth`, which
-is only published once that second launch file's own
-`tracked_vehicle_ground_truth_odom.py` is running (corrected in final
-review: an earlier version of this section omitted this second launch
-file, under which the automatic trigger can never fire). Then drive to the
-real water boundary (`x=15`):
+`vehicle_switch_node.py`) **and also `tracked_vehicle_slam.launch.py`** —
+`vehicle_switch_node.py`'s trigger watches `/odom_ground_truth`, which is
+only published once that second launch file's
+`tracked_vehicle_ground_truth_odom.py` is running. Then drive to the water
+boundary (`x=15`):
 
 ```bash
 ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py &
@@ -473,13 +336,9 @@ ros2 topic pub --once /cavex/rov_release/detach std_msgs/msg/Empty "{}"
 ```
 
 Once released, control the BlueROV2 via `cmd_vel_to_ardusub.py`'s manual
-teleop input (no autonomous exploration for the BlueROV2 this phase --
-explicit non-goal). This branch does NOT yet commit a launch file that
-brings up the second ArduSub SITL instance (corrected in final review --
-an earlier version of this section implied `ros2 run
-cmd_vel_to_ardusub.py` alone was enough; it needs the second instance
-already running underneath it). The real, live-verified bring-up
-command, run manually:
+teleop input (no autonomous exploration for the BlueROV2 this phase). This
+branch does not commit a launch file that brings up the second ArduSub SITL
+instance; bring it up manually:
 
 ```bash
 SUB_PARM="install/ardupilot_sitl/share/ardupilot_sitl/config/default_params/sub.parm"
@@ -488,47 +347,32 @@ INST1_PARM="src/cavex_tracked_vehicle/config/dds_udp_instance1.parm"
 ros2 launch ardupilot_sitl sitl_dds_udp.launch.py command:=ardusub model:=JSON \
   instance:=1 port:=2029 micro_ros_agent_ns:=ap2 master:=tcp:127.0.0.1:5770 \
   sim_port_in:=9013 sim_port_out:=9012 defaults:="$SUB_PARM,$DDS_PARM,$INST1_PARM"
-# wait for DDS init (real, patient wait -- 15-25s), then confirm:
+# wait for DDS init (15-25s), then confirm:
 ros2 service list | grep v1   # expect /ap/v1/arm_motors, /ap/v1/mode_switch, etc.
 ros2 run cavex_tracked_vehicle cmd_vel_to_ardusub.py
 ros2 topic pub -r 10 /cmd_vel_rov geometry_msgs/msg/Twist "{linear: {x: 0.3}}"
 ```
 
-Live-verified with the full SLAM/Nav2/`vehicle_switch_node` stack running
-together: the handoff produces no new, persistent errors in RTAB-Map, Nav2,
-or the tracked vehicle's own control nodes (the pre-existing "waiting for
-`map` transform" messages during RTAB-Map's own startup are normal and
-predate the handoff, not caused by it) -- confirmed by diffing the stack's
-log output from immediately before to after triggering the handoff.
-
 **Deployment mechanism, helipad, and PX4 x500** — `model.sdf.tracked` adds a
 static davit (deployment crane) fixture near the ROV's mount point (visual
-representation only, not actuated/animated — the real deployment mechanism
-is the `DetachableJoint` plugin, not this fixture) and a real, marked helipad
-at the bow. A second real, vendored model
+only — the real deployment mechanism is the `DetachableJoint` plugin) and a
+marked helipad at the bow. A second vendored model
 (`fuel.gazebosim.org/PX4/models/x500`, CC-BY-4.0) is carried on that helipad
 via its own `DetachableJoint` (`/cavex/x500_release/detach`), placeholder
-scope only — no PX4 SITL/flight-control integration, explicitly future work
-("airpocket exploration"). Live-verified: all three carried bodies (tracked
-vehicle + BlueROV2 + x500) spawn together without a physics crash across
-repeated launches, and a manual x500 detach produced real divergence (it
-fell under gravity once released, while the tracked vehicle itself stayed at
-its normal rest height). **Known limitation, not fully resolved**: exact
-mount alignment (bluerov2's top flush with the deck, x500 sitting precisely
-at the helipad surface) is not perfectly reliable — settled offsets varied
-between otherwise-identical launches (observed range: a few centimeters to
-several tens of centimeters), most likely from real timing variance in when
-each `DetachableJoint` actually engages relative to how long its child free-falls
-first. Never observed to cause a crash or hull-collision overlap across
-multiple extended test launches, but the mounts are best-effort, not exact.
+scope only — no PX4 SITL/flight-control integration ("airpocket exploration"
+is future work). **Known limitation, not fully resolved**: exact mount
+alignment (BlueROV2 flush with the deck, x500 at the helipad surface) is not
+perfectly reliable — settled offsets vary between otherwise-identical
+launches (a few centimeters to several tens of centimeters), most likely
+from timing variance in when each `DetachableJoint` engages relative to how
+long its child free-falls first.
 
-**Honesty caveats** (same standard as the rest of this project): this
-simulation's ground truth is simulator-internal and noiseless — treat any
-ATE/localization numbers as best-case/idealized, not real-sensor-noise
-results. The vehicle is labeled "BlueBoat-like tracked vehicle" throughout;
-it makes no official Blue Robotics/ArduPilot endorsement claim and no
-marine/floating capability claim (tracks only, ArduPilot Rover firmware, not
-ArduBoat).
+**Honesty caveats**: this simulation's ground truth is simulator-internal and
+noiseless — treat any ATE/localization numbers as best-case/idealized, not
+real-sensor-noise results. The vehicle is labeled "BlueBoat-like tracked
+vehicle" throughout; it makes no official Blue Robotics/ArduPilot
+endorsement claim and no marine/floating capability claim (tracks only,
+ArduPilot Rover firmware, not ArduBoat).
 
 ## Third-party assets
 
@@ -548,24 +392,23 @@ AprilTags) are not used in this phase.
 is vendored from
 [markusbuchholz/gazebosim_blueboat_ardupilot_sitl](https://github.com/markusbuchholz/gazebosim_blueboat_ardupilot_sitl)
 (a mirror of ArduPilot's own `SITL_Models`, author Rhys Mainwaring, meshes
-sourced from Blue Robotics' published CAD). This is a real, vendored asset,
-not an official Blue Robotics or ArduPilot product release — the tracked
-variant (`model.sdf.tracked`) is a project-authored modification (motors
-removed, track assemblies added) and is labeled "BlueBoat tracked-vehicle
-variant" throughout; it makes no marine/floating capability claim and no
-Blue Robotics endorsement.
+sourced from Blue Robotics' published CAD). This is a vendored asset, not an
+official Blue Robotics or ArduPilot product release — the tracked variant
+(`model.sdf.tracked`) is a project-authored modification (motors removed,
+track assemblies added) and is labeled "BlueBoat tracked-vehicle variant"
+throughout; it makes no marine/floating capability claim and no Blue
+Robotics endorsement.
 
 **BlueROV2** — `ros2_ws/src/cavex_tracked_vehicle/models/bluerov2/` is
 vendored, with one documented modification, based on
 [clydemcqueen/bluerov2_gz](https://github.com/clydemcqueen/bluerov2_gz)'s
-real model structure (hull, thrusters, `ArduPilotPlugin` FDM link). The
+model structure (hull, thrusters, `ArduPilotPlugin` FDM link). The
 modification: `model.sdf`'s `ArduPilotPlugin` `fdm_port_in` was changed from
-the vendored default 9002 to 9012, to avoid a real port collision with the
-tracked vehicle's own (unused, inherited) `ArduPilotPlugin` block in the same
-Gazebo process -- see that plugin's own comment. Not an official Blue
-Robotics product release; labeled "BlueROV2" as a real vendored simulation
-asset, not a claim of hardware-accuracy beyond what that upstream repo
-itself provides.
+the vendored default 9002 to 9012, to avoid a port collision with the
+tracked vehicle's own `ArduPilotPlugin` block in the same Gazebo process.
+Not an official Blue Robotics product release; labeled "BlueROV2" as a
+vendored simulation asset, not a claim of hardware-accuracy beyond what that
+upstream repo itself provides.
 
 **PX4 x500 quadcopter** — `ros2_ws/src/cavex_tracked_vehicle/models/x500/`
 is vendored, unmodified, from

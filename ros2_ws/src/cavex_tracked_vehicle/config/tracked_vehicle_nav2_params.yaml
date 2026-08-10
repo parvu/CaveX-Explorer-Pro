@@ -83,8 +83,18 @@ controller_server:
       vx_std: 0.2
       vy_std: 0.2
       wz_std: 0.4
+      # vx_min was -0.35 -- MPPI was structurally allowed to reverse as part of
+      # normal FollowPath execution (nothing to do with dead-end handling),
+      # confirmed live as the real provenance of an observed "long reverse"
+      # pass: dead_end_backtrack_node's own reverse is bounded to a logged 1m
+      # retreat, but once its process exited (mid-survey, killed during
+      # cleanup) explore_lite's next goal let MPPI drive the vehicle including
+      # its own independent reverse capability, unrelated to any dead-end
+      # logic. Zeroed out -- this vehicle's only intentional reverse driving
+      # anywhere is dead_end_backtrack_node's own bounded 1m retreat; Nav2's
+      # own controller should never choose to reverse on its own.
       vx_max: 0.5
-      vx_min: -0.35
+      vx_min: 0.0
       vy_max: 0.5
       wz_max: 1.9
       iteration_count: 1
@@ -121,7 +131,12 @@ controller_server:
       CostCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 3.81
+        # Raised 3.81 -> 7.0 alongside local_costmap's own inflation_radius
+        # increase above -- real request: keep the vehicle centered in the
+        # corridor. Still well under PathAlignCritic's 14.0, so this doesn't
+        # fight following the planned path outright, just pulls harder
+        # toward the middle when there's room to.
+        cost_weight: 7.0
         near_collision_cost: 253
         critical_cost: 300.0
         consider_footprint: false
@@ -206,10 +221,23 @@ local_costmap:
       # adjacent cells -- confirmed live via /explore/frontiers actually
       # publishing 2 real markers where it previously found none, same
       # map, same run, only this parameter changed.
+      # Real request: "keep the vehicle in the middle of the corridor always."
+      # inflation_radius=0.35 (matching global_costmap below) leaves ZERO
+      # inflation cost -- and so zero centering pull from MPPI's CostCritic --
+      # anywhere more than 0.35m from a wall, which is most of a typical
+      # corridor here. This costmap is LOCAL (used by the controller/
+      # CostCritic for real-time driving), not what explore_lite's frontier
+      # search reads (that's global_costmap below, deliberately left
+      # unchanged at 0.35 -- see that block's own comment for why raising it
+      # broke frontier detection). Raising just this one to 0.6 -- roughly
+      # half a typical corridor width here -- makes each wall's inflation
+      # zone reach toward the middle, so CostCritic's own gradient now
+      # actually favors the center rather than being flat (zero pull) once
+      # clear of the immediate wall.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        inflation_radius: 0.6
       always_send_full_costmap: True
 
 global_costmap:
@@ -292,9 +320,30 @@ collision_monitor:
     # elsewhere in this stack -- it does not crash or block bringup.
     # Fixed in final review: was "base_footprint", contradicting this file's
     # own header comment (line 23-25: robot_base_frame is base_link, this
-    # vehicle's stub URDF has no base_footprint link/joint at all). Harmless
-    # today only because collision_monitor's "scan" source never receives
-    # data (see comment above) -- would matter the moment that changes.
+    # vehicle's stub URDF has no base_footprint link/joint at all).
+    #
+    # Real fix (obstacle-avoidance request): the "scan" observation source
+    # above was collision_monitor's ONLY source, and this vehicle has no 2D
+    # LaserScan publisher at all (3D lidar only, see top-of-file comment) --
+    # so collision_monitor was structurally wired up but never actually
+    # detecting anything; it was a no-op the whole time, not a working
+    # detect-and-avoid mechanism. Switched to a "pointcloud" source reading
+    # this vehicle's real /lidar/points (same topic icp_odometry/rtabmap
+    # already consume). Height window (0.0-1.2m in base_link frame) picks up
+    # the lidar's own narrow +-15deg vertical FOV around its 0.55m mount
+    # height at typical bubble-range distances while excluding ground-plane
+    # hits, so it does not false-stop on the floor.
+    #
+    # Added Bubble2m: a "circle" polygon (static radius, unlike the
+    # footprint-shaped polygons above) giving the vehicle a real, fixed
+    # detect-and-avoid bubble -- the mechanism this project didn't have
+    # before. radius=2.3 = 2.0m of clearance beyond the 0.3m robot_radius
+    # footprint edge, i.e. genuinely "2m outside the vehicle" as requested,
+    # measured from base_link. action_type "slowdown" (not "stop") so it
+    # eases the vehicle down in a corridor rather than halting it dead the
+    # moment a wall enters 2m, which cave corridors do constantly; the
+    # tighter PolygonStop-equivalent behavior for imminent contact is still
+    # covered by FootprintApproach below.
     base_frame_id: "base_link"
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
@@ -304,7 +353,16 @@ collision_monitor:
     source_timeout: 1.0
     base_shift_correction: True
     stop_pub_timeout: 2.0
-    polygons: ["FootprintApproach"]
+    polygons: ["Bubble2m", "FootprintApproach"]
+    Bubble2m:
+      type: "circle"
+      radius: 2.3
+      action_type: "slowdown"
+      slowdown_ratio: 0.5
+      min_points: 4
+      visualize: True
+      polygon_pub_topic: "polygon_bubble_2m"
+      enabled: True
     FootprintApproach:
       type: "polygon"
       action_type: "approach"
@@ -314,12 +372,13 @@ collision_monitor:
       min_points: 6
       visualize: False
       enabled: True
-    observation_sources: ["scan"]
-    scan:
-      type: "scan"
-      topic: "scan"
-      min_height: 0.15
-      max_height: 2.0
+    observation_sources: ["pointcloud"]
+    pointcloud:
+      type: "pointcloud"
+      topic: "/lidar/points"
+      min_height: 0.0
+      max_height: 1.2
+      use_global_height: False
       enabled: True
 
 behavior_server:

@@ -802,38 +802,18 @@
     </joint>
 
 
-    <!-- NavSat -->
-
-    <link name="navsat_link">
-      <pose>0 0 0.05 0 0 0</pose>
-      <inertial>
-        <mass>0.1</mass>
-        <inertia>
-          <ixx>0.0001</ixx>
-          <ixy>0</ixy>
-          <ixz>0</ixz>
-          <iyy>0.0001</iyy>
-          <iyz>0</iyz>
-          <izz>0.0001</izz>
-        </inertia>
-      </inertial>
-      <sensor name="navsat_sensor" type="navsat">
-        <pose>0 0 0 0 0 0</pose>
-        <always_on>1</always_on>
-        <update_rate>1.0</update_rate>
-        <topic>navsat</topic>
-        <gps>
-          <fix>
-            <service>1</service>
-            <status>0</status>
-          </fix>
-        </gps>
-      </sensor>
-    </link>
-    <joint name="navsat_joint" type="fixed">
-      <parent>imu_link</parent>
-      <child>navsat_link</child>
-    </joint>
+    <!-- NavSat/GPS: investigated and removed. navsat_link/navsat_sensor were
+         orphaned -- not wired into ArduPilotPlugin below (which only
+         declares <imuName>, and gets its position/velocity for SITL's own
+         internal GPS/EKF synthesis straight from Gazebo's link pose over
+         the FDM socket, never from a GPS sensor plugin) and never bridged
+         to ROS anywhere in gazebo_tracked_vehicle_bridge.yaml. Confirmed
+         zero consumers before deleting: dead weight that only added a
+         SDF-schema parser warning and a small amount of unused sim
+         overhead. This is also a cave-exploration vehicle underground,
+         where a real GPS fix is unavailable anyway -- the sensor was
+         leftover from the original marine BlueBoat model this hull is
+         based on and never applied to this repurposing. -->
 
     <!-- Lidar/camera (added post-Task-7 review, Finding 1: Task 4 never gave
          this hull any perception sensors, only imu/navsat -- Task 10's
@@ -889,39 +869,27 @@
         <gz_frame_id>lidar_link</gz_frame_id>
         <ray>
           <scan>
-            <!-- Horizontal samples raised 360 -> 720 (real request: match
-                 OpenRobotics' vendored coro_hd2_sensor_config_2 Fuel model,
-                 fuel.gazebosim.org/OpenRobotics/models/coro_hd2_sensor_config_2
-                 -- a real SubT-challenge sensor config for the Coordinated
-                 Robotics HD2 tracked robot (based on Marble's HD2), a directly
-                 comparable subterranean tracked-vehicle platform, whose own
-                 front_laser gpu_lidar uses 1800 horizontal samples and an
-                 identical vertical FOV -- 16 samples, +-0.2618 rad -- to what
-                 this vehicle already had). Tried CoRo's exact 1800 first and
-                 live-verified it as a REAL regression in this environment: 5x
-                 the point count per scan (28800 vs 5760) made RTAB-Map's own
-                 Conversion step balloon to 0.5-0.6s per scan (vs the sensor's
-                 0.1s/10Hz interval), backing up the whole pipeline and leaving
-                 icp_odometry permanently stuck at ratio=0.0 with repeated
-                 "RegistrationIcp cannot do registration with a null guess"
-                 errors -- SLAM never bootstrapped at all. 720 (2x the
-                 original, real resolution gain, still 2.5x below CoRo's
-                 count) was live-verified to fix the bootstrap failure:
-                 icp_odometry producing real, healthy match ratios (0.77-0.88,
-                 matching this project's usual baseline), zero registration
-                 errors. Conversion time is still elevated (0.66-1.24s per
-                 scan, not back to the pre-change ~0.15-0.3s baseline) -- a
-                 real, honest tradeoff of the extra points, compounded by this
-                 environment's already-documented variable CPU load, not a
-                 blocking problem since RTAB-Map keeps up functionally even
-                 if slower than its nominal 10Hz target under load. Kept this
-                 vehicle's own
-                 already-justified min/max range (0.4-30m, see below) rather
-                 than copying CoRo's 0.05-100m verbatim, since those were
-                 derived from this specific world's real self-occlusion and
-                 corridor-length findings, not arbitrary. -->
+            <!-- Horizontal samples: was raised 360 -> 720 (real request at the
+                 time: match OpenRobotics' coro_hd2_sensor_config_2 Fuel model's
+                 lidar spec). Reverted back to 360 after being suspected as a
+                 navigation-slowdown cause -- but a direct A/B re-measurement
+                 (360 vs 720, same scene) showed RTAB-Map's own Conversion step
+                 STILL averaged ~0.49-0.51s/cycle either way: point count was
+                 NOT the driver. Real cause, confirmed via `nproc`(8)/loadavg
+                 (~17, ie ~2x oversubscribed) vs summed process %CPU (~355%,
+                 well under 800% capacity): scheduling contention under WSL2
+                 virtualization, not any single ROS parameter -- icp_odometry
+                 alone (single-threaded ICP) runs ~78% of a core, gz sim ~148%.
+                 Left at 360 anyway (this project's original, long-validated
+                 baseline, and strictly no worse than 720), but this is NOT a
+                 fix for the Conversion-time bottleneck, which remains open and
+                 environmental. 1800 (CoRo's own exact value) was already tried
+                 and rejected earlier for a different reason (broke SLAM
+                 bootstrap entirely). Kept this vehicle's own already-justified
+                 min/max range (0.4-30m, see below), unrelated to this
+                 horizontal-resolution question. -->
             <horizontal>
-              <samples>720</samples>
+              <samples>360</samples>
               <resolution>1</resolution>
               <min_angle>-3.14159</min_angle>
               <max_angle>3.14159</max_angle>
