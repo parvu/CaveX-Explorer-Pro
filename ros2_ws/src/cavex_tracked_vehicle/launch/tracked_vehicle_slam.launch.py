@@ -100,7 +100,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': use_sim_time,
-            'subscribe_depth': False,
+            'subscribe_depth': True,
             'subscribe_rgb': True,
             'subscribe_scan': False,
             'subscribe_scan_cloud': True,
@@ -149,6 +149,7 @@ def generate_launch_description():
         remappings=[
             ('rgb/image', '/camera/color/image_raw'),
             ('rgb/camera_info', '/camera/color/camera_info'),
+            ('depth/image', '/camera/depth/image_raw'),
             ('scan_cloud', '/lidar/points'),
         ],
         arguments=['--delete_db_on_start'],
