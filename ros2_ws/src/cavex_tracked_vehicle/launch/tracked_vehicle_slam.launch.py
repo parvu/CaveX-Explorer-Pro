@@ -346,6 +346,20 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
+    # Task 4 (SIC-SLAM RGB-D + lidar fusion): colorizes the lidar cloud via
+    # the live camera projection, clusters it into instances, tracks ids
+    # frame-to-frame, and publishes /sic_slam/instances + /sic_slam/colored_points
+    # for Task 5. Needs map -> lidar_link TF (rtabmap above) and camera_link TF
+    # (camera_static_tf above), so it's safe to start alongside everything else --
+    # it just skips frames until those are live, same pattern as icp_odometry.
+    sic_slam_node = Node(
+        package='cavex_perception',
+        executable='sic_slam_node',
+        name='sic_slam_node',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
     return LaunchDescription([
         lidar_static_tf,
         camera_static_tf,
@@ -358,4 +372,5 @@ def generate_launch_description():
         bootstrap_nudge,
         ate_evaluator,
         tracked_vehicle_ground_truth_odom,
+        sic_slam_node,
     ])
