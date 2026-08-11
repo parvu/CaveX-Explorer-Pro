@@ -60,6 +60,24 @@ def generate_launch_description():
         arguments=['--x', '0.55', '--y', '0', '--z', '0.15',
                    '--frame-id', 'base_link', '--child-frame-id', 'camera_link'],
     )
+    # Real, live-diagnosed bug (final whole-branch review, Critical 1):
+    # camera_link above is body-convention (x-forward/y-left/z-up, same as
+    # base_link -- zero rotation), but model.sdf.tracked's camera sensor now
+    # reports its image header's frame_id as camera_link_optical (REP
+    # 103/145 optical convention: z-forward, x-right, y-down), which is what
+    # image_geometry::PinholeCameraModel::project3dToPixel (sic_slam_node.cpp)
+    # actually requires. Zero-translation, pure-rotation static TF -- the
+    # standard body-to-optical rotation, same convention every ROS camera
+    # driver publishes.
+    camera_optical_static_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='camera_optical_static_tf',
+        output='screen',
+        arguments=['--x', '0', '--y', '0', '--z', '0',
+                   '--roll', '-1.5707963', '--pitch', '0', '--yaw', '-1.5707963',
+                   '--frame-id', 'camera_link', '--child-frame-id', 'camera_link_optical'],
+    )
 
     # RTAB-Map's rtabmap_slam node doesn't compute its own odometry from raw
     # lidar data -- it only does SLAM (map graph + loop closure) given an
@@ -363,6 +381,7 @@ def generate_launch_description():
     return LaunchDescription([
         lidar_static_tf,
         camera_static_tf,
+        camera_optical_static_tf,
         icp_odometry,
         rtabmap,
         slam_pose_publisher,
