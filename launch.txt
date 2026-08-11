@@ -691,3 +691,71 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # project's cavex_world.world or lidar/camera sensors, unlike the
 # ArduPilot path this whole file otherwise documents. Pure build-only
 # checkpoint for future rover-SITL work on that branch.
+
+# ============================================================
+# x500 spawn, floor-collision gap, IMU TF frame, Nav2 recovery deadlock
+# (this session)
+# ============================================================
+#
+# FIXED: x500 stopped being carried on the helipad and no longer stayed
+# there -- gazebo_tracked_vehicle.launch.py's spawn_x500_cargo still had the
+# PRE-2x-scale spawn coordinates (-34.7, 0, 6.887), missed by the cave-2x-
+# scale commit which updated the boat/bluerov2 spawns but not this one
+# (confirmed via `git show e76a9205`). Fixed by applying the same relative
+# offset -> (-88.48, -31.4, 6.887).
+#
+# FIXED: real floor-collision gap between cave_floor_patch_scaled
+# (x=[-120,-60]) and cave_floor_patch (x=[-40,70]) -- confirmed via physics
+# probes (spheres dropped at x=-55/-50/-45,y=-25 fell to the z=-200 safety
+# net). Added a bridging static model, cave_floor_patch_bridge (pose -50 -17
+# 5.4, box 24x58x1) in cavex_world.world. Probes now settle at z~5.94.
+#
+# FIXED: IMU TF lookup failures ("imu_link/imu_sensor does not exist") --
+# same bug class as the earlier camera fix, imu_sensor was missing its
+# <gz_frame_id>imu_link</gz_frame_id> override (model.sdf.tracked).
+#
+# FIXED (real root cause of the "Collision Ahead" Nav2 recovery deadlock /
+# vehicle freeze after a small forward motion): NOT costmap staleness (that
+# lead was live-disproven -- deadlock recurred with a fresh, 0.22s-stale
+# costmap). RTAB-Map's Grid/MaxGroundAngle (default 45deg) was too tight for
+# the genuinely undulating cave floor mesh, misclassifying real floor points
+# as obstacles. Fixed with Grid/MaxGroundAngle: 65 in
+# tracked_vehicle_slam.launch.py's rtabmap params. Live-verified clean over
+# 10+ minutes (0 false collisions vs. deadlocking within ~3-6 min before).
+#
+# DISABLED: sic_slam_node (cavex_perception package -- the RGB-D+lidar
+# instance-clustering node, NOT the sic_slam_node.py pose-fusion prototype
+# in cavex_slam_nav, see Phase 2 requirement note below) is commented out of
+# tracked_vehicle_slam.launch.py. RTAB-Map already subscribes directly to
+# RGB-D+lidar (subscribe_depth/subscribe_rgb/subscribe_scan_cloud all True)
+# and does its own fusion, so this was redundant compute. dead_end_
+# backtrack_node degrades gracefully with no /sic_slam/instances (empty
+# _instance_centroids, its penalty logic simply never fires) -- re-enable
+# the launch entry if instance-aware dead-end scoring is needed again.
+#
+# FIXED (RViz): GLSL shader link error on the Map display
+# (rviz/glsl120/indexed_8bit_image.vert/.frag, "active samplers with a
+# different type refer to the same texture image unit") under this
+# environment's D3D12/WSL2 GPU rendering path. Changed all 3 Map display
+# instances' Color Scheme from map/costmap to raw in
+# tracked_vehicle_mapping.rviz. NOTE: the error can still print ONCE at
+# RViz startup (Ogre appears to eagerly compile all registered map-shader
+# variants regardless of which is selected) but does not recur on
+# subsequent map updates and does not block live map rendering -- treat a
+# single startup-time occurrence as benign, not a regression of this fix.
+#
+# RECURRED (process hygiene): a second unrelated runaway `bfs -S dfs /
+# -path */rviz/glsl120/indexed_8bit_image*` (full-filesystem search, no
+# depth limit, left running from a shader-file lookup during debugging)
+# burned 99.9% CPU for 73+ minutes, pushing system load to ~28 on an 8-core
+# box and exhausting RAM (171Mi free, swapping) -- this looked like "the
+# simulation/RViz is frozen" but Gazebo's own sim clock was still ticking
+# underneath (confirmed via `gz topic -e -t /world/cavex_world/stats`); even
+# `ros2 topic hz /clock` failed with "publisher's context is invalid" from
+# DDS/rcl starvation. Killing the bfs process alone recovered RTF from
+# ~0.15 to ~0.3-0.5 within seconds. This is the SAME failure class already
+# documented above under "Process hygiene" (an earlier bfs search for
+# *RgbdCamera*) -- a reminder that `ps aux --sort=start_time` (or `ps aux
+# --sort=-%cpu`), not just this project's own process-name greps, needs to
+# be part of any "looks frozen/slow" triage, not just the launch-tree
+# cleanup sweep.

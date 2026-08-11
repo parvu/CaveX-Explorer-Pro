@@ -4,7 +4,6 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /TF1
         - /TF1/Frames1
         - /TF1/Tree1
         - /Local Costmap (corridor-centering inflation)1/Position1
@@ -105,8 +104,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 9.07746410369873
-        Min Value: -0.8983104228973389
+        Max Value: 0.5392525792121887
+        Min Value: 0.5270345211029053
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -138,8 +137,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 1.4944911003112793
-        Min Value: -0.5190878510475159
+        Max Value: -9999
+        Min Value: 9999
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -225,7 +224,7 @@ Visualization Manager:
       Enabled: true
       Name: Explore Frontiers
       Namespaces:
-        frontiers: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -297,7 +296,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 6.7909345626831055
+      Distance: 10.531302452087402
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -312,10 +311,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.9447970986366272
+      Pitch: 0.4397967755794525
       Target Frame: base_link
       Value: Orbit (rviz_default_plugins)
-      Yaw: 2.129995822906494
+      Yaw: 1.9549981355667114
     Saved:
       - Class: rviz_default_plugins/Orbit
         Distance: 8.11705493927002
@@ -349,5 +348,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1183
-  X: 348
-  Y: 141
+  X: 316
+  Y: 109

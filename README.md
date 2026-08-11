@@ -165,6 +165,21 @@ are present, not the graphics/EGL/Vulkan driver stack Gazebo's rendering
 needs. Enabling real GPU-accelerated SLAM would need a full from-source
 rebuild of PCL/OpenCV/libpointmatcher/rtabmap with CUDA flags.
 
+**Fixed**: IMU TF lookups were failing (`"imu_link/imu_sensor" does not
+exist"`) — `imu_sensor` was missing the `<gz_frame_id>imu_link</gz_frame_id>`
+override in `model.sdf.tracked` (same bug class as an earlier camera-frame
+fix), so the bridged IMU message reported gz's scene-graph scoped name
+instead of the real TF link name.
+
+**Fixed**: RViz's Map display could hit a GLSL shader link error
+(`rviz/glsl120/indexed_8bit_image.vert`/`.frag`, "active samplers with a
+different type refer to the same texture image unit") under this
+environment's D3D12/WSL2 GPU rendering path. Changed all Map displays'
+`Color Scheme` to `raw` in `tracked_vehicle_mapping.rviz`. The error can
+still print once at RViz startup (Ogre appears to eagerly compile all
+registered map-shader variants) but doesn't recur or block live rendering
+afterward — a single startup-time occurrence is benign.
+
 Visualize with the saved rviz2 config (TF, `/map`, `/lidar/points`,
 ground-truth + SLAM odometry paths, `/explore/frontiers`) and/or attach
 Gazebo's own GUI on demand in follow mode (model name is
@@ -293,6 +308,17 @@ Core grid-math logic (`find_lateral_opening`, `ray_is_clear`,
 pure-function and covered by a synthetic self-check
 (`dead_end_backtrack_node.py --self-check`).
 
+**Nav2 "Collision Ahead" recovery deadlock (fixed)** — the vehicle would
+freeze after a small forward motion, stuck cycling Nav2 recovery behaviors.
+Root cause was NOT costmap staleness (that lead was live-disproven — the
+deadlock recurred with a fresh, sub-second-stale costmap). RTAB-Map's
+`Grid/MaxGroundAngle` (default 45°) was too tight for the genuinely
+undulating cave floor mesh and misclassified real floor points as
+obstacles. Fixed with `Grid/MaxGroundAngle: 65` in
+`tracked_vehicle_slam.launch.py`'s `rtabmap` params. Live-verified clean
+over 10+ minutes of driving (0 false collisions vs. deadlocking within
+~3-6 min before).
+
 **Obstacle avoidance** — Nav2's `collision_monitor` is wired to this
 vehicle's real 3D lidar (`/lidar/points`, height-filtered to exclude ground
 hits) with an `ObstacleBubble` circular slowdown polygon (0.8m radius from
@@ -363,7 +389,11 @@ overlap.
 **Water region** — the tracked vehicle rests on a supplementary
 `cave_floor_patch` collision surface (`z=5.9`, `CAVE_FLOOR_Z`) added because
 the vendored cave mesh's own collision has gaps in floor coverage; the flat
-`ground_plane` sits far below (`z=-200`) purely as a safety net. The flooded
+`ground_plane` sits far below (`z=-200`) purely as a safety net. A further
+gap between `cave_floor_patch_scaled` and `cave_floor_patch`
+(`x∈[-60,-40]`) was found and closed with a bridging patch,
+`cave_floor_patch_bridge` — confirmed via physics probes that previously
+fell through to the `z=-200` safety net and now settle at `z≈5.94`. The flooded
 chamber's water surface is at `z=7.9` (a partial flood above the real floor,
 not a fill to the ceiling), region `x∈[15,65] y∈[-10,10]`, centered `(40,
 0)`. See `ros2_ws/src/cavex_slam_nav/worlds/cavex_world.world`'s
@@ -423,6 +453,11 @@ launches (a few centimeters to several tens of centimeters), most likely
 from timing variance in when each `DetachableJoint` engages relative to how
 long its child free-falls first.
 
+**Fixed**: x500 had stopped being carried on the helipad — its spawn call
+in `gazebo_tracked_vehicle.launch.py` still used the pre-cave-2x-scale
+coordinates, missed by the scale commit that updated the boat/BlueROV2
+spawns but not this one. Re-derived with the same relative offset.
+
 **SIC-SLAM: RGB-D + lidar fusion with instance clustering**
 (`ros2_ws/src/cavex_perception`, node `sic_slam_node`) — **not the same node
 as the "SIC-SLAM v0" `sic_slam_node.py` prototype described above** (that
@@ -468,6 +503,15 @@ a single test run. `sic_slam_node`'s own wiring is verified independently
 throttle-warns and skips frames gracefully, does not crash, while waiting
 for `map`) — this is a pre-existing SLAM-stack issue this feature exposes
 rather than causes.
+
+**Currently disabled**: `sic_slam_node`'s launch entry is commented out of
+`tracked_vehicle_slam.launch.py` — RTAB-Map already subscribes directly to
+RGB-D + lidar (`subscribe_depth`/`subscribe_rgb`/`subscribe_scan_cloud` all
+`True`) and does its own fusion, making this node's clustering pass
+redundant compute. `dead_end_backtrack_node.py` degrades gracefully with no
+`/sic_slam/instances` (its instance-penalty logic simply never fires).
+Re-enable the launch entry if instance-aware dead-end scoring is needed
+again.
 
 **PX4 rover SITL** (branch `px4-rover-sitl`, not `main`) — a separate,
 PX4-based alternative to the ArduPilot Rover path above. `PX4-Autopilot` is
