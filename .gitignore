@@ -17,4 +17,7 @@ ros2_ws/logs/
 .local-deps/
 __pycache__/
 *.pyc
+
+# PX4 SITL (cloned locally for px4-rover-sitl branch work, not vendored)
+/PX4-Autopilot/
 .worktrees/
