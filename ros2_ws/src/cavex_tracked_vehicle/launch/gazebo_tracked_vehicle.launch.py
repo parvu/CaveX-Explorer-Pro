@@ -265,7 +265,22 @@ def generate_launch_description():
     # identical launches. Spawning already at the target height removes the
     # free-fall these numbers were about in the first place: there's
     # nothing left to fall before the joint fixes it.)
-    # x = -35 + 0.3 = -34.7 (matching helipad_link's local x offset).
+    #
+    # REAL BUG FOUND AND FIXED: commit e76a9205 (cave scaled 2x) updated the
+    # boat's own spawn (-35,0 -> -88.78,-31.4) and bluerov2's spawn
+    # (-35.1,0 -> -88.88,-31.4) to match, but never touched this spawn --
+    # confirmed via `git show e76a9205` on this file. x500 was spawning at
+    # the OLD pre-scale location, ~54m/~31m away from where the boat and its
+    # helipad actually are post-scale -- nowhere near the helipad, most
+    # likely landing in empty space or unrelated geometry in the now-2x cave
+    # and just free-falling under gravity with nothing for the
+    # DetachableJoint to actually hold. Same relative-offset math as before
+    # (x = boat_x + 0.3, y = boat_y), just against the real current boat
+    # spawn instead of the stale one: x = -88.78 + 0.3 = -88.48,
+    # y = -31.4 (matching the boat, same convention bluerov2's own spawn
+    # above already uses). z is unchanged -- it never depended on the cave
+    # scale (see README's "Cave scaled 2x": vehicle-size/local-height
+    # parameters were deliberately left unscaled).
     # Unlike bluerov2 above, x500 still has to spawn BEFORE the boat --
     # see the spawn-order comment above LaunchDescription(). Same
     # placeholder scope as before: no PX4 SITL/flight-control integration
@@ -277,7 +292,7 @@ def generate_launch_description():
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'x500', 'model.sdf'),
                    '-name', 'x500',
-                   '-x', '-34.7', '-y', '0', '-z', '6.887'],
+                   '-x', '-88.48', '-y', '-31.4', '-z', '6.887'],
         output='screen',
     )
 

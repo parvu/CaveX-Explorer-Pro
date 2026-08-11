@@ -784,6 +784,15 @@
         <pose degrees="true">0 0 0 180 0 0</pose>
         <always_on>1</always_on>
         <update_rate>1000.0</update_rate>
+        <!-- REAL BUG FOUND AND FIXED: no override here meant gz-sim stamped
+             the bridged /imu message's frame_id from the scene graph's own
+             scoped name (world/model/link/sensor path), not the plain link
+             name robot_state_publisher's real TF tree uses -- confirmed
+             live via rtabmap's own repeated "does not exist" lookupTransform
+             errors for that exact scoped name. Same gz-sim8 gotcha already
+             fixed for lidar_link/camera_link_optical above -- see their own
+             comments. -->
+        <gz_frame_id>imu_link</gz_frame_id>
       </sensor>
     </link>
     <joint name="imu_joint" type="revolute">
