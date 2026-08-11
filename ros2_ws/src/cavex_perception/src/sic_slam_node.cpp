@@ -1,5 +1,22 @@
 #include <cstring>
 #include <iostream>
+#include <memory>
+#include <mutex>
+#include <string>
+
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/image_encodings.hpp>
+#include <vision_msgs/msg/detection3_d_array.hpp>
+#include <cv_bridge/cv_bridge.hpp>
+#include <image_geometry/pinhole_camera_model.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/filters/passthrough.h>
 
 #include "instance_clustering.hpp"
 
@@ -96,22 +113,6 @@ void selfCheck()
 
 }  // namespace
 
-#include <memory>
-#include <mutex>
-#include <string>
-
-#include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/image.hpp>
-#include <sensor_msgs/msg/camera_info.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <vision_msgs/msg/detection3_d_array.hpp>
-#include <cv_bridge/cv_bridge.hpp>
-#include <image_geometry/pinhole_camera_model.hpp>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_eigen/tf2_eigen.hpp>
-#include <pcl_conversions/pcl_conversions.h>
-
 namespace cavex_perception
 {
 
@@ -201,8 +202,22 @@ private:
     image_geometry::PinholeCameraModel cam_model;
     cam_model.fromCameraInfo(*info);
 
+    auto raw_cloud_unfiltered = pcl::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+    pcl::fromROSMsg(*lidar_msg, *raw_cloud_unfiltered);
+
+    // Important 4 (final whole-branch review): a continuous cave surface
+    // (floor+walls+ceiling all connected) forms one giant cluster with no
+    // pre-filtering. Crop to a z-band around the lidar's own origin
+    // (lidar frame, sensor-relative z) to exclude most floor/ceiling
+    // returns while keeping wall/obstacle returns at the vehicle's own
+    // level -- a reasonable default band for this ground vehicle's
+    // ~0.3m footprint scale (see cluster_tolerance_m_'s own comment).
     pcl::PointCloud<pcl::PointXYZ> raw_cloud;
-    pcl::fromROSMsg(*lidar_msg, raw_cloud);
+    pcl::PassThrough<pcl::PointXYZ> z_filter;
+    z_filter.setInputCloud(raw_cloud_unfiltered);
+    z_filter.setFilterFieldName("z");
+    z_filter.setFilterLimits(-1.0, 1.0);
+    z_filter.filter(raw_cloud);
 
     Eigen::Isometry3d lidar_to_cam_eigen = tf2::transformToEigen(lidar_to_cam);
     Eigen::Isometry3d lidar_to_map_eigen = tf2::transformToEigen(lidar_to_map);
@@ -256,7 +271,12 @@ private:
     for (const auto & inst : instances) {
       vision_msgs::msg::Detection3D det;
       det.header = msg.header;
-      det.id = std::to_string(inst.id);
+      // Spec (design doc §3): persistent ID goes in
+      // results[0].hypothesis.class_id, not det.id.
+      vision_msgs::msg::ObjectHypothesisWithPose hyp;
+      hyp.hypothesis.class_id = std::to_string(inst.id);
+      hyp.hypothesis.score = 1.0;  // geometric clustering has no real confidence to report
+      det.results.push_back(hyp);
       det.bbox.center.position.x = inst.centroid.x();
       det.bbox.center.position.y = inst.centroid.y();
       det.bbox.center.position.z = inst.centroid.z();

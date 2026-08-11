@@ -15,7 +15,7 @@ find_package(tf2_eigen REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_geometry REQUIRED)
 find_package(pcl_conversions REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common search kdtree segmentation)
+find_package(PCL REQUIRED COMPONENTS common search kdtree segmentation filters)
 
 add_executable(sic_slam_node
   src/sic_slam_node.cpp
