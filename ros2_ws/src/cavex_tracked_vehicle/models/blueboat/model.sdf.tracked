@@ -940,12 +940,18 @@
           <izz>0.0001</izz>
         </inertia>
       </inertial>
-      <sensor name="camera_sensor" type="camera">
+      <sensor name="camera_sensor" type="rgbd_camera">
         <pose>0 0 0 0 0 0</pose>
         <always_on>1</always_on>
         <update_rate>30.0</update_rate>
         <topic>camera/color</topic>
-        <gz_frame_id>camera_link</gz_frame_id>
+        <!-- REP 103/145 optical convention (z-forward, x-right, y-down),
+             not camera_link's own body convention (x-forward, y-left,
+             z-up) -- image_geometry::PinholeCameraModel::project3dToPixel
+             (sic_slam_node.cpp) requires this. camera_link_optical is a
+             zero-translation, pure-rotation child of camera_link, added
+             as a static TF in tracked_vehicle_slam.launch.py. -->
+        <gz_frame_id>camera_link_optical</gz_frame_id>
         <camera>
           <horizontal_fov>1.3962634</horizontal_fov>
           <image>

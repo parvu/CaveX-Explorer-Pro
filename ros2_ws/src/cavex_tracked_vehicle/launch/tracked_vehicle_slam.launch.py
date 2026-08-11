@@ -60,6 +60,24 @@ def generate_launch_description():
         arguments=['--x', '0.55', '--y', '0', '--z', '0.15',
                    '--frame-id', 'base_link', '--child-frame-id', 'camera_link'],
     )
+    # Real, live-diagnosed bug (final whole-branch review, Critical 1):
+    # camera_link above is body-convention (x-forward/y-left/z-up, same as
+    # base_link -- zero rotation), but model.sdf.tracked's camera sensor now
+    # reports its image header's frame_id as camera_link_optical (REP
+    # 103/145 optical convention: z-forward, x-right, y-down), which is what
+    # image_geometry::PinholeCameraModel::project3dToPixel (sic_slam_node.cpp)
+    # actually requires. Zero-translation, pure-rotation static TF -- the
+    # standard body-to-optical rotation, same convention every ROS camera
+    # driver publishes.
+    camera_optical_static_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='camera_optical_static_tf',
+        output='screen',
+        arguments=['--x', '0', '--y', '0', '--z', '0',
+                   '--roll', '-1.5707963', '--pitch', '0', '--yaw', '-1.5707963',
+                   '--frame-id', 'camera_link', '--child-frame-id', 'camera_link_optical'],
+    )
 
     # RTAB-Map's rtabmap_slam node doesn't compute its own odometry from raw
     # lidar data -- it only does SLAM (map graph + loop closure) given an
@@ -100,7 +118,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': use_sim_time,
-            'subscribe_depth': False,
+            'subscribe_depth': True,
             'subscribe_rgb': True,
             'subscribe_scan': False,
             'subscribe_scan_cloud': True,
@@ -149,6 +167,7 @@ def generate_launch_description():
         remappings=[
             ('rgb/image', '/camera/color/image_raw'),
             ('rgb/camera_info', '/camera/color/camera_info'),
+            ('depth/image', '/camera/depth/image_raw'),
             ('scan_cloud', '/lidar/points'),
         ],
         arguments=['--delete_db_on_start'],
@@ -345,9 +364,24 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
+    # Task 4 (SIC-SLAM RGB-D + lidar fusion): colorizes the lidar cloud via
+    # the live camera projection, clusters it into instances, tracks ids
+    # frame-to-frame, and publishes /sic_slam/instances + /sic_slam/colored_points
+    # for Task 5. Needs map -> lidar_link TF (rtabmap above) and camera_link TF
+    # (camera_static_tf above), so it's safe to start alongside everything else --
+    # it just skips frames until those are live, same pattern as icp_odometry.
+    sic_slam_node = Node(
+        package='cavex_perception',
+        executable='sic_slam_node',
+        name='sic_slam_node',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
     return LaunchDescription([
         lidar_static_tf,
         camera_static_tf,
+        camera_optical_static_tf,
         icp_odometry,
         rtabmap,
         slam_pose_publisher,
@@ -357,4 +391,5 @@ def generate_launch_description():
         bootstrap_nudge,
         ate_evaluator,
         tracked_vehicle_ground_truth_odom,
+        sic_slam_node,
     ])
