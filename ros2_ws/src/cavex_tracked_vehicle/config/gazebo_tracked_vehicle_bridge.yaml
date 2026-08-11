@@ -31,16 +31,37 @@
   gz_type_name: "gz.msgs.PointCloudPacked"
   direction: GZ_TO_ROS
 
+# Real, confirmed (Task 1, live `gz topic -l` + `gz topic -i` after switching
+# camera_sensor to type="rgbd_camera"): rgbd_camera renames its gz topics
+# relative to the old plain "camera" type -- color image moved from
+# "/camera/color" to "/camera/color/image", and camera_info moved from
+# "/camera/camera_info" (parent-of-topic convention for plain camera) to
+# "/camera/color/camera_info" (nested under the sensor's own topic instead).
+# Both had to be updated here or the pre-existing color bridge would have
+# silently gone dead the moment the SDF sensor type changed.
 - ros_topic_name: "/camera/color/image_raw"
-  gz_topic_name: "/camera/color"
+  gz_topic_name: "/camera/color/image"
   ros_type_name: "sensor_msgs/msg/Image"
   gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/camera/color/camera_info"
-  gz_topic_name: "/camera/camera_info"
+  gz_topic_name: "/camera/color/camera_info"
   ros_type_name: "sensor_msgs/msg/CameraInfo"
   gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+
+# New with rgbd_camera (Task 1): depth image, confirmed live at
+# "/camera/color/depth_image" (gz.msgs.Image, not a separate depth-specific
+# gz message type). Depth shares the color sensor's intrinsics/camera_info
+# topic in this Gazebo version -- confirmed live there is no separate
+# "/camera/color/depth_camera_info" or similar; the sole camera_info topic
+# above (already bridged) serves both. No second camera_info entry needed
+# (see brief Step 3's own note anticipating exactly this).
+- ros_topic_name: "/camera/depth/image_raw"
+  gz_topic_name: "/camera/color/depth_image"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS
 
 - topic_name: "/world/cavex_world/pose/info"
