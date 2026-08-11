@@ -398,13 +398,25 @@ def generate_launch_description():
     # for Task 5. Needs map -> lidar_link TF (rtabmap above) and camera_link TF
     # (camera_static_tf above), so it's safe to start alongside everything else --
     # it just skips frames until those are live, same pattern as icp_odometry.
-    sic_slam_node = Node(
-        package='cavex_perception',
-        executable='sic_slam_node',
-        name='sic_slam_node',
-        output='screen',
-        parameters=[{'use_sim_time': use_sim_time}],
-    )
+    #
+    # DISABLED (real request): rtabmap's own subscribe_depth/subscribe_rgb/
+    # subscribe_scan_cloud (all True above) already fuse the RGB-D + lidar
+    # data directly for real SLAM mapping -- sic_slam_node was always a
+    # separate, additional consumer of those same raw topics for instance
+    # clustering (dead_end_backtrack_node's survey-penalty feature), not
+    # part of the core SLAM path, so disabling it doesn't change what
+    # rtabmap sees or does. dead_end_backtrack_node degrades gracefully with
+    # no /sic_slam/instances publisher (its own _instance_centroids stays
+    # [], instance_penalty always returns 0 -- by design, see its own
+    # module docstring). cavex_perception package/build left intact; only
+    # the launch entry is removed, easy to re-enable.
+    # sic_slam_node = Node(
+    #     package='cavex_perception',
+    #     executable='sic_slam_node',
+    #     name='sic_slam_node',
+    #     output='screen',
+    #     parameters=[{'use_sim_time': use_sim_time}],
+    # )
 
     return LaunchDescription([
         lidar_static_tf,
@@ -419,5 +431,4 @@ def generate_launch_description():
         bootstrap_nudge,
         ate_evaluator,
         tracked_vehicle_ground_truth_odom,
-        sic_slam_node,
     ])
