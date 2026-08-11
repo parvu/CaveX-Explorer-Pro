@@ -368,7 +368,8 @@ class DeadEndBacktrackNode(Node):
         self._survey_rotated_rad = 0.0
         self._survey_last_check_rad = 0.0
         self._survey_last_yaw = None
-        self._survey_best_clearance = 0.0
+        self._survey_best_score = 0.0
+        self._survey_best_raw_clearance = 0.0
         self._survey_best_yaw = None
         self._survey_turning_to_best = False
 
@@ -518,7 +519,8 @@ class DeadEndBacktrackNode(Node):
         self._survey_rotated_rad = 0.0
         self._survey_last_check_rad = 0.0
         self._survey_last_yaw = yaw
-        self._survey_best_clearance = 0.0
+        self._survey_best_score = 0.0
+        self._survey_best_raw_clearance = 0.0
         self._survey_best_yaw = None
         self._survey_turning_to_best = False
 
@@ -528,7 +530,7 @@ class DeadEndBacktrackNode(Node):
             if abs(error) <= TURN_TOLERANCE_RAD:
                 self._resolve(
                     f"360 survey complete -- chose the best opening found "
-                    f"(clear {self._survey_best_clearance:.2f}m) and turned to "
+                    f"(score {self._survey_best_score:.2f}) and turned to "
                     "face it; handing control back to Nav2/explore_lite.")
                 return
             twist = Twist()
@@ -539,14 +541,29 @@ class DeadEndBacktrackNode(Node):
         if (self._latest_costmap is not None
                 and self._survey_rotated_rad - self._survey_last_check_rad >= SURVEY_CHECK_INTERVAL_RAD):
             self._survey_last_check_rad = self._survey_rotated_rad
-            clearance = ray_clear_distance(self._latest_costmap, x, y, yaw, SURVEY_FORWARD_CHECK_M)
-            clearance -= instance_penalty(self._instance_centroids, x, y, yaw)
-            if clearance > self._survey_best_clearance:
-                self._survey_best_clearance = clearance
-                self._survey_best_yaw = yaw
+            raw_clearance = ray_clear_distance(self._latest_costmap, x, y, yaw, SURVEY_FORWARD_CHECK_M)
+            # Viability gate uses the RAW, unpenalized clearance -- a real
+            # physical opening (raw_clearance > 0) is always a candidate,
+            # even if a nearby instance's penalty pushes its score negative.
+            # Ranking among viable candidates uses the penalized score (an
+            # instance nearby makes an otherwise-clear opening less
+            # desirable than a farther, instance-free one). Without this
+            # split, INSTANCE_PENALTY_M exceeding a direction's raw
+            # clearance could make every real opening unselectable and force
+            # an unwanted backtrack in tight corridors -- this vehicle's
+            # normal operating environment. (Final whole-branch review,
+            # Important 3.) With no instances, instance_penalty is always 0
+            # so score == raw_clearance and this behaves identically to
+            # before this task.
+            if raw_clearance > 0.0:
+                score = raw_clearance - instance_penalty(self._instance_centroids, x, y, yaw)
+                if self._survey_best_yaw is None or score > self._survey_best_score:
+                    self._survey_best_score = score
+                    self._survey_best_raw_clearance = raw_clearance
+                    self._survey_best_yaw = yaw
 
         if self._survey_rotated_rad >= 2.0 * math.pi:
-            if self._survey_best_yaw is not None and self._survey_best_clearance > 0.0:
+            if self._survey_best_yaw is not None:
                 self._survey_turning_to_best = True
             else:
                 self._start_backtrack(yaw)
@@ -778,6 +795,9 @@ def _self_check():
     too_far = [(20.0, 0.0)]  # ahead, but beyond OPENING_SCAN_RADIUS_M
     assert instance_penalty(too_far, 0.0, 0.0, 0.0) == 0.0, \
         "an instance beyond the scan radius should not be penalized"
+    behind = [(-1.5, 0.0)]  # behind the vehicle (along < 0.0)
+    assert instance_penalty(behind, 0.0, 0.0, 0.0) == 0.0, \
+        "an instance behind the vehicle should not be penalized"
 
     print("dead_end_backtrack_node self-check: OK")
 
