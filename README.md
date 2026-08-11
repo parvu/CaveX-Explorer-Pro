@@ -423,6 +423,70 @@ launches (a few centimeters to several tens of centimeters), most likely
 from timing variance in when each `DetachableJoint` engages relative to how
 long its child free-falls first.
 
+**SIC-SLAM: RGB-D + lidar fusion with instance clustering**
+(`ros2_ws/src/cavex_perception`, node `sic_slam_node`) — **not the same node
+as the "SIC-SLAM v0" `sic_slam_node.py` prototype described above** (that
+one lives in `cavex_slam_nav`, is Python, and does cmd_vel+IMU dead
+reckoning bias-corrected against RTAB-Map's pose). This is a separate,
+unrelated C++ node in a different package that happens to share the
+"sic_slam" name — instance-level semantic clustering fused from RGB-D +
+lidar, for the Phase 1 tracked-vehicle stack below, not a pose estimator.
+The tracked
+vehicle's camera is an RGB-D sensor (`type="rgbd_camera"`); `sic_slam_node`
+projects `/lidar/points` into the color image via
+`image_geometry::PinholeCameraModel` to colorize each point, clusters the
+colorized cloud with PCL `EuclideanClusterExtraction` (geometry/XYZ only —
+color is carried as a point attribute, never used in the clustering
+decision, and there is no deep-learning segmentation anywhere in this
+feature by design), and tracks instance IDs frame-to-frame by greedy
+nearest-centroid matching (no re-identification across an occlusion gap —
+a cluster missing for one frame gets a fresh ID if it reappears). Publishes
+`/sic_slam/instances` (`vision_msgs/Detection3DArray`, ID in
+`results[0].hypothesis.class_id`) and `/sic_slam/colored_points`
+(`PointCloud2`, RViz-only). `dead_end_backtrack_node.py` subscribes and
+applies a 2.0m score penalty (`instance_penalty()`, 0.5m lateral tolerance)
+to survey directions with a nearby instance — the dead-end node's own
+survey-direction viability is gated on *unpenalized* clearance, so a known
+instance can demote a cluttered opening below a clear one but can never
+veto the only real opening. Self-check:
+`ros2 run cavex_perception sic_slam_node --self-check`.
+
+The camera's image frame required a body-convention-to-optical-convention
+static TF (`camera_link` → `camera_link_optical`, zero translation, the
+standard REP 103 rotation) since `image_geometry`'s projection math assumes
+the ROS optical convention (z-forward/x-right/y-down), not this vehicle's
+other sensors' body convention (x-forward/y-left/z-up) — without it,
+`/sic_slam/colored_points` colorizes with effectively arbitrary pixels.
+
+**Known limitation, not yet resolved**: in this development environment,
+`/sic_slam/instances` has never been observed publishing a populated
+message end-to-end, because RTAB-Map/`icp_odometry`'s pre-existing
+registration-bootstrap fragility (see "Known limitation" under ATE
+evaluation above) sometimes means the `map` TF frame never comes up within
+a single test run. `sic_slam_node`'s own wiring is verified independently
+(self-check passes; live-confirmed correct topic/frame subscriptions;
+throttle-warns and skips frames gracefully, does not crash, while waiting
+for `map`) — this is a pre-existing SLAM-stack issue this feature exposes
+rather than causes.
+
+**PX4 rover SITL** (branch `px4-rover-sitl`, not `main`) — a separate,
+PX4-based alternative to the ArduPilot Rover path above. `PX4-Autopilot` is
+cloned locally at the repo root and gitignored (not vendored into git like
+`ardupilot/` is, to avoid a second multi-GB autopilot tree in history).
+Build the rover + Gazebo SITL target (confirmed via the real airframe file
+`ROMFS/px4fmu_common/init.d-posix/airframes/4009_gz_r1_rover`, not guessed):
+
+```bash
+cd PX4-Autopilot
+make px4_sitl gz_r1_rover   # also auto-launches the sim afterward (PX4's own
+                            # convention) -- kill it if you only want the build
+```
+
+This only builds `build/px4_sitl_default/bin/px4`. **Not yet done**: no
+ROS2/Gazebo bridge integration (`px4_msgs`/`px4_ros_com`), no launch file
+wiring it to this project's `cavex_world.world` or sensors — unlike the
+ArduPilot path documented throughout the rest of this file.
+
 **Honesty caveats**: this simulation's ground truth is simulator-internal and
 noiseless — treat any ATE/localization numbers as best-case/idealized, not
 real-sensor-noise results. The vehicle is labeled "BlueBoat-like tracked

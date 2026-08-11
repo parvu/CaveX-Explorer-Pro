@@ -52,7 +52,22 @@ gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A4 'name: "cavex_tracke
 ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py &
 sleep 15
 
-ros2 topic list | grep -iE "lidar|costmap|frontier|odom_ground_truth|ap/|cmd_vel|map"
+ros2 topic list | grep -iE "lidar|costmap|frontier|odom_ground_truth|ap/|cmd_vel|map|sic_slam"
+
+# SIC-SLAM (RGB-D + lidar fusion, cavex_perception/sic_slam_node -- part of
+# section 4's launch): colorizes /lidar/points via the camera projection,
+# clusters into persistent-ID instances, publishes /sic_slam/instances
+# (vision_msgs/Detection3DArray) and /sic_slam/colored_points (PointCloud2,
+# RViz-only). dead_end_backtrack_node.py subscribes and penalizes survey
+# directions with a nearby instance. Self-check:
+# ros2 run cavex_perception sic_slam_node --self-check
+ros2 topic echo /sic_slam/instances --once
+ros2 topic hz /sic_slam/colored_points
+# NOTE: both may show nothing until RTAB-Map/icp_odometry has bootstrapped a
+# real `map` TF frame -- sic_slam_node throttle-warns and skips frames until
+# then (by design, same posture as every other TF-dependent node here), it
+# does not crash. See the SIC-SLAM history entry below for this environment's
+# own map-bootstrap flakiness.
 
 # ============================================================
 # 5. Drive the tracked vehicle for real
@@ -225,7 +240,7 @@ gz service -s /world/cavex_world/remove --reqtype gz.msgs.Entity --reptype gz.ms
 # ============================================================
 # 9. Cleanup — ALWAYS run after finishing
 # ============================================================
-ps aux | grep -iE "gz sim|ardurover|ardusub|micro_ros_agent|MicroXRCEAgent|rtabmap|icp_odometry|nav2|explore|rviz2|mavproxy|sitl_dds_udp|parameter_bridge|robot_state_publisher|spawner|controller_server|planner_server|bt_navigator|behavior_server|lifecycle_manager|smoother_server|route_server|velocity_smoother|waypoint_follower|collision_monitor|docking_server" | grep -v grep
+ps aux | grep -iE "gz sim|ardurover|ardusub|micro_ros_agent|MicroXRCEAgent|rtabmap|icp_odometry|nav2|explore|rviz2|mavproxy|sitl_dds_udp|parameter_bridge|robot_state_publisher|spawner|controller_server|planner_server|bt_navigator|behavior_server|lifecycle_manager|smoother_server|route_server|velocity_smoother|waypoint_follower|collision_monitor|docking_server|sic_slam_node" | grep -v grep
 # kill -9 <pid> for EVERY PID found (never pkill -f -- unreliable in this
 # environment); re-check ps aux afterward to confirm none survive. Two full launch
 # trees have been found running simultaneously in this project before -- don't
@@ -549,3 +564,130 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # nothing -- and the whole navsat_link/navsat_sensor/navsat_joint was
 # removed entirely once confirmed orphaned (see ArduPilot heading-drift
 # entry above for why that removal mattered more than expected).
+
+# ============================================================
+# SIC-SLAM: RGB-D + 3D lidar fusion with instance clustering (new,
+# cavex_perception package + dead_end_backtrack_node integration)
+# ============================================================
+# NEW PACKAGE cavex_perception / sic_slam_node: camera_sensor switched
+# type="camera" -> type="rgbd_camera" (model.sdf.tracked); colorizes
+# /lidar/points via image_geometry::PinholeCameraModel projection into the
+# RGB-D color image, clusters the colorized cloud with PCL
+# EuclideanClusterExtraction (XYZ-only -- color is carried as a point
+# attribute, never used in the clustering decision, by design), tracks
+# instance IDs frame-to-frame by greedy nearest-centroid matching (no
+# cross-gap re-identification -- a cluster missing one frame gets a fresh
+# ID). Publishes /sic_slam/instances (vision_msgs/Detection3DArray,
+# instance ID in results[0].hypothesis.class_id) and /sic_slam/colored_points
+# (PointCloud2, RViz-only). dead_end_backtrack_node.py subscribes and
+# applies a 2.0m score penalty (instance_penalty(), 0.5m lateral tolerance)
+# to survey directions with a nearby instance -- viability is gated on the
+# RAW unpenalized clearance, only ranking uses the penalized score, so an
+# instance can never veto the only real opening.
+#
+# REAL BUG FOUND AND FIXED (final whole-branch review, not caught by any
+# per-task review): the camera's image frame (camera_link) was body
+# convention (x-forward/y-left/z-up, zero-rotation static TF from
+# base_link), but image_geometry::PinholeCameraModel::project3dToPixel
+# requires the ROS optical convention (z-forward/x-right/y-down, REP
+# 103/145) -- meant /sic_slam/colored_points, the whole feature's headline
+# deliverable, was colorizing points with essentially arbitrary pixels.
+# Fixed at the TF layer (not by patching node math, so every future
+# consumer of this camera benefits): added a zero-translation
+# camera_link -> camera_link_optical static TF (roll -1.5707963, pitch 0,
+# yaw -1.5707963, gazebo_tracked_vehicle.launch.py) and retargeted the
+# SDF's <gz_frame_id> to camera_link_optical so the image header itself
+# reports the optical frame -- sic_slam_node needed zero code changes since
+# it already resolves the color image's own header.frame_id dynamically.
+#
+# NOT FULLY RESOLVED: in this dev environment, RTAB-Map/icp_odometry has a
+# pre-existing registration-bootstrap fragility (ICP "null guess" failures
+# after an early partial success) where the `map` TF frame sometimes never
+# comes up in a single ~12min test run -- meaning /sic_slam/instances has
+# never actually been observed publishing a real populated message
+# end-to-end in this environment, only verified via: (a) the pure
+# clustering/tracking self-check (real assertions, passes), (b) live
+# confirmation that the node subscribes to real sensor data with correct
+# frame_ids and TF lookup targets, and (c) correct graceful-degradation
+# (throttled warn + skip frame, no crash) when `map` isn't up yet.
+# Investigated TWICE whether this branch's own depth-subscription change
+# (Task 2, RTAB-Map subscribe_depth:=True) was the actual cause rather than
+# coincidence -- both times, rtabmap's own "Did not receive data since"
+# diagnostic (which would name the missing sync topic if a subscription
+# mismatch were the cause) never fired; the observed failure signature
+# (icp_odometry ratio=0.000000, repeated null-guess registration failures)
+# matches this codebase's own pre-existing documented cold-start deadlock
+# from earlier tasks. Not proven impossible to be related, but no evidence
+# ties it to this branch, and it's a known pre-existing environment issue,
+# not new breakage.
+
+# ============================================================
+# Full-stack rebuild incident: cache cleanup deleted vendored (non-
+# regenerable) content, not just build output -- lesson for next cleanup
+# ============================================================
+# A disk-space cleanup pass (`rm -rf` on gitignored dirs assumed to be pure
+# build cache) broke the ardupilot_sitl build by deleting TWO things that
+# looked like generated output but were actually fixed/vendored content
+# ardupilot's own build never regenerates from scratch:
+# (1) ardupilot/modules/mavlink/pymavlink/generator/C/ -- mavlink's fixed
+#     protocol headers (mavlink_types.h, protocol.h, etc; gitignored on
+#     purpose, but expected to already exist on disk, not rebuilt by waf).
+#     `waf configure`'s own submodule-update/clean step (default ON) also
+#     WIPES untracked content under modules/mavlink on every configure, so
+#     copying the headers back once isn't enough -- fixed by passing
+#     -DARDUPILOT_WAF_CONFIGURE_ARGS=--no-submodule-update to colcon build
+#     (ardupilot_sitl's CMake cache var) so this doesn't recur. The correct
+#     replacement content (matching this checkout's own vendored mavlink
+#     version, confirmed via MAVLINK_WIP symbol presence -- a version
+#     mismatch from a wrong source produces cryptic "does not name a type"
+#     compile errors deep in generated per-message headers) came from the
+#     real upstream https://github.com/ArduPilot/pymavlink repo (mavlink is
+#     itself a separate repo from pymavlink, confirmed via GitHub's contents
+#     API, both flat-vendored into this project's ardupilot/ tree).
+# (2) Micro-XRCE-DDS-Gen/share/microxrceddsgen.jar -- this one WAS genuine
+#     gradle build output, just needed `./gradlew assemble` re-run.
+# Lesson: before deleting a gitignored directory as "cache," confirm the
+# build actually regenerates it from nothing on a clean run -- a
+# `.gitignore` entry means "don't track in git," not "safe to delete,
+# always regenerable."
+
+# ============================================================
+# Process hygiene: this environment's known orphaned-process problem is
+# WORSE than previously documented -- always sweep before assuming clean
+# ============================================================
+# Found ~64 leftover ROS2/Nav2/RTAB-Map processes from SEVERAL overlapping
+# launch sessions stacked up across many real hours (oldest from 09:33,
+# still running well past 14:00) -- `kill -9` on a `ros2 launch` PARENT
+# process does NOT reliably kill its child node tree (SIGKILL skips ros2
+# launch's own signal-forwarding/cleanup), so killing only the launch
+# parent orphans the children instead of stopping them. Always sweep by
+# BINARY PATH pattern (grep for /opt/ros/*/lib/ and .../ros2_ws/install/,
+# not just launch-file/process-name patterns) and verify zero survivors
+# after, exactly as sections 2/9 above already say -- this was a real,
+# not hypothetical, recurrence of exactly what those sections warn about.
+# Also found a fully unrelated runaway `bfs -S dfs / -iname *RgbdCamera*`
+# (full-filesystem search, no depth/path limit) that had been running
+# since a much earlier debugging session, silently burning 190+ CPU-minutes
+# by the time it was found and killed -- a reminder to check `ps aux
+# --sort=start_time` broadly (not just this project's own process names)
+# during any hygiene sweep, not only the grep patterns above.
+
+# ============================================================
+# PX4 rover SITL (branch px4-rover-sitl) -- BUILT, not yet integrated
+# ============================================================
+# New branch, separate from this file's ArduPilot-based main-branch flow.
+# PX4-Autopilot cloned locally (shallow, --recurse-submodules) at the repo
+# root but added to .gitignore, NOT vendored into git like ardupilot/ is --
+# avoids a second ~2GB+ autopilot source tree in history. Rover SITL target
+# found via the real airframe file (ROMFS/px4fmu_common/init.d-posix/
+# airframes/4009_gz_r1_rover), not guessed:
+#   cd PX4-Autopilot && make px4_sitl gz_r1_rover
+# Builds clean (build/px4_sitl_default/bin/px4). NOTE: this make target
+# ALWAYS auto-launches the sim after building (PX4's own convention, not
+# optional) -- it'll sit retrying "Waiting for Gazebo world..." if `gz`
+# isn't on PATH in that shell; kill it (ps aux | grep px4) if you only
+# wanted the build. NOT YET DONE: no ROS2/Gazebo bridge wiring at all --
+# no px4_msgs/px4_ros_com, no launch file integrating it with this
+# project's cavex_world.world or lidar/camera sensors, unlike the
+# ArduPilot path this whole file otherwise documents. Pure build-only
+# checkpoint for future rover-SITL work on that branch.
