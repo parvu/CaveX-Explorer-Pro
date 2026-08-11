@@ -47,6 +47,8 @@ Visualization Manager:
           Value: true
         camera_link:
           Value: false
+        camera_link_optical:
+          Value: false
         left_track_retract_mount:
           Value: false
         lidar_link:
@@ -67,7 +69,8 @@ Visualization Manager:
           odom:
             base_link:
               camera_link:
-                {}
+                camera_link_optical:
+                  {}
               left_track_retract_mount:
                 {}
               lidar_link:
@@ -80,7 +83,7 @@ Visualization Manager:
       Binary representation: false
       Binary threshold: 100
       Class: rviz_default_plugins/Map
-      Color Scheme: map
+      Color Scheme: raw
       Draw Behind: false
       Enabled: true
       Name: RTAB-Map Occupancy Grid
@@ -102,8 +105,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 9.297486305236816
-        Min Value: -1.1941092014312744
+        Max Value: 9.07746410369873
+        Min Value: -0.8983104228973389
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -135,8 +138,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 2.2914891242980957
-        Min Value: -0.5025081038475037
+        Max Value: 1.4944911003112793
+        Min Value: -0.5190878510475159
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -222,7 +225,7 @@ Visualization Manager:
       Enabled: true
       Name: Explore Frontiers
       Namespaces:
-        {}
+        frontiers: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -234,7 +237,7 @@ Visualization Manager:
       Binary representation: false
       Binary threshold: 100
       Class: rviz_default_plugins/Map
-      Color Scheme: costmap
+      Color Scheme: raw
       Draw Behind: false
       Enabled: false
       Name: Global Costmap
@@ -257,7 +260,7 @@ Visualization Manager:
       Binary representation: false
       Binary threshold: 100
       Class: rviz_default_plugins/Map
-      Color Scheme: map
+      Color Scheme: raw
       Draw Behind: false
       Enabled: true
       Name: Local Costmap (corridor-centering inflation)
@@ -294,7 +297,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 5.780447483062744
+      Distance: 6.7909345626831055
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -309,10 +312,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.1997966766357422
+      Pitch: 0.9447970986366272
       Target Frame: base_link
       Value: Orbit (rviz_default_plugins)
-      Yaw: 2.5149996280670166
+      Yaw: 2.129995822906494
     Saved:
       - Class: rviz_default_plugins/Orbit
         Distance: 8.11705493927002
@@ -346,5 +349,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1183
-  X: 339
-  Y: 99
+  X: 348
+  Y: 141

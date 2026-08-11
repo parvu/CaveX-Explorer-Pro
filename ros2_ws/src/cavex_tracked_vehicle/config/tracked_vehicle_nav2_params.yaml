@@ -413,12 +413,23 @@ collision_monitor:
       min_points: 6
       visualize: False
       enabled: True
+    # Switched 3D -> 2D lidar (real request, see
+    # docs/superpowers/specs/2026-08-11-2d-lidar-switch-design.md): keeping
+    # this "pointcloud" source, NOT reverting to the historically-broken
+    # "scan"/LaserScan source documented above (this vehicle never
+    # published /scan and that config was a total no-op the whole time it
+    # existed). min_height/max_height narrowed from 0.0-1.2m (sized for the
+    # old +-15deg cone's vertical spread at typical bubble-range distances)
+    # to a tight band around the lidar's real mount height -- lidar_link's
+    # pose relative to base_link is z=0.55m (model.sdf.tracked, confirmed
+    # directly, not assumed) -- +-0.10m margin for real pitch/roll/physics
+    # jitter around the single flat ring.
     observation_sources: ["pointcloud"]
     pointcloud:
       type: "pointcloud"
       topic: "/lidar/points"
-      min_height: 0.0
-      max_height: 1.2
+      min_height: 0.45
+      max_height: 0.65
       use_global_height: False
       enabled: True
 
