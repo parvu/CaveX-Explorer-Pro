@@ -82,6 +82,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from nav_msgs.msg import Odometry, OccupancyGrid
+from vision_msgs.msg import Detection3DArray
 from geometry_msgs.msg import Twist
 from action_msgs.srv import CancelGoal
 
@@ -313,6 +314,40 @@ def clearance_on_side(costmap: OccupancyGrid, x, y, yaw, side,
     return clear
 
 
+INSTANCE_PENALTY_M = 2.0  # subtracted from a survey direction's clearance
+                          # score if a known instance sits in that direction
+                          # within OPENING_SCAN_RADIUS_M -- large enough to
+                          # usually demote a cluttered opening below a real,
+                          # instance-free one, without being an outright veto
+                          # (ray_clear_distance's own SURVEY_FORWARD_CHECK_M
+                          # cap is 5.0m, so this is a meaningful fraction of
+                          # that range, not a rounding error).
+INSTANCE_LATERAL_TOLERANCE_M = 0.5  # how far off the ray's centerline an
+                                    # instance can be and still count as
+                                    # "in" that direction -- roughly this
+                                    # vehicle's own track width.
+
+
+def instance_penalty(instance_centroids, x, y, yaw,
+                      radius_m=OPENING_SCAN_RADIUS_M,
+                      lateral_tolerance_m=INSTANCE_LATERAL_TOLERANCE_M,
+                      penalty_m=INSTANCE_PENALTY_M):
+    """How much to subtract from a survey direction's clearance score
+    because a known instance (from /sic_slam/instances) sits in that
+    direction. instance_centroids is a list of (x, y) tuples in the same
+    frame as the pose ("map"). Pure function, no ROS dependency."""
+    dx, dy = math.cos(yaw), math.sin(yaw)
+    for (ix, iy) in instance_centroids:
+        rel_x, rel_y = ix - x, iy - y
+        along = rel_x * dx + rel_y * dy
+        if along < 0.0 or along > radius_m:
+            continue
+        lateral = abs(rel_x * -dy + rel_y * dx)
+        if lateral <= lateral_tolerance_m:
+            return penalty_m
+    return 0.0
+
+
 class DeadEndBacktrackNode(Node):
     def __init__(self):
         super().__init__('dead_end_backtrack_node')
@@ -351,6 +386,9 @@ class DeadEndBacktrackNode(Node):
         self.create_subscription(Odometry, '/cavex/slam/odom', self._odom_cb, 10)
         self.create_subscription(OccupancyGrid, '/global_costmap/costmap',
                                   self._costmap_cb, qos_transient)
+        self._instance_centroids = []
+        self.create_subscription(Detection3DArray, '/sic_slam/instances',
+                                  self._instances_cb, 10)
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self._cancel_client = self.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal')
 
@@ -383,6 +421,12 @@ class DeadEndBacktrackNode(Node):
 
     def _costmap_cb(self, msg: OccupancyGrid):
         self._latest_costmap = msg
+
+    def _instances_cb(self, msg: Detection3DArray):
+        self._instance_centroids = [
+            (d.bbox.center.position.x, d.bbox.center.position.y)
+            for d in msg.detections
+        ]
 
     # --- trigger condition (NORMAL state only): closed corridor, not staleness ---
 
@@ -496,6 +540,7 @@ class DeadEndBacktrackNode(Node):
                 and self._survey_rotated_rad - self._survey_last_check_rad >= SURVEY_CHECK_INTERVAL_RAD):
             self._survey_last_check_rad = self._survey_rotated_rad
             clearance = ray_clear_distance(self._latest_costmap, x, y, yaw, SURVEY_FORWARD_CHECK_M)
+            clearance -= instance_penalty(self._instance_centroids, x, y, yaw)
             if clearance > self._survey_best_clearance:
                 self._survey_best_clearance = clearance
                 self._survey_best_yaw = yaw
@@ -717,6 +762,22 @@ def _self_check():
     fully_blocked = _make_grid(40, 40, 0.1, -2.0, -2.0, 100)
     assert can_rotate_freely(fully_blocked, 0.0, 0.0) is False, \
         "fully-blocked grid should not have room to rotate"
+
+    # instance_penalty: an instance sitting directly in the scan direction,
+    # within OPENING_SCAN_RADIUS_M, should reduce the score; one far off to
+    # the side or beyond the radius should not affect it at all.
+    no_instances_penalty = instance_penalty([], 0.0, 0.0, 0.0)
+    assert no_instances_penalty == 0.0, \
+        "no instances should mean zero penalty"
+    blocking_instance = [(1.5, 0.0)]  # 1.5m straight ahead at yaw=0
+    assert instance_penalty(blocking_instance, 0.0, 0.0, 0.0) > 0.0, \
+        "an instance directly ahead within scan radius should add a penalty"
+    off_to_side = [(0.0, 5.0)]  # 5m to the side, not ahead
+    assert instance_penalty(off_to_side, 0.0, 0.0, 0.0) == 0.0, \
+        "an instance off to the side should not be penalized"
+    too_far = [(20.0, 0.0)]  # ahead, but beyond OPENING_SCAN_RADIUS_M
+    assert instance_penalty(too_far, 0.0, 0.0, 0.0) == 0.0, \
+        "an instance beyond the scan radius should not be penalized"
 
     print("dead_end_backtrack_node self-check: OK")
 
