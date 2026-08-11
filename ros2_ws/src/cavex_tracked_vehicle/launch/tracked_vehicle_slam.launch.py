@@ -101,12 +101,7 @@ def generate_launch_description():
             # default subscriber QoS is reliable -- same mismatch fix as the
             # reference file.
             'qos': 2,
-            # Switched 3D -> 2D lidar (real request, see
-            # docs/superpowers/specs/2026-08-11-2d-lidar-switch-design.md):
-            # point-to-point ICP, same reason as the rtabmap node below --
-            # a flat single-ring scan can't provide reliable surface
-            # normals for point-to-plane.
-            'Icp/PointToPlane': 'false',
+            'Icp/PointToPlane': 'true',
             'Icp/VoxelSize': '0.1',
         }],
         remappings=[
@@ -132,13 +127,7 @@ def generate_launch_description():
             'qos_camera_info': 2,
             'qos_scan_cloud': 2,
             'Grid/FromDepth': 'false',
-            # Switched 3D -> 2D lidar (real request, see
-            # docs/superpowers/specs/2026-08-11-2d-lidar-switch-design.md):
-            # lidar_sensor's vertical scan is now a single flat ring
-            # (model.sdf.tracked), so the occupancy grid is built directly
-            # by ray-casting that flat scan, not from 3D-derived normal
-            # segmentation -- Grid/3D false matches.
-            'Grid/3D': 'false',
+            'Grid/3D': 'true',
             # Explicit, not relying on RTAB-Map's own default (0 = uncapped,
             # tracks the sensor's own reported max range) -- matches
             # lidar_sensor's own max range in model.sdf.tracked (doubled
@@ -146,19 +135,35 @@ def generate_launch_description():
             # out here so this doesn't silently drift out of sync if either
             # one changes again.
             'Grid/RangeMax': '60.0',
-            # NOTE: Grid/MaxGroundAngle (was set to 65deg here to fix a real
-            # 3D normal-based ground-misclassification bug -- see commit
-            # history for that investigation) is REMOVED as part of the 3D
-            # -> 2D lidar switch: with Grid/3D false, occupancy comes from
-            # ray-casting the flat scan directly, not normal segmentation,
-            # so that failure mode no longer exists -- nothing to configure
-            # here for it.
-            #
-            # Switched 3D -> 2D lidar (real request): point-to-point ICP
-            # instead of point-to-plane -- a flat single-ring scan can't
-            # provide the reliable surface normals point-to-plane needs;
-            # point-to-point is RTAB-Map's standard mode for 2D-lidar SLAM.
-            'Icp/PointToPlane': 'false',
+            # REAL BUG FOUND AND FIXED: ground/obstacle classification in
+            # RTAB-Map's occupancy grid relies entirely on surface-normal
+            # angle (Grid/NormalsSegmentation, on by default) since
+            # Grid/MaxGroundHeight/MinGroundHeight are both 0.0 (disabled,
+            # RTAB-Map's own default -- confirmed live via `ros2 param get`,
+            # not assumed) -- no height-based fallback at all. Default
+            # Grid/MaxGroundAngle=45deg, live-confirmed via the same
+            # command, was tight enough that this project's real, genuinely
+            # undulating vendored cave floor mesh (already documented
+            # elsewhere in this file/README as real height variance of
+            # ~0.6m across sampled slices, not a flat lab floor) locally
+            # exceeded it -- misclassifying real floor points near the
+            # vehicle as obstacles instead of ground. Confirmed live by
+            # comparing /map, local_costmap, and raw /lidar/points at the
+            # exact moment behavior_server's Spin/BackUp recovery aborted
+            # with "Collision Ahead": /map and local_costmap both showed
+            # lethal cost at/near the robot's own position while the live
+            # lidar showed nothing within 3m in any direction -- this
+            # deadlocked Nav2's recovery loop indefinitely (bt_navigator
+            # kept re-issuing goals that got preempted, every recovery
+            # attempt aborted instantly, no escape). Raised to 65deg --
+            # generous margin above what a bumpy-but-navigable floor should
+            # locally produce, while staying well clear of a real wall's
+            # ~90deg normal, so genuine obstacles are still classified
+            # correctly. Needs live re-verification that the false-lethal
+            # pattern is actually gone, not just that this value looks
+            # reasonable on paper.
+            'Grid/MaxGroundAngle': '65',
+            'Icp/PointToPlane': 'true',
             'Icp/VoxelSize': '0.1',
             # Task 11 fix round 1: RTAB-Map's WM stayed at 1 forever despite real,
             # confirmed vehicle travel (15+ m) with healthy icp_odometry ratios

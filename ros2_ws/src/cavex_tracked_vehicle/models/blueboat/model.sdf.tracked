@@ -903,21 +903,11 @@
               <min_angle>-3.14159</min_angle>
               <max_angle>3.14159</max_angle>
             </horizontal>
-            <!-- Switched 3D -> 2D lidar (real request): single flat scan
-                 ring instead of 16 vertical beams -- see
-                 docs/superpowers/specs/2026-08-11-2d-lidar-switch-design.md
-                 for the full design and its cross-cutting SLAM/
-                 collision_monitor consequences. Horizontal scan (360
-                 samples, full circle), update rate, range, and gz_frame_id
-                 above are all unchanged -- this only collapses the
-                 vertical spread to a single ring at 0 deg (the mount's own
-                 boresight, z=0.55m in base_link -- see lidar_link's own
-                 pose comment above). -->
             <vertical>
-              <samples>1</samples>
+              <samples>16</samples>
               <resolution>1</resolution>
-              <min_angle>0</min_angle>
-              <max_angle>0</max_angle>
+              <min_angle>-0.2618</min_angle>
+              <max_angle>0.2618</max_angle>
             </vertical>
           </scan>
           <range>
