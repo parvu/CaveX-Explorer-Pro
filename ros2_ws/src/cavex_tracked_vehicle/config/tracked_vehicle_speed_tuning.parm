@@ -34,3 +34,11 @@ ATC_SPEED_P     0.12
 ATC_SPEED_I     0.10
 ATC_SPEED_D     0.0
 MOT_SLEWRATE    100
+# GCS_PID_MASK bit 2 (value 2) streams live PID_TUNING (PID_TUNING_ACCZ
+# axis) MAVLink messages for the throttle/speed loop -- target vs actual,
+# straight from AR_AttitudeControl::get_throttle_speed_pid_info()
+# (Rover/GCS_MAVLink_Rover.cpp). Needed to diagnose the real ~10-13%-of-
+# commanded speed shortfall: is ArduPilot's own target already tiny
+# (navigation layer throttling it down before the PID loop), or is target
+# correctly large but the PID loop itself lacks authority to reach it.
+GCS_PID_MASK    2

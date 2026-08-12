@@ -876,3 +876,44 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # a real confound worth knowing about (always kill it, or wait out its
 # 300s window, before any clean manual /cmd_vel speed test on this
 # vehicle), but not the actual explanation for the shortfall itself.
+#
+# ROOT CAUSE FOUND (real request -- diagnose via GCS_PID_MASK/PID_TUNING,
+# per ArduPilot's own real diagnostic method): added GCS_PID_MASK=2 to
+# tracked_vehicle_speed_tuning.parm (enables live PID_TUNING/PID_TUNING_
+# ACCZ MAVLink telemetry for the throttle-speed loop, straight from
+# AR_AttitudeControl::get_throttle_speed_pid_info(), Rover/GCS_MAVLink_
+# Rover.cpp) and wrote a pymavlink listener on mavproxy's UDP out port
+# 14551 to capture it live during a drive. RESULT: ArduPilot's own
+# INTERNAL speed target (PID_TUNING's "target"/desired field) settled at
+# ~-0.10 for a commanded +0.4 -- wrong magnitude AND wrong sign -- while
+# "actual" tracked "target" almost exactly (e.g. target=-0.1010,
+# actual=-0.1040). The PID/FF loop itself is healthy and NOT the problem
+# -- the bug is entirely upstream, in whatever computes _desired_speed
+# from the incoming GUIDED command.
+#
+# Traced further: compared ArduPilot's own reported heading (/ap/pose/
+# filtered orientation) against real ground truth (gz pose) at the same
+# moment -- ArduPilot's own yaw ~96deg vs real ground-truth yaw ~-11deg,
+# a ~107deg internal heading error. Rover's GUIDED mode decomposes an
+# incoming world-frame velocity into heading+speed internally; with
+# ArduPilot believing it's facing ~107deg away from its true heading, the
+# speed component it computes for "drive toward this world-frame
+# direction" comes out small and NEGATIVE -- exactly matching the
+# observed target=-0.10.
+#
+# This is the SAME root problem as the earlier-documented "ArduPilot
+# heading drift" bug (this file's own history above, measured then at
+# ~91deg) -- this vehicle still has no GPS/navsat, so ArduPilot's EKF
+# yaw drifts unboundedly with nothing to correct it. The earlier fix
+# (cmd_vel_to_ardupilot.py/track_cmd_vel_bridge.py rotating using ground-
+# truth heading) only patched the ROS<->Gazebo BRIDGE boundary -- it
+# never touched ArduPilot's own INTERNAL EKF state, which still has no
+# absolute heading reference and still drifts, still corrupting GUIDED
+# mode's own internal heading+speed decomposition. NOT YET FIXED: the
+# real fix needs external heading/position aiding injected into
+# ArduPilot's own EKF (e.g. a fake GPS or EKF external-nav source driven
+# by Gazebo ground truth) so its internal state stops drifting -- a
+# substantial addition, left for a dedicated follow-up rather than
+# implemented blind. All of the CRUISE_SPEED/CRUISE_THROTTLE/ATC_SPEED_*
+# tuning added earlier this session remains reasonable and worth keeping,
+# but cannot fix this -- the PID loop was never the problem.
