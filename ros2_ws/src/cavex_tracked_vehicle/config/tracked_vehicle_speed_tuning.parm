@@ -68,4 +68,37 @@ GCS_PID_MASK    2
 # for GPS course-over-ground to be meaningful -- expect yaw to still be
 # gyro-only (and potentially wrong) for the first moment(s) after
 # arming/starting from rest, converging once real motion begins.
-EK3_SRC1_YAW    2
+#
+# LIVE-VERIFIED, PARTIAL SUCCESS: real speed jumped from ~10-13% of
+# commanded to ~60-65%, but ArduPilot's own reported heading was still
+# ~85-94deg off from ground truth even after 60-180s of continuous
+# driving -- GPS-course yaw was not converging well. Investigated why
+# (real request: "verify magnetometer calibration ... use ground truth
+# as GPS"):
+#
+# (1) Magnetometer: ArduPilot SITL simulates a compass automatically
+# (AP_Compass_SITL backend, COMPASS_ENABLE=1 by default) -- completely
+# independent of this vehicle's own Gazebo SDF, which has no magnetometer
+# sensor at all (that "no compass" framing was only ever true for the
+# real-hardware concept, not this SITL build). Checked its injected-error
+# model (SITL.cpp): SIM_MAG1_OFS=0, SIM_MAG1_SCALING=1, SIM_MAG1_FAIL=0 --
+# zero error injected by default, so the simulated compass should already
+# be effectively perfect. Switched EK3_SRC1_YAW 2->3
+# (GPS_COMPASS_FALLBACK, matching ArduPilot's own documented MAG_CAL=6
+# preset for exactly this "trust compass, fall back to GPS" case) to
+# actually use it -- compass fusion is much lower-latency and higher-rate
+# than GPS-course, and should converge far faster.
+#
+# (2) GPS as ground truth: checked SIM_GPS1's own params (SIM_GPS.cpp) --
+# horizontal/vertical noise (HNSE/NOISE) and velocity error (VERR) are
+# ALL already 0 by default, so GPS position/velocity were already
+# effectively ground-truth-accurate. The real gap was latency/rate:
+# SIM_GPS1_LAG_MS defaults to 100ms and SIM_GPS1_HZ to 5Hz -- both real
+# contributors to slow/noisy course-over-ground estimation at this
+# vehicle's low commanded speeds. Set both to make GPS behave as close to
+# instantaneous ground truth as SITL's architecture allows.
+EK3_SRC1_YAW    3
+SIM_GPS1_LAG_MS 0
+SIM_GPS1_HZ     50
+SIM_GPS1_HNSE   0
+SIM_GPS1_NOISE  0

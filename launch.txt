@@ -944,3 +944,56 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # CRUISE_SPEED/CRUISE_THROTTLE/ATC_SPEED_* tuning added earlier this
 # session remains in place and reasonable -- the PID loop itself was
 # always healthy, this heading fix addresses what was actually broken.
+#
+# FURTHER INVESTIGATED (real request: "verify magnetometer calibration
+# ... use ground truth as GPS"), DEEPER BUG FOUND, NOT FIXED:
+#
+# Magnetometer: confirmed ArduPilot SITL simulates a compass
+# automatically (AP_Compass_SITL backend, COMPASS_ENABLE=1 by default)
+# completely independent of this vehicle's own Gazebo SDF (which has no
+# magnetometer sensor at all -- that only ever described the real-
+# hardware concept, not this SITL build). Its injected-error model
+# (SIM_MAG1_OFS/SCALING/FAIL) is zero/ideal by default -- nothing to
+# "calibrate" in the traditional sense. Switched EK3_SRC1_YAW 2->3
+# (GPS_COMPASS_FALLBACK) to actually use it, matching ArduPilot's own
+# documented preset for this scenario.
+#
+# GPS as ground truth: SIM_GPS1's own noise/velocity-error params
+# (HNSE/NOISE/VERR) were already 0 by default -- the real gap was
+# latency/rate (SIM_GPS1_LAG_MS=100, SIM_GPS1_HZ=5 by default). Set
+# SIM_GPS1_LAG_MS=0, SIM_GPS1_HZ=50 to make it behave as close to
+# instantaneous ground truth as SITL's architecture allows.
+#
+# RESULT: neither change improved heading convergence. Live-verified
+# (fresh eeprom, ruling out the persistence gotcha): ArduPilot's own
+# reported yaw was STUCK at ~97.2deg, essentially IDENTICAL across
+# repeated samples taken 3s apart over a 12s window (varying only in the
+# 4th decimal place) -- too stable to be raw gyro-only dead-reckoning
+# drift, but wrong by a consistent ~98-100deg from real ground truth the
+# whole time, regardless of GPS-only vs GPS+compass-fallback yaw source.
+#
+# REAL HYPOTHESIS (not yet verified): this pattern -- a highly stable,
+# confidently-held, but consistently WRONG heading, unaffected by which
+# aiding source is used -- fits a fixed coordinate-transform bug
+# upstream of the EKF, not a fusion/convergence problem. Both GPS-course
+# and the simulated compass are synthesized by ArduPilot SITL from the
+# SAME underlying FDM attitude data it receives from Gazebo via
+# ArduPilotPlugin's <gazeboXYZToNED>/<modelXYZToAirplaneXForwardZDown>
+# transform (model.sdf.tracked) -- if that transform's yaw component is
+# wrong for this vehicle's real mounting convention, EVERY internal
+# ArduPilot attitude source would be consistently, self-reinforcingly
+# biased by the same fixed amount, exactly matching what was observed
+# (why neither yaw-source config helped -- both are equally affected
+# upstream). NOT YET VERIFIED OR FIXED: this file's own ArduPilotPlugin
+# comment already documents TWO live-tested, reverted attempts at these
+# exact same two parameters -- but that earlier investigation was
+# specifically diagnosing a VELOCITY-reporting swap (ahrs.get_velocity_
+# NED() frame convention, fixed for real in track_cmd_vel_bridge.py
+# instead), not a fixed ATTITUDE/yaw bias -- these may be genuinely
+# different bugs sharing a plausible-but-unconfirmed root cause. Needs
+# careful, isolated verification (e.g. compare ArduPilot's reported yaw
+# against ground truth at the vehicle's TRUE initial spawn heading,
+# before any driving, to see if the offset is present and constant even
+# at rest) before touching these parameters again -- left for a
+# dedicated follow-up given this file's own history of reverted attempts
+# here.
