@@ -332,6 +332,16 @@ def generate_launch_description():
     pkg_ardupilot_sitl = get_package_share_directory('ardupilot_sitl')
     rover_defaults = os.path.join(pkg_ardupilot_sitl, 'config', 'default_params', 'rover.parm')
     dds_udp_defaults = os.path.join(pkg_ardupilot_sitl, 'config', 'default_params', 'dds_udp.parm')
+    # Project-specific speed-controller tuning (CRUISE_SPEED/CRUISE_THROTTLE/
+    # ATC_SPEED_P/I/D/MOT_SLEWRATE) for this heavy tracked vehicle -- a
+    # THIRD defaults file, applied after rover.parm so its values win, kept
+    # separate from the vendored ardupilot/ tree rather than editing that
+    # shared upstream file directly. See that file's own header comment for
+    # the real root cause this addresses (ArduPilot's own GUIDED velocity
+    # loop under-throttling at this vehicle's low commanded speeds).
+    speed_tuning_defaults = os.path.join(
+        get_package_share_directory('cavex_tracked_vehicle'),
+        'config', 'tracked_vehicle_speed_tuning.parm')
     ardupilot_sitl_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_ardupilot_sitl, 'launch', 'sitl_dds_udp.launch.py')
@@ -339,7 +349,7 @@ def generate_launch_description():
         launch_arguments={
             'command': 'ardurover',
             'model': 'rover',
-            'defaults': f'{rover_defaults},{dds_udp_defaults}',
+            'defaults': f'{rover_defaults},{dds_udp_defaults},{speed_tuning_defaults}',
             'synthetic_clock': 'False',
             'use_sim_time': 'False',
         }.items(),

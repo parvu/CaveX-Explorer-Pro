@@ -822,5 +822,39 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # driving via the actual ArduPilot path, not this bypass -- is
 # ArduPilot's own Rover GUIDED-mode velocity-control tuning
 # (CRUISE_SPEED/CRUISE_THROTTLE/ATC_SPEED_P in rover.parm), a completely
-# different subsystem, not gz-sim physics -- left for a dedicated
-# follow-up session.
+# different subsystem, not gz-sim physics.
+#
+# ATTEMPTED (partial progress, this session): added a project-owned
+# defaults file, cavex_tracked_vehicle/config/tracked_vehicle_speed_
+# tuning.parm (CRUISE_SPEED 1.5, CRUISE_THROTTLE 50, ATC_SPEED_P 0.12,
+# ATC_SPEED_I 0.10, ATC_SPEED_D 0.0, MOT_SLEWRATE 100 -- tracked-rover-
+# appropriate starting values, kept separate from the vendored
+# ardupilot/Tools/autotest/default_params/rover.parm rather than editing
+# that shared upstream file), wired into gazebo_tracked_vehicle.launch.py
+# as a third defaults:= file. Real, live-discovered gotcha along the way:
+# ArduPilot SITL persists ALL parameters across every launch in
+# ros2_ws/eeprom.bin -- a defaults file's values are silently ignored for
+# any param already present in that file from an earlier run (moved the
+# accumulated one aside, ros2_ws/eeprom.bin.bak_pretuning, to test fresh).
+#
+# RESULT (still not fully resolved): even with a genuinely fresh eeprom
+# and the new tuning applied, ArduPilot's own reported velocity
+# (/ap/twist/filtered) stayed essentially unchanged (~0.03-0.12
+# magnitude). But checking REAL ground-truth displacement (gz pose,
+# not ArduPilot's self-report) during the SAME drive showed real
+# progress ~13% of commanded speed -- much better than /ap/twist/
+# filtered implied, but still well short of the ~98% achieved via the
+# direct gz-transport bypass. Two real, separate open questions this
+# raises for a dedicated follow-up: (1) why does the new tuning not
+# move the needle at all -- verify the params are actually being
+# consumed by ArduPilot's speed controller, not just present in its
+# param table; (2) why does /ap/twist/filtered under-report real motion
+# so badly -- possible EKF velocity-estimation lag/bias independent of
+# the real control-loop shortfall, worth investigating on its own before
+# trusting that topic as a diagnostic signal again. Ground clearance was
+# checked and ruled out as a contributing cause: parsed blueboat_hull_
+# collision.stl's own bounding box (Z: -0.376 to 0.0 relative to
+# base_link) against the track collision box's real position (bottom at
+# base_link_z - 0.425, from the retract_mount/track pose chain) --
+# tracks sit ~4.9cm lower than the hull, so the hull is not dragging on
+# the ground.

@@ -1,0 +1,36 @@
+# ArduPilot Rover GUIDED-mode speed-controller tuning for this tracked
+# vehicle (~38-40kg total: 32.6kg base_link + 2x1.5kg tracks + attachments).
+# Applied as a SECOND defaults file (see gazebo_tracked_vehicle.launch.py's
+# defaults:=rover.parm,dds_udp.parm,tracked_vehicle_speed_tuning.parm)
+# rather than editing the vendored ardupilot/Tools/autotest/default_params/
+# rover.parm directly, since that file is shared ArduPilot upstream content,
+# not project-specific.
+#
+# Real root cause this addresses: ArduPilot's stock rover.parm defaults
+# (CRUISE_SPEED 5, CRUISE_THROTTLE 30) assume a fast, light reference rover.
+# For this heavy tracked vehicle at the low speeds actually commanded
+# throughout this project (0.3-0.5 m/s), the resulting feedforward throttle
+# is tiny (desired_speed/CRUISE_SPEED*CRUISE_THROTTLE) -- live-confirmed
+# ArduPilot's own reported velocity (/ap/twist/filtered) stayed at only
+# ~0.03-0.1 m/s regardless of a much larger commanded setpoint, while the
+# SAME setpoint applied directly to the Gazebo physics (bypassing ArduPilot
+# entirely) achieved the full commanded speed -- proving the shortfall is
+# inside ArduPilot's own GUIDED velocity control loop, not gz-sim physics.
+#
+# Values below start from general tracked-rover tuning guidance (heavy
+# platform, high track drag/friction, especially when turning) --
+# CRUISE_SPEED/CRUISE_THROTTLE lowered+raised respectively to match this
+# vehicle's real low-speed operating regime, ATC_SPEED_P/I set to the
+# tracked-vehicle-appropriate lower/damped range (higher P risks track
+# slap/jerking on a high-inertia vehicle), ATC_SPEED_D forced to 0 (track
+# noise destroys D-gain), MOT_SLEWRATE left non-zero to protect the
+# (simulated) drivetrain from instantaneous throttle jumps. NOT YET
+# empirically re-tuned against this vehicle's own real speed response --
+# these are informed starting values, verify live before trusting them
+# for anything beyond this project's typical 0.3-0.5 m/s commands.
+CRUISE_SPEED    1.5
+CRUISE_THROTTLE 50
+ATC_SPEED_P     0.12
+ATC_SPEED_I     0.10
+ATC_SPEED_D     0.0
+MOT_SLEWRATE    100
