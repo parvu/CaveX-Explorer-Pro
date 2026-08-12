@@ -42,3 +42,30 @@ MOT_SLEWRATE    100
 # (navigation layer throttling it down before the PID loop), or is target
 # correctly large but the PID loop itself lacks authority to reach it.
 GCS_PID_MASK    2
+
+# REAL ROOT CAUSE of the ~10-13%-of-commanded speed shortfall above
+# (found via GCS_PID_MASK's own live telemetry, see this file's git
+# history): it was never a throttle/speed-PID tuning problem at all --
+# ArduPilot's own internal PID target (not the throttle output) was
+# already wrong, small, and NEGATIVE for a positive commanded speed.
+# Traced to a ~107deg internal heading error (ArduPilot's own EKF yaw
+# ~96deg vs real ground-truth yaw ~-11deg, live-measured): this vehicle
+# has no GPS/navsat SENSOR wired up, but ArduPilot SITL's own simulated
+# GPS (SIM_GPS1_TYPE, driven by the FDM's ground-truth position) IS
+# already active by default (confirmed live: "EKF3 IMU0/IMU1 is using
+# GPS" in the console log) -- it just was never being used for YAW, only
+# position/velocity, so the EKF's yaw estimate was still pure gyro
+# dead-reckoning with nothing to correct it, drifting unboundedly (same
+# root problem as this project's earlier-documented "ArduPilot heading
+# drift" bug, which only patched the ROS<->Gazebo bridge's OWN rotation
+# math, not ArduPilot's internal EKF state).
+#
+# Fixed with EK3_SRC1_YAW=2 (AP_NavEKF_Source::SourceYaw::GPS) -- the
+# standard, well-supported ArduPilot mechanism for exactly this
+# no-compass-but-has-GPS scenario: EKF3 derives yaw from the GPS
+# velocity vector's course-over-ground instead of gyro-only
+# dead-reckoning. Requires the vehicle to be moving with enough speed
+# for GPS course-over-ground to be meaningful -- expect yaw to still be
+# gyro-only (and potentially wrong) for the first moment(s) after
+# arming/starting from rest, converging once real motion begins.
+EK3_SRC1_YAW    2

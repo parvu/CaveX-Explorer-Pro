@@ -903,17 +903,44 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 #
 # This is the SAME root problem as the earlier-documented "ArduPilot
 # heading drift" bug (this file's own history above, measured then at
-# ~91deg) -- this vehicle still has no GPS/navsat, so ArduPilot's EKF
-# yaw drifts unboundedly with nothing to correct it. The earlier fix
-# (cmd_vel_to_ardupilot.py/track_cmd_vel_bridge.py rotating using ground-
-# truth heading) only patched the ROS<->Gazebo BRIDGE boundary -- it
-# never touched ArduPilot's own INTERNAL EKF state, which still has no
-# absolute heading reference and still drifts, still corrupting GUIDED
-# mode's own internal heading+speed decomposition. NOT YET FIXED: the
-# real fix needs external heading/position aiding injected into
-# ArduPilot's own EKF (e.g. a fake GPS or EKF external-nav source driven
-# by Gazebo ground truth) so its internal state stops drifting -- a
-# substantial addition, left for a dedicated follow-up rather than
-# implemented blind. All of the CRUISE_SPEED/CRUISE_THROTTLE/ATC_SPEED_*
-# tuning added earlier this session remains reasonable and worth keeping,
-# but cannot fix this -- the PID loop was never the problem.
+# ~91deg) -- this vehicle still has no GPS/navsat SENSOR wired up, but
+# ArduPilot SITL's own simulated GPS (SIM_GPS1_TYPE, driven by the FDM's
+# ground-truth position) IS already active by default (confirmed live:
+# "EKF3 IMU0/IMU1 is using GPS" in the console log) -- it just was never
+# being used for YAW, only position/velocity.
+#
+# FIXED: added EK3_SRC1_YAW=2 (AP_NavEKF_Source::SourceYaw::GPS,
+# tracked_vehicle_speed_tuning.parm) -- the standard, well-supported
+# ArduPilot mechanism for a no-compass-but-has-GPS vehicle: EKF3 derives
+# yaw from the GPS velocity vector's course-over-ground instead of pure
+# gyro dead-reckoning. Live-verified via real ground-truth displacement
+# (not ArduPilot's own telemetry, which turned out unreliable here -- see
+# below): real speed jumped from ~10-13% of commanded to ~60-65%
+# sustained over two separate 10s/30s windows, with good direction early
+# on (~5deg off-axis). This is a genuine, large, confirmed improvement --
+# the earlier bridge-boundary rotation fix (cmd_vel_to_ardupilot.py/
+# track_cmd_vel_bridge.py) stays in place as a real, useful supplement,
+# but THIS is what fixes ArduPilot's own internal navigation math.
+#
+# NOT FULLY CONVERGED / caveats found while verifying: (1) ArduPilot's
+# own reported heading (/ap/pose/filtered) was still ~85deg off from
+# ground truth even after ~60s of continuous driving (down from the
+# original ~107deg, but not fully closed) -- GPS-course yaw fusion
+# converges gradually with real motion/distance, not instantly, and may
+# need more sustained driving (or a real corridor with more heading
+# variety) to fully lock in; not yet characterized how long real
+# convergence takes. (2) A later 30s window showed the vehicle curving
+# ~44deg off a straight line -- plausibly the real cave corridor's own
+# geometry (this project's corridors are not perfectly straight), but
+# not disambiguated from residual yaw noise; worth deliberately testing
+# on a KNOWN-straight corridor segment to tell these apart. (3) Live
+# PID_TUNING telemetry (GCS_PID_MASK=2, used to originally diagnose this
+# bug) stopped reporting any data partway through this same test session
+# despite real motion clearly happening -- likely GCS_PID_MASK itself
+# getting reset by ArduPilot SITL's persistent eeprom.bin (same gotcha
+# documented above for the speed-tuning params) rather than a real
+# problem with the fix; ground-truth pose tracking was used instead and
+# is the authoritative measurement for the results above. All of the
+# CRUISE_SPEED/CRUISE_THROTTLE/ATC_SPEED_* tuning added earlier this
+# session remains in place and reasonable -- the PID loop itself was
+# always healthy, this heading fix addresses what was actually broken.

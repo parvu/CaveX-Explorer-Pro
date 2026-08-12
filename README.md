@@ -409,6 +409,29 @@ message's `frame_id` claiming `base_link`) before handing it to Gazebo's
 `TrackedVehicle` plugin. Both self-check (`--self-check`), including a
 round-trip check between the two files' rotation functions.
 
+**Correction + real fix (this session)**: the "no GPS/navsat" framing
+above is slightly stale — this vehicle has no GPS *sensor* wired up, but
+ArduPilot SITL's own simulated GPS (driven by the FDM's ground-truth
+position) is active by default regardless (confirmed live via the
+console log, `"EKF3 IMU0/IMU1 is using GPS"`); it just was never used for
+*yaw*, only position/velocity, so the EKF's heading estimate was still
+pure gyro dead-reckoning — this is what actually drifted (live-remeasured
+at ~107° after the bridge-boundary fix above, i.e. that fix never touched
+this). The bridge-boundary rotation above only patches the ROS↔Gazebo
+translation layer; it doesn't stop ArduPilot's own internal navigation
+math (GUIDED mode's world-frame-velocity→heading+speed decomposition)
+from using this same drifted heading, which was the actual cause of a
+separate, severe symptom: commanded speed only ~10-13% realized. Fixed
+with `EK3_SRC1_YAW=2` (`tracked_vehicle_speed_tuning.parm`) — the
+standard ArduPilot mechanism for deriving yaw from GPS course-over-ground
+instead of gyro-only dead-reckoning when no compass is present.
+Live-verified via real ground-truth displacement: realized speed jumped
+to ~60-65% of commanded. Not fully characterized yet: how long GPS-yaw
+takes to fully converge (ArduPilot's own reported heading was still ~85°
+off after ~60s of continuous driving in one test), and whether a later
+~44° path curve was real corridor geometry or residual yaw noise — worth
+a dedicated test on a known-straight corridor segment.
+
 **Note on the water region below**: its `x=15`/`x=-35`-spawn coordinates
 predate the cave 2x scale above and were not re-derived against it — the
 water surface, `cave_floor_patch`, and their boundary are separate, fixed
