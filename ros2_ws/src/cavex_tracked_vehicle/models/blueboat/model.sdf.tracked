@@ -326,34 +326,38 @@
              CONFIRMED LIVE (fixed): direction went from 71-92deg off-axis
              to ~6-11deg off-axis, i.e. genuinely forward now.
 
-             mu2 lowered from the reference's 150 to 5: 150 caused real,
+             mu2=150 (the reference's own value) initially caused real,
              measured RTF collapse (0.6+ -> ~0.09) and near-zero real
-             displacement -- tried splitting this box into 3 segments
-             (matching the reference's own left/right_track_collision/
-             _collision_1/_collision_2 structure) on the theory that one
-             long rigid box was over-constraining the ODE solver; that
-             did NOT help (RTF still collapsed to ~0.09 at mu2=150 with
-             3 segments -- reverted, not worth the added complexity for
-             zero measured benefit). Root cause is more likely that the
-             reference world's ground is a flat <plane>, while this
-             world's floor (cavex_world.world) is a dense, irregular
-             mesh -- box-vs-uneven-mesh contact at high friction is a
-             known ODE stiffness/instability source independent of box
-             length. mu2=5 confirmed live to keep RTF stable (~0.33-0.46,
-             no collapse) while keeping the correct fdir1 direction, but
-             real achieved speed at mu2=5 is still only ~3-4% of
-             commanded (e.g. ~0.036 m/s sim-time for a 1.0 m/s command) --
-             a genuine, SEPARATE, NOT YET RESOLVED speed limitation.
-             Likely needs raising cavex_world.world's ODE solver
-             iterations (<physics><ode><solver><iters>, currently unset/
-             default) to let a higher, more realistic mu2 stay stable on
-             this bumpy mesh -- not yet attempted (world-level change,
-             broader blast radius, left for a dedicated follow-up). -->
+             displacement on THIS world's dense, irregular cave-floor
+             mesh -- the reference world's ground is a flat <plane>,
+             and box-vs-uneven-mesh contact at high friction is a known
+             ODE solver stiffness source independent of box length
+             (confirmed: splitting this box into 3 segments matching the
+             reference's own left/right_track_collision/_collision_1/
+             _collision_2 structure did NOT help, RTF still collapsed --
+             reverted, not worth the complexity). Real fix: raised
+             cavex_world.world's ODE solver iterations 50 (gz-sim
+             default) -> 200 (see that file's own <physics><ode><solver>
+             comment) -- CONFIRMED LIVE this restores full stability at
+             mu2=150 (RTF held ~0.6-0.7 under sustained driving, same as
+             mu2=5/50, no collapse at any of the three).
+
+             SEPARATE, NOT YET RESOLVED finding: real achieved speed is
+             essentially IDENTICAL across mu2=5, 50, and 150 (~0.12m
+             displacement per 10s test, ~3-4% of a 1.0 m/s command) --
+             proving mu2 magnitude was never the speed bottleneck, only
+             the numerical stability was. The real speed ceiling is
+             something else entirely (vehicle mass/track contact area
+             vs. the TrackedVehicle system's own belt-to-ground
+             conversion, not yet investigated). mu2=150 kept here anyway
+             since it's the reference-correct, most physically realistic
+             value now that it's stable -- lowering it further would
+             only sacrifice grip for zero speed benefit. -->
         <surface>
           <friction>
             <ode>
               <mu>0.7</mu>
-              <mu2>5</mu2>
+              <mu2>150</mu2>
               <fdir1>0 1 0</fdir1>
             </ode>
           </friction>
@@ -651,34 +655,38 @@
              CONFIRMED LIVE (fixed): direction went from 71-92deg off-axis
              to ~6-11deg off-axis, i.e. genuinely forward now.
 
-             mu2 lowered from the reference's 150 to 5: 150 caused real,
+             mu2=150 (the reference's own value) initially caused real,
              measured RTF collapse (0.6+ -> ~0.09) and near-zero real
-             displacement -- tried splitting this box into 3 segments
-             (matching the reference's own left/right_track_collision/
-             _collision_1/_collision_2 structure) on the theory that one
-             long rigid box was over-constraining the ODE solver; that
-             did NOT help (RTF still collapsed to ~0.09 at mu2=150 with
-             3 segments -- reverted, not worth the added complexity for
-             zero measured benefit). Root cause is more likely that the
-             reference world's ground is a flat <plane>, while this
-             world's floor (cavex_world.world) is a dense, irregular
-             mesh -- box-vs-uneven-mesh contact at high friction is a
-             known ODE stiffness/instability source independent of box
-             length. mu2=5 confirmed live to keep RTF stable (~0.33-0.46,
-             no collapse) while keeping the correct fdir1 direction, but
-             real achieved speed at mu2=5 is still only ~3-4% of
-             commanded (e.g. ~0.036 m/s sim-time for a 1.0 m/s command) --
-             a genuine, SEPARATE, NOT YET RESOLVED speed limitation.
-             Likely needs raising cavex_world.world's ODE solver
-             iterations (<physics><ode><solver><iters>, currently unset/
-             default) to let a higher, more realistic mu2 stay stable on
-             this bumpy mesh -- not yet attempted (world-level change,
-             broader blast radius, left for a dedicated follow-up). -->
+             displacement on THIS world's dense, irregular cave-floor
+             mesh -- the reference world's ground is a flat <plane>,
+             and box-vs-uneven-mesh contact at high friction is a known
+             ODE solver stiffness source independent of box length
+             (confirmed: splitting this box into 3 segments matching the
+             reference's own left/right_track_collision/_collision_1/
+             _collision_2 structure did NOT help, RTF still collapsed --
+             reverted, not worth the complexity). Real fix: raised
+             cavex_world.world's ODE solver iterations 50 (gz-sim
+             default) -> 200 (see that file's own <physics><ode><solver>
+             comment) -- CONFIRMED LIVE this restores full stability at
+             mu2=150 (RTF held ~0.6-0.7 under sustained driving, same as
+             mu2=5/50, no collapse at any of the three).
+
+             SEPARATE, NOT YET RESOLVED finding: real achieved speed is
+             essentially IDENTICAL across mu2=5, 50, and 150 (~0.12m
+             displacement per 10s test, ~3-4% of a 1.0 m/s command) --
+             proving mu2 magnitude was never the speed bottleneck, only
+             the numerical stability was. The real speed ceiling is
+             something else entirely (vehicle mass/track contact area
+             vs. the TrackedVehicle system's own belt-to-ground
+             conversion, not yet investigated). mu2=150 kept here anyway
+             since it's the reference-correct, most physically realistic
+             value now that it's stable -- lowering it further would
+             only sacrifice grip for zero speed benefit. -->
         <surface>
           <friction>
             <ode>
               <mu>0.7</mu>
-              <mu2>5</mu2>
+              <mu2>150</mu2>
               <fdir1>0 1 0</fdir1>
             </ode>
           </friction>

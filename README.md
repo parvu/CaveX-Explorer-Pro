@@ -337,28 +337,35 @@ inflation zone from both walls meeting in the middle gave MPPI's
 non-stalling forward progress. See git history on
 `tracked_vehicle_nav2_params.yaml` for the original tuning this reverts).
 
-**Track collision friction (fixed, partially)** — `model.sdf.tracked`'s
-track collision boxes had zero `<surface><friction>` at all, despite
-gz-sim's own reference example (`worlds/tracked_vehicle_simple.sdf`)
-requiring anisotropic friction (`fdir1` + `mu`/`mu2`) for the
-`TrackedVehicle` system's belt simulation to convert commanded track speed
-into correct real motion. Without it, commanded forward motion produced
-mostly *lateral* real motion (measured live at 71-92° off-axis) — the same
-bug already flagged below as a "known open issue" on the ArduPilotPlugin
-block, there measured at ~60°. Fixed with `fdir1="0 1 0"`, `mu=0.7`,
-`mu2=5` (lowered from the reference's own `mu2=150`, which caused real,
-measured real-time-factor collapse — 0.6+ down to ~0.09 — and near-zero
-real displacement on this world's cave floor *mesh*, unlike the
-reference's flat ground plane; splitting the collision into multiple
-segments, matching the reference's own structure, did not help and was
-reverted). Live-verified: direction improved from 71-92° off-axis to
-~5-11° (genuinely forward now), with stable real-time-factor under
-sustained driving. **Not yet resolved**: real achieved speed at `mu2=5` is
-still only ~3-4% of commanded — a separate limitation from the
-(now-fixed) direction bug, likely needing `cavex_world.world`'s ODE solver
-iteration count raised (currently unset/default) to let a higher, more
-realistic `mu2` stay numerically stable against the uneven floor mesh —
-not yet attempted.
+**Track collision friction (direction fixed; speed ceiling separate,
+unresolved)** — `model.sdf.tracked`'s track collision boxes had zero
+`<surface><friction>` at all, despite gz-sim's own reference example
+(`worlds/tracked_vehicle_simple.sdf`) requiring anisotropic friction
+(`fdir1` + `mu`/`mu2`) for the `TrackedVehicle` system's belt simulation to
+convert commanded track speed into correct real motion. Without it,
+commanded forward motion produced mostly *lateral* real motion (measured
+live at 71-92° off-axis) — the same bug already flagged below as a "known
+open issue" on the ArduPilotPlugin block, there measured at ~60°. Fixed
+with `fdir1="0 1 0"`, `mu=0.7`, `mu2=150` (the reference's own value).
+Live-verified: direction improved from 71-92° off-axis to ~5-11°
+(genuinely forward now).
+
+`mu2=150` initially caused real, measured real-time-factor collapse (0.6+
+down to ~0.09) and near-zero real displacement on this world's cave floor
+*mesh*, unlike the reference's flat ground plane (splitting the collision
+into multiple segments, matching the reference's own structure, did not
+help and was reverted). Real fix: raised `cavex_world.world`'s ODE solver
+iterations 50 (gz-sim default) → 200 — confirmed live this restores full
+stability at `mu2=150` (real-time-factor held steady under sustained
+driving at mu2=5, 50, and 150 alike).
+
+**Not yet resolved**: real achieved speed is essentially *identical*
+across `mu2=5`, `50`, and `150` (~3-4% of commanded regardless) — proving
+friction magnitude was never the actual speed bottleneck, only the
+numerical stability was. `mu2=150` is kept as the reference-correct,
+physically realistic value now that it's stable; the real speed ceiling is
+a separate, not-yet-investigated limitation (vehicle mass/track contact
+area vs. the `TrackedVehicle` system's own belt-to-ground conversion).
 
 **Cave scaled 2x** (`ros2_ws/src/cavex_slam_nav/models/cave_world/model.sdf`)
 — the vendored mesh's `<collision>`/`<visual>` geometry carries a real

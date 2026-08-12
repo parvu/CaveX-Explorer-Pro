@@ -4,6 +4,24 @@
     <physics name="4ms" type="ode">
       <max_step_size>0.004</max_step_size>
       <real_time_factor>1.0</real_time_factor>
+      <!-- Raised ODE solver iterations 50 (gz-sim default) -> 200: the
+           tracked vehicle's track collision boxes need real anisotropic
+           friction (mu2=50+, see model.sdf.tracked's own track collision
+           comment) to convert commanded track speed into correct real
+           speed, not just correct direction -- but at the gz-sim default
+           iteration count, any mu2 above ~5-10 caused real, measured RTF
+           collapse (0.6+ -> ~0.09) on this world's dense, irregular cave-
+           floor mesh (box-vs-uneven-mesh contact at high friction is a
+           known ODE solver stiffness source; the gz-sim reference
+           tracked-vehicle example that uses mu2=150 successfully runs on
+           a flat <plane> ground, not a mesh like this one). More solver
+           iterations per step is the standard fix for exactly this
+           class of stiff-contact convergence problem. -->
+      <ode>
+        <solver>
+          <iters>200</iters>
+        </solver>
+      </ode>
     </physics>
 
     <!-- Ported from Gazebo Classic (gzserver/gazebo_ros) to Gazebo Harmonic

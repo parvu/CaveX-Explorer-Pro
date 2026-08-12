@@ -791,25 +791,25 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # off-axis) -- this is the SAME bug already flagged as a "KNOWN OPEN
 # ISSUE" in model.sdf.tracked's own ArduPilotPlugin comment (there
 # measured at ~60deg, left open pending exactly this investigation).
-# Fixed with fdir1="0 1 0", mu=0.7, mu2=5 (mu2 lowered from the
-# reference's own 150 -- that value caused real, measured RTF collapse,
-# 0.6+ -> ~0.09, and near-zero real displacement on this world's cave
-# floor mesh; tried splitting the track collision into 3 segments
-# matching the reference's own structure on the theory that one long
-# rigid box was over-constraining the ODE solver -- did NOT help,
-# reverted). Live-verified: direction went from 71-92deg off-axis to
-# ~5-11deg (genuinely forward now), RTF stays stable under sustained
-# driving (no more collapse).
+# Fixed with fdir1="0 1 0", mu=0.7, mu2=150 (the reference's own value).
+# Live-verified: direction went from 71-92deg off-axis to ~5-11deg
+# (genuinely forward now).
 #
-# NOT YET RESOLVED: even with the direction fix, real achieved speed at
-# mu2=5 is only ~3-4% of commanded (e.g. ~0.036 m/s sim-time for a 1.0 m/s
-# command) -- a genuine, separate speed limitation from the (now-fixed)
-# direction bug. Best lead: the reference world uses a flat <plane>
-# ground, while cavex_world.world's floor is a dense, irregular mesh --
-# box-vs-uneven-mesh contact at high friction is a known ODE solver
-# stiffness source independent of box segmentation. Raising
-# cavex_world.world's ODE solver iterations (<physics><ode><solver>
-# <iters>, currently unset/default) to let a higher, more realistic mu2
-# stay numerically stable was identified as the next real avenue but not
-# yet attempted (world-level change, broader blast radius than a single
-# vehicle's SDF) -- left for a dedicated follow-up session.
+# mu2=150 initially caused real, measured RTF collapse (0.6+ -> ~0.09) and
+# near-zero real displacement on this world's cave floor MESH, unlike the
+# reference's flat ground plane (tried splitting the track collision into
+# 3 segments matching the reference's own structure -- did NOT help,
+# reverted). REAL FIX: raised cavex_world.world's ODE solver iterations
+# 50 (gz-sim default) -> 200 (<physics><ode><solver><iters>) -- confirmed
+# live this restores full stability at mu2=150 (RTF held steady under
+# sustained driving at mu2=5, 50, and 150 alike, no collapse at any).
+#
+# NOT YET RESOLVED (separate from the now-fixed direction/stability bugs):
+# real achieved speed is essentially IDENTICAL across mu2=5, 50, and 150
+# (~3-4% of commanded regardless) -- proving friction magnitude was never
+# the actual speed bottleneck, only the numerical stability was. mu2=150
+# kept as the reference-correct, physically realistic value now that it's
+# stable; the real speed ceiling is a separate, not-yet-investigated
+# limitation (vehicle mass/track contact area vs. the TrackedVehicle
+# system's own belt-to-ground conversion) -- left for a dedicated
+# follow-up session.
