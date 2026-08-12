@@ -342,22 +342,37 @@
              mu2=150 (RTF held ~0.6-0.7 under sustained driving, same as
              mu2=5/50, no collapse at any of the three).
 
-             SEPARATE, NOT YET RESOLVED finding: real achieved speed is
-             essentially IDENTICAL across mu2=5, 50, and 150 (~0.12m
-             displacement per 10s test, ~3-4% of a 1.0 m/s command) --
-             proving mu2 magnitude was never the speed bottleneck, only
-             the numerical stability was. The real speed ceiling is
-             something else entirely (vehicle mass/track contact area
-             vs. the TrackedVehicle system's own belt-to-ground
-             conversion, not yet investigated). mu2=150 kept here anyway
-             since it's the reference-correct, most physically realistic
-             value now that it's stable -- lowering it further would
-             only sacrifice grip for zero speed benefit. -->
+             REAL ROOT CAUSE of the "speed identical across mu2=5/50/150"
+             finding (found while testing mu2=300): every one of those
+             "gz-transport bypass" tests was silently confounded --
+             gazebo_tracked_vehicle.launch.py's own track_cmd_vel_bridge.py
+             (part of the real ArduPilot control path) was STILL RUNNING
+             during every "bypass" test and continuously republishing
+             ArduPilot's own near-idle reported velocity onto the exact
+             same gz-transport /model/.../cmd_vel topic the bypass test
+             was ALSO manually publishing to -- two competing publishers
+             on one topic, with the bridge's tiny value dominating.
+             CONFIRMED: killing track_cmd_vel_bridge.py before testing
+             (genuine isolation) at mu2=300 -- track_cmd_vel reported
+             EXACTLY the commanded 1.0 (was 0.02-0.03 before, regardless
+             of command magnitude), and real displacement was 4.91m over
+             a 10s wall-clock test (~0.98 m/s sim-time-normalized at
+             RTF~0.5) -- i.e. essentially the FULL commanded speed, with
+             correct direction. Friction/contact physics were NEVER the
+             real speed bottleneck at any mu2 tested -- the entire
+             "~3-4% of commanded" finding above was a test-methodology
+             artifact, not a real physics limitation. mu2=300 confirmed
+             genuinely correct and performant; kept as the tuned value.
+             The REAL remaining gap for driving via the actual ArduPilot
+             path (not this bypass) is ArduPilot's own Rover GUIDED-mode
+             velocity-control tuning (CRUISE_SPEED/CRUISE_THROTTLE/
+             ATC_SPEED_P in rover.parm) -- a completely different
+             subsystem, not gz-sim physics at all. -->
         <surface>
           <friction>
             <ode>
               <mu>0.7</mu>
-              <mu2>150</mu2>
+              <mu2>300</mu2>
               <fdir1>0 1 0</fdir1>
             </ode>
           </friction>
@@ -671,22 +686,37 @@
              mu2=150 (RTF held ~0.6-0.7 under sustained driving, same as
              mu2=5/50, no collapse at any of the three).
 
-             SEPARATE, NOT YET RESOLVED finding: real achieved speed is
-             essentially IDENTICAL across mu2=5, 50, and 150 (~0.12m
-             displacement per 10s test, ~3-4% of a 1.0 m/s command) --
-             proving mu2 magnitude was never the speed bottleneck, only
-             the numerical stability was. The real speed ceiling is
-             something else entirely (vehicle mass/track contact area
-             vs. the TrackedVehicle system's own belt-to-ground
-             conversion, not yet investigated). mu2=150 kept here anyway
-             since it's the reference-correct, most physically realistic
-             value now that it's stable -- lowering it further would
-             only sacrifice grip for zero speed benefit. -->
+             REAL ROOT CAUSE of the "speed identical across mu2=5/50/150"
+             finding (found while testing mu2=300): every one of those
+             "gz-transport bypass" tests was silently confounded --
+             gazebo_tracked_vehicle.launch.py's own track_cmd_vel_bridge.py
+             (part of the real ArduPilot control path) was STILL RUNNING
+             during every "bypass" test and continuously republishing
+             ArduPilot's own near-idle reported velocity onto the exact
+             same gz-transport /model/.../cmd_vel topic the bypass test
+             was ALSO manually publishing to -- two competing publishers
+             on one topic, with the bridge's tiny value dominating.
+             CONFIRMED: killing track_cmd_vel_bridge.py before testing
+             (genuine isolation) at mu2=300 -- track_cmd_vel reported
+             EXACTLY the commanded 1.0 (was 0.02-0.03 before, regardless
+             of command magnitude), and real displacement was 4.91m over
+             a 10s wall-clock test (~0.98 m/s sim-time-normalized at
+             RTF~0.5) -- i.e. essentially the FULL commanded speed, with
+             correct direction. Friction/contact physics were NEVER the
+             real speed bottleneck at any mu2 tested -- the entire
+             "~3-4% of commanded" finding above was a test-methodology
+             artifact, not a real physics limitation. mu2=300 confirmed
+             genuinely correct and performant; kept as the tuned value.
+             The REAL remaining gap for driving via the actual ArduPilot
+             path (not this bypass) is ArduPilot's own Rover GUIDED-mode
+             velocity-control tuning (CRUISE_SPEED/CRUISE_THROTTLE/
+             ATC_SPEED_P in rover.parm) -- a completely different
+             subsystem, not gz-sim physics at all. -->
         <surface>
           <friction>
             <ode>
               <mu>0.7</mu>
-              <mu2>150</mu2>
+              <mu2>300</mu2>
               <fdir1>0 1 0</fdir1>
             </ode>
           </friction>

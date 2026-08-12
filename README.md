@@ -337,35 +337,41 @@ inflation zone from both walls meeting in the middle gave MPPI's
 non-stalling forward progress. See git history on
 `tracked_vehicle_nav2_params.yaml` for the original tuning this reverts).
 
-**Track collision friction (direction fixed; speed ceiling separate,
-unresolved)** — `model.sdf.tracked`'s track collision boxes had zero
-`<surface><friction>` at all, despite gz-sim's own reference example
+**Track collision friction (fixed — direction, stability, and speed)** —
+`model.sdf.tracked`'s track collision boxes had zero `<surface><friction>`
+at all, despite gz-sim's own reference example
 (`worlds/tracked_vehicle_simple.sdf`) requiring anisotropic friction
 (`fdir1` + `mu`/`mu2`) for the `TrackedVehicle` system's belt simulation to
 convert commanded track speed into correct real motion. Without it,
 commanded forward motion produced mostly *lateral* real motion (measured
 live at 71-92° off-axis) — the same bug already flagged below as a "known
 open issue" on the ArduPilotPlugin block, there measured at ~60°. Fixed
-with `fdir1="0 1 0"`, `mu=0.7`, `mu2=150` (the reference's own value).
-Live-verified: direction improved from 71-92° off-axis to ~5-11°
-(genuinely forward now).
+with `fdir1="0 1 0"`, `mu=0.7`, `mu2=300`. Live-verified: direction
+improved from 71-92° off-axis to ~5-14° (genuinely forward now).
 
-`mu2=150` initially caused real, measured real-time-factor collapse (0.6+
-down to ~0.09) and near-zero real displacement on this world's cave floor
-*mesh*, unlike the reference's flat ground plane (splitting the collision
-into multiple segments, matching the reference's own structure, did not
-help and was reverted). Real fix: raised `cavex_world.world`'s ODE solver
-iterations 50 (gz-sim default) → 200 — confirmed live this restores full
-stability at `mu2=150` (real-time-factor held steady under sustained
-driving at mu2=5, 50, and 150 alike).
+High `mu2` (the reference's own `150`) initially caused real, measured
+real-time-factor collapse (0.6+ down to ~0.09) on this world's cave floor
+*mesh*, unlike the reference's flat ground plane. Real fix: raised
+`cavex_world.world`'s ODE solver iterations 50 (gz-sim default) → 200 —
+confirmed live this restores full stability up through `mu2=300` (RTF held
+steady under sustained driving).
 
-**Not yet resolved**: real achieved speed is essentially *identical*
-across `mu2=5`, `50`, and `150` (~3-4% of commanded regardless) — proving
-friction magnitude was never the actual speed bottleneck, only the
-numerical stability was. `mu2=150` is kept as the reference-correct,
-physically realistic value now that it's stable; the real speed ceiling is
-a separate, not-yet-investigated limitation (vehicle mass/track contact
-area vs. the `TrackedVehicle` system's own belt-to-ground conversion).
+**Corrected finding** (an earlier version of this section reported speed
+as "essentially identical across mu2=5/50/150, ~3-4% of commanded" and
+called it unresolved — that was a test-methodology artifact, not a real
+limitation): every one of those "gz-transport bypass" tests was silently
+confounded by `track_cmd_vel_bridge.py` (part of the real ArduPilot
+control path, launched alongside the vehicle) continuously republishing
+ArduPilot's own near-idle reported velocity onto the *same* gz-transport
+`cmd_vel` topic the bypass tests were manually driving — two competing
+publishers on one topic. With that bridge properly killed for a genuinely
+isolated test, `mu2=300` achieved the *full* commanded speed (4.91m
+displacement over a 10s test, ≈0.98 m/s sim-time-normalized for a 1.0 m/s
+command). Friction/contact physics were never the real speed bottleneck at
+any `mu2` value. The actual remaining gap — for driving through the real
+ArduPilot path, not this bypass — is ArduPilot's own Rover GUIDED-mode
+velocity-control tuning (`CRUISE_SPEED`/`CRUISE_THROTTLE`/`ATC_SPEED_P` in
+`rover.parm`), a different subsystem entirely, not gz-sim physics.
 
 **Cave scaled 2x** (`ros2_ws/src/cavex_slam_nav/models/cave_world/model.sdf`)
 — the vendored mesh's `<collision>`/`<visual>` geometry carries a real

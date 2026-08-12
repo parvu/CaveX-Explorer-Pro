@@ -801,15 +801,26 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # 3 segments matching the reference's own structure -- did NOT help,
 # reverted). REAL FIX: raised cavex_world.world's ODE solver iterations
 # 50 (gz-sim default) -> 200 (<physics><ode><solver><iters>) -- confirmed
-# live this restores full stability at mu2=150 (RTF held steady under
-# sustained driving at mu2=5, 50, and 150 alike, no collapse at any).
+# live this restores full stability up through mu2=300 (RTF held steady
+# under sustained driving, no collapse).
 #
-# NOT YET RESOLVED (separate from the now-fixed direction/stability bugs):
-# real achieved speed is essentially IDENTICAL across mu2=5, 50, and 150
-# (~3-4% of commanded regardless) -- proving friction magnitude was never
-# the actual speed bottleneck, only the numerical stability was. mu2=150
-# kept as the reference-correct, physically realistic value now that it's
-# stable; the real speed ceiling is a separate, not-yet-investigated
-# limitation (vehicle mass/track contact area vs. the TrackedVehicle
-# system's own belt-to-ground conversion) -- left for a dedicated
+# CORRECTED (an earlier version of this entry called the ~3-4%-of-
+# commanded speed shortfall a real, unresolved friction/physics
+# limitation -- it was actually a test-methodology artifact): every
+# "gz-transport bypass" test this session was silently confounded by
+# track_cmd_vel_bridge.py (part of the real ArduPilot control path,
+# launched alongside the vehicle) continuously republishing ArduPilot's
+# own near-idle reported velocity onto the SAME gz-transport
+# /model/.../cmd_vel topic the bypass tests were manually driving -- two
+# competing publishers on one topic, with the bridge's tiny value
+# dominating. Confirmed by killing that process before testing: with a
+# genuinely isolated bypass, mu2=300 achieved the FULL commanded speed
+# (4.91m displacement over a 10s test, ~0.98 m/s sim-time-normalized for
+# a 1.0 m/s command) with correct direction. Friction/contact physics
+# were never the real speed bottleneck at any mu2 tested. mu2=300 kept
+# as the tuned, confirmed-correct value. The REAL remaining gap -- for
+# driving via the actual ArduPilot path, not this bypass -- is
+# ArduPilot's own Rover GUIDED-mode velocity-control tuning
+# (CRUISE_SPEED/CRUISE_THROTTLE/ATC_SPEED_P in rover.parm), a completely
+# different subsystem, not gz-sim physics -- left for a dedicated
 # follow-up session.
