@@ -972,28 +972,34 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # drift, but wrong by a consistent ~98-100deg from real ground truth the
 # whole time, regardless of GPS-only vs GPS+compass-fallback yaw source.
 #
-# REAL HYPOTHESIS (not yet verified): this pattern -- a highly stable,
-# confidently-held, but consistently WRONG heading, unaffected by which
-# aiding source is used -- fits a fixed coordinate-transform bug
-# upstream of the EKF, not a fusion/convergence problem. Both GPS-course
-# and the simulated compass are synthesized by ArduPilot SITL from the
-# SAME underlying FDM attitude data it receives from Gazebo via
-# ArduPilotPlugin's <gazeboXYZToNED>/<modelXYZToAirplaneXForwardZDown>
-# transform (model.sdf.tracked) -- if that transform's yaw component is
-# wrong for this vehicle's real mounting convention, EVERY internal
-# ArduPilot attitude source would be consistently, self-reinforcingly
-# biased by the same fixed amount, exactly matching what was observed
-# (why neither yaw-source config helped -- both are equally affected
-# upstream). NOT YET VERIFIED OR FIXED: this file's own ArduPilotPlugin
-# comment already documents TWO live-tested, reverted attempts at these
-# exact same two parameters -- but that earlier investigation was
-# specifically diagnosing a VELOCITY-reporting swap (ahrs.get_velocity_
-# NED() frame convention, fixed for real in track_cmd_vel_bridge.py
-# instead), not a fixed ATTITUDE/yaw bias -- these may be genuinely
-# different bugs sharing a plausible-but-unconfirmed root cause. Needs
-# careful, isolated verification (e.g. compare ArduPilot's reported yaw
-# against ground truth at the vehicle's TRUE initial spawn heading,
-# before any driving, to see if the offset is present and constant even
-# at rest) before touching these parameters again -- left for a
-# dedicated follow-up given this file's own history of reverted attempts
-# here.
+# CONFIRMED (real request: verify the coordinate-transform hypothesis),
+# NOT YET FIXED: the pattern (highly stable, confidently-held, but
+# consistently wrong heading, unaffected by which aiding source is used)
+# does fit a fixed coordinate-transform bug upstream of the EKF, not a
+# fusion/convergence problem -- CONFIRMED DEFINITIVELY by setting
+# AHRS_EKF_TYPE=10 (AP_AHRS::EKFType::SIM) live via MAVLink param_set,
+# bypassing EKF/DCM entirely: /ap/pose/filtered STILL reported ~96.9deg
+# against real ground truth ~-1.6deg with ZERO fusion involved. This
+# rules out EK3_SRC1_YAW, GPS timing, and everything EKF-side -- the bug
+# is baked into ArduPilot's raw SITL attitude state itself, fed directly
+# by the Gazebo FDM interface (ArduPilotPlugin.cc).
+#
+# BUT: live-tested the specific fix this pointed to (swapping yaw between
+# gazeboXYZToNED and modelXYZToAirplaneXForwardZDown, model.sdf.tracked --
+# see that file's own ArduPilotPlugin comment for the full derivation,
+# including a real TODO comment found in the vendored plugin's own source
+# flagging its gazeboXYZToNED.Inverse() as buggy specifically for
+# non-zero yaw) with a fresh eeprom, checking /ap/pose/filtered (the
+# correct diagnostic, unlike an earlier attempt in this same file's
+# history that only checked velocity) directly against ground truth:
+# ZERO measurable effect, bit-for-bit identical heading with or without
+# the swap. Reverted (no benefit). The TODO-flagged Inverse() bug is real
+# but isn't the cause of THIS specific symptom, or isn't sufficient alone
+# -- the actual bug is elsewhere in the plugin's orientation-quaternion
+# computation (possibly the FDM JSON's own "imu"/"quaternion" field
+# construction, a separate code path from the Pose3d these two SDF params
+# feed into). Finding it needs direct C++-level tracing of the plugin's
+# actual quaternion output (debug logging, rebuild, compare against known
+# Gazebo ground truth at each step) -- a bigger, riskier task than a
+# config change, left for a dedicated follow-up. AHRS_EKF_TYPE was reset
+# back to 3 (EK3, normal) after this diagnostic.

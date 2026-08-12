@@ -426,11 +426,30 @@ with `EK3_SRC1_YAW=2` (`tracked_vehicle_speed_tuning.parm`) — the
 standard ArduPilot mechanism for deriving yaw from GPS course-over-ground
 instead of gyro-only dead-reckoning when no compass is present.
 Live-verified via real ground-truth displacement: realized speed jumped
-to ~60-65% of commanded. Not fully characterized yet: how long GPS-yaw
-takes to fully converge (ArduPilot's own reported heading was still ~85°
-off after ~60s of continuous driving in one test), and whether a later
-~44° path curve was real corridor geometry or residual yaw noise — worth
-a dedicated test on a known-straight corridor segment.
+to ~60-65% of commanded.
+
+**Deeper bug found, confirmed, not yet fixed**: ArduPilot's own reported
+heading turned out to be *stuck*, not slowly converging — bit-for-bit
+identical (~97°) across repeated samples and across every yaw-source
+config tried (GPS-only, GPS+compass fallback, tightened GPS
+latency/rate). Confirmed via a magnetometer check (ArduPilot SITL
+simulates a compass automatically with zero injected error by default —
+nothing to actually calibrate) and, definitively, by setting
+`AHRS_EKF_TYPE=10` live via MAVLink to bypass EKF/DCM fusion entirely:
+the heading was *still* ~97° wrong with zero fusion involved, proving the
+bug is baked into ArduPilot's raw simulated attitude state itself (fed
+directly by the Gazebo FDM interface), not an EKF convergence problem.
+The vendored `ArduPilotPlugin`'s own source contains a `TODO` comment
+flagging its `gazeboXYZToNED.Inverse()` computation as buggy specifically
+for non-zero yaw — and this vehicle's `gazeboXYZToNED` has exactly that
+(`yaw=90°`). Live-tested the fix this pointed to (swapping the yaw
+between `gazeboXYZToNED` and `modelXYZToAirplaneXForwardZDown`, checking
+heading — not just velocity — against ground truth): zero effect,
+reverted. The real bug is somewhere else in the plugin's orientation-
+quaternion pipeline, needing C++-level tracing to locate — left for a
+dedicated follow-up rather than more blind parameter changes. See
+`model.sdf.tracked`'s own `ArduPilotPlugin` comment for the full
+derivation.
 
 **Note on the water region below**: its `x=15`/`x=-35`-spawn coordinates
 predate the cave 2x scale above and were not re-derived against it — the

@@ -1255,16 +1255,12 @@
       <lock_step>1</lock_step>
       <!-- Real request: fix the "moving sideways not forward" bug at its
            root. Two live-tested attempts at THESE two parameters both
-           failed and were fully reverted (values below are original/
-           working, do not carry an unhelpful change): (1) this term's yaw
-           90->0, (2) modelXYZToAirplaneXForwardZDown's yaw 0->90. Both
-           left /ap/twist/filtered unchanged, (x=-0.03, y=0.40) for a
-           commanded pure-forward (x=0.4) -- neither parameter is what
-           causes the swap. Arming/GUIDED kept working through both (the
-           flagged EKF risk never materialized).
-
-           The REAL root cause was found by reading ArduPilot's own AP_DDS
-           source directly (ardupilot/libraries/AP_DDS/AP_DDS_Client.cpp,
+           failed for THAT symptom and were reverted at the time: (1) this
+           term's yaw 90->0, (2) modelXYZToAirplaneXForwardZDown's yaw
+           0->90. Both left /ap/twist/filtered unchanged, (x=-0.03, y=0.40)
+           for a commanded pure-forward (x=0.4). The REAL root cause of
+           THAT symptom was found by reading ArduPilot's own AP_DDS source
+           directly (ardupilot/libraries/AP_DDS/AP_DDS_Client.cpp,
            update_topic(TwistStamped&)): /ap/twist/filtered's linear.x/y is
            ahrs.get_velocity_NED() converted to ROS's ENU convention -- real
            WORLD-FRAME ground velocity (East/North), not body-frame
@@ -1272,27 +1268,84 @@
            base_link. Fixed for real in track_cmd_vel_bridge.py: it now
            rotates that world-frame velocity into body-frame using the
            vehicle's LIVE yaw (from /ap/pose/filtered, same AHRS source),
-           not a fixed constant -- verified correct end-to-end
-           (/track_cmd_vel and the raw gz-transport
-           /model/cavex_tracked_blueboat/cmd_vel command both showed the
-           right sign/magnitude for commanded forward and reverse).
+           not a fixed constant -- verified correct end-to-end.
 
-           KNOWN OPEN ISSUE, not caused by any of the above: even with a
-           fully verified-correct command reaching the TrackedVehicle
-           plugin, the vehicle's actual WORLD-frame motion direction was
-           measured live at a consistent ~60deg offset from its own
-           reported heading (repeatable across multiple independent
-           straight-line tests, at a location confirmed clear of any
-           obstruction). Ruled out: left_track/right_track link poses both
-           have zero rotation relative to base_link (checked directly in
-           this file -- not a static mounting-angle bug); yaw was stable
-           during each measurement window (not an active-turning/momentum
-           artifact). Not yet investigated: Gazebo's own physics
-           contact/friction model for the tracks (TrackedVehicle's
-           track-ground interaction), which is a genuinely different,
-           deeper layer than anything ROS/SDF-frame-convention related
-           above. Left open by real request rather than guessed at
-           further. -->
+           SEPARATE bug, same two parameters, root-caused for real this
+           session: ArduPilot's own reported ATTITUDE (yaw, /ap/pose/
+           filtered) was found stuck at a highly stable but consistently
+           wrong ~98-100deg offset from real ground truth, unaffected by
+           EK3_SRC1_YAW (GPS-only vs GPS+compass fallback) -- the classic
+           signature of a fixed upstream coordinate-transform bug, not an
+           EKF convergence problem. Confirmed directly in the vendored
+           ArduPilotPlugin's own source (ardupilot_gazebo/src/
+           ArduPilotPlugin.cc, ~line 1843): the plugin's own TODO comment
+           says wldAToWldG = gazeboXYZToNED.Inverse() "may be incorrect...
+           not evident when using <gazeboXYZToNED>0 0 0 GZ_PI 0
+           0</gazeboXYZToNED> but is when using... 0 0 0 GZ_PI 0 GZ_PI/2"
+           -- i.e. .Inverse() is buggy specifically when gazeboXYZToNED
+           has a non-zero YAW component. This vehicle's gazeboXYZToNED had
+           yaw=90 (GZ_PI/2) -- exactly the flagged buggy case. Per the
+           plugin's own math derivation comment (same file), gazeboXYZToNED
+           is meant to be the UNIVERSAL, vehicle-independent Gazebo-ENU<->
+           ArduPilot-NED relationship (yaw=0 always); any vehicle-specific
+           body-mounting rotation belongs in
+           modelXYZToAirplaneXForwardZDown instead (the plugin's own
+           Zephyr reference example does exactly this for its own 90deg
+           yaw need) -- this vehicle had it backwards, in theory. TESTED
+           FOR REAL this session (live-verified, unlike the earlier revert
+           which only checked /ap/twist/filtered/velocity): swapped yaw
+           from gazeboXYZToNED (90->0) to modelXYZToAirplaneXForwardZDown
+           (0->90), fresh eeprom, checked /ap/pose/filtered (attitude, the
+           correct diagnostic for THIS bug) directly against ground truth.
+           RESULT: zero measurable effect -- ArduPilot's own reported yaw
+           was bit-for-bit identical (~97.17deg) both with and without the
+           swap. Reverted back to the original values below (no benefit,
+           and matches this file's own documented baseline). The TODO-
+           flagged Inverse() bug in ArduPilotPlugin.cc is real (confirmed
+           in the plugin's own source) but does not appear to be the cause
+           of this specific frozen-heading symptom -- or fixing it alone
+           isn't sufficient; the actual mechanism producing the stable-
+           but-wrong ~97-100deg offset remains unexplained. Also tried:
+           EK3_SRC1_YAW GPS-only vs GPS+compass-fallback, SIM_GPS1_LAG_MS/
+           HZ tightening -- none of these three independent, plausible
+           fixes moved this value at all, which is itself a strange,
+           notable data point (suggests something more fundamental is
+           holding the estimate fixed, not just under-corrected). NOT YET
+           TRIED, DEFINITIVE RESULT: set AHRS_EKF_TYPE=10
+           (AP_AHRS::EKFType::SIM) live via MAVLink param_set to bypass
+           EKF/DCM entirely -- /ap/pose/filtered STILL reported ~96.9deg
+           against real ground truth ~-1.6deg, with ZERO EKF/compass/GPS
+           fusion involved at all. This proves conclusively the bug is
+           NOT in EKF fusion logic (ruling out EK3_SRC1_YAW, GPS timing,
+           and everything upstream of this point) -- it's baked into
+           ArduPilot's raw SITL attitude state itself, fed directly by
+           the Gazebo FDM interface (ArduPilotPlugin.cc). But the specific
+           gazeboXYZToNED/modelXYZToAirplaneXForwardZDown yaw-swap tested
+           above did NOT fix it, so the real bug is somewhere else in
+           that plugin's orientation-quaternion computation (possibly the
+           FDM JSON's own "imu"/"quaternion" field construction, a
+           separate code path from the wldAToBdyA Pose3d these two SDF
+           params feed into) -- needs direct C++-level tracing of the
+           plugin's actual quaternion output (add debug logging, rebuild,
+           compare against known Gazebo ground truth at each step) to
+           find the real bug. A bigger, riskier task than a config-only
+           change -- left for a dedicated follow-up. AHRS_EKF_TYPE was
+           reset back to 3 (EK3, normal) after this diagnostic.
+
+           KNOWN OPEN ISSUE (direction-of-motion, DIFFERENT from the
+           attitude-reporting bug above): even with a fully verified-
+           correct command reaching the TrackedVehicle plugin, the
+           vehicle's actual WORLD-frame motion direction was once measured
+           at a consistent ~60deg offset from its own reported heading.
+           This was FIXED this session (separately, see this file's own
+           track collision <surface><friction> comment) -- root cause was
+           missing anisotropic friction (fdir1) on the track collision
+           boxes, not a coordinate-frame bug -- real motion direction is
+           now correct (~5-14deg off-axis, live-verified). That fix and
+           this one address two genuinely different problems that
+           happened to look similar (both showed up as "wrong direction"
+           symptoms): real motion direction (fixed via friction) vs.
+           ArduPilot's own internal heading ESTIMATE (this fix). -->
       <gazeboXYZToNED degrees="true">0 0 0 180 0 90</gazeboXYZToNED>
       <modelXYZToAirplaneXForwardZDown degrees="true">0 0 0 180 0 0</modelXYZToAirplaneXForwardZDown>
       <imuName>imu_link::imu_sensor</imuName>
