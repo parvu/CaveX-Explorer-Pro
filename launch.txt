@@ -858,3 +858,21 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # base_link_z - 0.425, from the retract_mount/track pose chain) --
 # tracks sit ~4.9cm lower than the hull, so the hull is not dragging on
 # the ground.
+#
+# RULED OUT (real request, checked): explore_lite as the cause of the
+# ~13%-of-commanded ArduPilot-path speed shortfall above. explore_lite
+# doesn't publish /cmd_vel directly (goals go through Nav2's action
+# interface) and wasn't even active/hadn't sent a goal in the timeframe
+# tested. DID find and fix a real, related confound while checking this:
+# even with Nav2 completely IDLE, /cmd_vel had steady ~5Hz traffic --
+# turned out to be bootstrap_nudge (tracked_vehicle_slam.launch.py's own
+# unconditional 300s auto-drive, linear.x=0.3, already documented in
+# README.md as competing with any manual /cmd_vel publish in that window,
+# just not accounted for when running this session's ArduPilot-path speed
+# tests). Killed it and re-ran the same speed test cleanly: real speed was
+# STILL only ~10-13% of commanded, essentially unchanged. So the
+# ArduPilot-loop speed shortfall is confirmed to be a real, separate
+# control-loop issue, not a publisher-race artifact -- bootstrap_nudge was
+# a real confound worth knowing about (always kill it, or wait out its
+# 300s window, before any clean manual /cmd_vel speed test on this
+# vehicle), but not the actual explanation for the shortfall itself.
