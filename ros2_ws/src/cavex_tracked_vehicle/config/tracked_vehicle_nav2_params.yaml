@@ -131,23 +131,18 @@ controller_server:
       CostCritic:
         enabled: true
         cost_power: 1
-        # Raised 3.81 -> 7.0 -> 10.0 alongside local_costmap's own
-        # inflation_radius/cost_scaling_factor increases above -- real
-        # request: keep the vehicle centered in the corridor, strengthened
-        # again after it still got physically wedged against a wall at 7.0.
-        # Real root cause found for a later "strange preference to go to
-        # walls" report: this stayed BELOW PathAlignCritic's 14.0 the whole
-        # time, so path-following could -- and did -- outweigh centering.
-        # global_costmap's own inflation is deliberately kept low (0.35,
-        # see that block's comment -- raising it broke frontier detection),
-        # which leaves most of a corridor's global-costmap cost at zero, so
-        # the PLANNED path itself has no incentive to be centered and can
-        # legally hug a wall. PathAlignCritic then rewarded following that
-        # wall-hugging plan more than CostCritic rewarded centering away
-        # from it. Fixed at the critic-weight level (see PathAlignCritic's
-        # own reduced weight below) rather than touching global_costmap,
-        # to avoid re-breaking frontier detection.
-        cost_weight: 10.0
+        # REVERTED to the pre-corridor-centering original (was raised
+        # 3.81 -> 7.0 -> 10.0 to fight wall-hugging, see git history on
+        # this file -- bddaf683, e76a9205). Real request: the vehicle got
+        # stuck motionless in the middle of an OPEN corridor after a few
+        # steps, a new symptom consistent with the centering tuning
+        # over-correcting (inflation_radius=1.8/cost_scaling_factor=1.5
+        # below plus this weight can flood a wide-open area with enough
+        # cost-gradient conflict against PathAlignCritic that MPPI stalls
+        # rather than committing to any trajectory). Reverting this and
+        # PathAlignCritic/inflation_layer below together as one change to
+        # re-test against the original baseline before re-tuning.
+        cost_weight: 3.81
         near_collision_cost: 253
         critical_cost: 300.0
         consider_footprint: false
@@ -157,15 +152,9 @@ controller_server:
       PathAlignCritic:
         enabled: true
         cost_power: 1
-        # Reduced 14.0 -> 8.0, below CostCritic's 10.0 -- was the real cause
-        # of a "strange preference to go to walls": at 14.0 this outweighed
-        # CostCritic, so the controller preferred hugging the global plan
-        # (which itself has no centering incentive, see CostCritic's own
-        # comment) over actually centering in the corridor. Still enabled
-        # and still a real contributor (above every other critic except
-        # CostCritic), so the vehicle doesn't ignore the plan outright --
-        # just no longer lets path-hugging beat corridor-centering.
-        cost_weight: 8.0
+        # REVERTED alongside CostCritic above -- was 14.0 originally,
+        # reduced to 8.0 by the corridor-centering tuning (e76a9205).
+        cost_weight: 14.0
         max_path_occupancy_ratio: 0.05
         trajectory_point_step: 4
         threshold_to_consider: 0.5
@@ -245,41 +234,24 @@ local_costmap:
       # adjacent cells -- confirmed live via /explore/frontiers actually
       # publishing 2 real markers where it previously found none, same
       # map, same run, only this parameter changed.
-      # Real request: "keep the vehicle in the middle of the corridor always."
-      # inflation_radius=0.35 (matching global_costmap below) leaves ZERO
-      # inflation cost -- and so zero centering pull from MPPI's CostCritic --
-      # anywhere more than 0.35m from a wall, which is most of a typical
-      # corridor here. This costmap is LOCAL (used by the controller/
-      # CostCritic for real-time driving), not what explore_lite's frontier
-      # search reads (that's global_costmap below, deliberately left
-      # unchanged at 0.35 -- see that block's own comment for why raising it
-      # broke frontier detection).
-      # Raised further, 0.6 -> 0.9, after the vehicle still got physically
-      # wedged against a wall with 0.6/cost_scaling_factor=3.0 -- that
-      # combination only put real cost within roughly half a typical
-      # corridor width, and cost_scaling_factor=3.0's exponential decay
-      # concentrates nearly all of it within the first ~0.3m of the wall,
-      # leaving most of the corridor still a flat near-zero-cost region.
-      # cost_scaling_factor lowered 3.0 -> 1.5 as the real fix for that --
-      # this is the exponential decay rate (cost = 253 * exp(-factor *
-      # (distance - robot_radius))), so a lower value spreads meaningful
-      # cost much further from the wall instead of collapsing it into a
-      # thin band right at the surface, giving CostCritic a real gradient
-      # to climb across most of the corridor width, not just the last few
-      # centimeters before contact.
-      # Raised again, 0.9 -> 1.8, after the cave_world mesh itself was
-      # scaled 2x (see models/cave_world/model.sdf) -- real corridors here
-      # are now roughly twice as wide as when 0.9 was derived, so 0.9m of
-      # inflation from each wall no longer reached the new corridor's
-      # middle at all: a flat, zero-cost band sat there with nothing for
-      # CostCritic to act on regardless of its weight, the real cause of a
-      # "still hugging walls" report even after fixing the CostCritic vs
-      # PathAlignCritic weight ordering. Doubled to track the doubled
-      # geometry, same reasoning as that earlier fix, not a new one.
+      # REVERTED to the pre-corridor-centering original (cost_scaling_factor
+      # 3.0, inflation_radius 0.35, matching global_costmap below) -- the
+      # corridor-centering tuning history that raised these (0.35 -> 0.6 ->
+      # 0.9 -> 1.8, cost_scaling_factor 3.0 -> 1.5) is preserved in git
+      # history on this file (bddaf683, e76a9205), not repeated here. Real
+      # request: the vehicle got stuck motionless in the middle of an OPEN
+      # corridor after a few steps forward -- a new symptom consistent with
+      # this tuning over-correcting (a wide, flat, high-cost inflation zone
+      # from BOTH walls meeting in the middle of a corridor can give MPPI's
+      # CostCritic nowhere low-cost to aim for, causing it to stall rather
+      # than commit to a trajectory, especially combined with CostCritic's
+      # weight also reverted above). If wall-hugging reappears at these
+      # values, re-tune from this baseline rather than restoring the old
+      # 1.8/1.5 pair outright -- that combination is what caused this stall.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.5
-        inflation_radius: 1.8
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.35
       always_send_full_costmap: True
 
 global_costmap:

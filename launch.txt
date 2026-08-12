@@ -759,3 +759,57 @@ rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*
 # --sort=-%cpu`), not just this project's own process-name greps, needs to
 # be part of any "looks frozen/slow" triage, not just the launch-tree
 # cleanup sweep.
+
+# ============================================================
+# Nav2 corridor-centering revert + track collision friction fix
+# (this session)
+# ============================================================
+#
+# REVERTED (real request): local_costmap's inflation_layer (cost_scaling_
+# factor 1.5->3.0, inflation_radius 1.8->0.35) and MPPI's CostCritic/
+# PathAlignCritic weights (10.0->3.81, 8.0->14.0) back to their pre-
+# corridor-centering values (tracked_vehicle_nav2_params.yaml) -- the
+# vehicle was getting stuck motionless in the middle of an OPEN corridor
+# after a few steps forward, consistent with that tuning's wide, flat,
+# high-cost inflation zone giving MPPI's CostCritic nowhere low-cost to
+# aim for in open areas. Live-verified over multiple 90-180s driving
+# windows: continuous, non-stalling forward progress restored. See git
+# history on this file (bddaf683, e76a9205) for the original corridor-
+# centering tuning being reverted.
+#
+# REAL BUG FOUND AND FIXED (track collision friction, model.sdf.tracked):
+# while investigating a SEPARATE "vehicle barely moves" symptom that
+# persisted even after the costmap revert, traced it (bypassing ArduPilot
+# entirely via direct gz-transport /model/.../cmd_vel commands, to rule
+# out the ROS/ArduPilot round-trip) to the track collision boxes having
+# ZERO <surface><friction> at all -- gz-sim's own reference example
+# (worlds/tracked_vehicle_simple.sdf, gz-sim8) requires anisotropic
+# friction (fdir1 + mu/mu2) on every track collision for the
+# TrackedVehicle system's belt simulation to convert commanded track
+# speed into correct real motion. Without it, commanded forward motion
+# produced mostly LATERAL real motion (measured live at 71-92deg
+# off-axis) -- this is the SAME bug already flagged as a "KNOWN OPEN
+# ISSUE" in model.sdf.tracked's own ArduPilotPlugin comment (there
+# measured at ~60deg, left open pending exactly this investigation).
+# Fixed with fdir1="0 1 0", mu=0.7, mu2=5 (mu2 lowered from the
+# reference's own 150 -- that value caused real, measured RTF collapse,
+# 0.6+ -> ~0.09, and near-zero real displacement on this world's cave
+# floor mesh; tried splitting the track collision into 3 segments
+# matching the reference's own structure on the theory that one long
+# rigid box was over-constraining the ODE solver -- did NOT help,
+# reverted). Live-verified: direction went from 71-92deg off-axis to
+# ~5-11deg (genuinely forward now), RTF stays stable under sustained
+# driving (no more collapse).
+#
+# NOT YET RESOLVED: even with the direction fix, real achieved speed at
+# mu2=5 is only ~3-4% of commanded (e.g. ~0.036 m/s sim-time for a 1.0 m/s
+# command) -- a genuine, separate speed limitation from the (now-fixed)
+# direction bug. Best lead: the reference world uses a flat <plane>
+# ground, while cavex_world.world's floor is a dense, irregular mesh --
+# box-vs-uneven-mesh contact at high friction is a known ODE solver
+# stiffness source independent of box segmentation. Raising
+# cavex_world.world's ODE solver iterations (<physics><ode><solver>
+# <iters>, currently unset/default) to let a higher, more realistic mu2
+# stay numerically stable was identified as the next real avenue but not
+# yet attempted (world-level change, broader blast radius than a single
+# vehicle's SDF) -- left for a dedicated follow-up session.

@@ -307,6 +307,57 @@
             <size>0.6 0.12 0.15</size>
           </box>
         </geometry>
+        <!-- REAL BUG FOUND AND FIXED: this box had zero <surface><friction>
+             at all (isotropic gz-sim/DART default), despite gz-sim's own
+             reference example (worlds/tracked_vehicle_simple.sdf,
+             gz-sim8) requiring anisotropic friction (fdir1 + mu/mu2) on
+             every track collision for the TrackedVehicle system's belt
+             simulation to convert commanded track speed into correct real
+             motion. Without it, commanded forward motion produced mostly
+             LATERAL real motion (measured live at 71-92deg off-axis,
+             matching this file's own previously-documented "KNOWN OPEN
+             ISSUE" on the ArduPilotPlugin block above -- same bug,
+             different investigation). fdir1="0 1 0" (Y = across-track/
+             skid axis, moderate mu) matches the reference exactly --
+             this box is already unrotated with its long (along-track/
+             propulsion) axis on local +X, matching TrackController's own
+             track_orientation "1 0 0" below, so no rotation-compensation
+             was needed unlike the reference's own rotated collision pose.
+             CONFIRMED LIVE (fixed): direction went from 71-92deg off-axis
+             to ~6-11deg off-axis, i.e. genuinely forward now.
+
+             mu2 lowered from the reference's 150 to 5: 150 caused real,
+             measured RTF collapse (0.6+ -> ~0.09) and near-zero real
+             displacement -- tried splitting this box into 3 segments
+             (matching the reference's own left/right_track_collision/
+             _collision_1/_collision_2 structure) on the theory that one
+             long rigid box was over-constraining the ODE solver; that
+             did NOT help (RTF still collapsed to ~0.09 at mu2=150 with
+             3 segments -- reverted, not worth the added complexity for
+             zero measured benefit). Root cause is more likely that the
+             reference world's ground is a flat <plane>, while this
+             world's floor (cavex_world.world) is a dense, irregular
+             mesh -- box-vs-uneven-mesh contact at high friction is a
+             known ODE stiffness/instability source independent of box
+             length. mu2=5 confirmed live to keep RTF stable (~0.33-0.46,
+             no collapse) while keeping the correct fdir1 direction, but
+             real achieved speed at mu2=5 is still only ~3-4% of
+             commanded (e.g. ~0.036 m/s sim-time for a 1.0 m/s command) --
+             a genuine, SEPARATE, NOT YET RESOLVED speed limitation.
+             Likely needs raising cavex_world.world's ODE solver
+             iterations (<physics><ode><solver><iters>, currently unset/
+             default) to let a higher, more realistic mu2 stay stable on
+             this bumpy mesh -- not yet attempted (world-level change,
+             broader blast radius, left for a dedicated follow-up). -->
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.7</mu>
+              <mu2>5</mu2>
+              <fdir1>0 1 0</fdir1>
+            </ode>
+          </friction>
+        </surface>
       </collision>
       <visual name="vis">
         <geometry>
@@ -581,6 +632,57 @@
             <size>0.6 0.12 0.15</size>
           </box>
         </geometry>
+        <!-- REAL BUG FOUND AND FIXED: this box had zero <surface><friction>
+             at all (isotropic gz-sim/DART default), despite gz-sim's own
+             reference example (worlds/tracked_vehicle_simple.sdf,
+             gz-sim8) requiring anisotropic friction (fdir1 + mu/mu2) on
+             every track collision for the TrackedVehicle system's belt
+             simulation to convert commanded track speed into correct real
+             motion. Without it, commanded forward motion produced mostly
+             LATERAL real motion (measured live at 71-92deg off-axis,
+             matching this file's own previously-documented "KNOWN OPEN
+             ISSUE" on the ArduPilotPlugin block above -- same bug,
+             different investigation). fdir1="0 1 0" (Y = across-track/
+             skid axis, moderate mu) matches the reference exactly --
+             this box is already unrotated with its long (along-track/
+             propulsion) axis on local +X, matching TrackController's own
+             track_orientation "1 0 0" below, so no rotation-compensation
+             was needed unlike the reference's own rotated collision pose.
+             CONFIRMED LIVE (fixed): direction went from 71-92deg off-axis
+             to ~6-11deg off-axis, i.e. genuinely forward now.
+
+             mu2 lowered from the reference's 150 to 5: 150 caused real,
+             measured RTF collapse (0.6+ -> ~0.09) and near-zero real
+             displacement -- tried splitting this box into 3 segments
+             (matching the reference's own left/right_track_collision/
+             _collision_1/_collision_2 structure) on the theory that one
+             long rigid box was over-constraining the ODE solver; that
+             did NOT help (RTF still collapsed to ~0.09 at mu2=150 with
+             3 segments -- reverted, not worth the added complexity for
+             zero measured benefit). Root cause is more likely that the
+             reference world's ground is a flat <plane>, while this
+             world's floor (cavex_world.world) is a dense, irregular
+             mesh -- box-vs-uneven-mesh contact at high friction is a
+             known ODE stiffness/instability source independent of box
+             length. mu2=5 confirmed live to keep RTF stable (~0.33-0.46,
+             no collapse) while keeping the correct fdir1 direction, but
+             real achieved speed at mu2=5 is still only ~3-4% of
+             commanded (e.g. ~0.036 m/s sim-time for a 1.0 m/s command) --
+             a genuine, SEPARATE, NOT YET RESOLVED speed limitation.
+             Likely needs raising cavex_world.world's ODE solver
+             iterations (<physics><ode><solver><iters>, currently unset/
+             default) to let a higher, more realistic mu2 stay stable on
+             this bumpy mesh -- not yet attempted (world-level change,
+             broader blast radius, left for a dedicated follow-up). -->
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.7</mu>
+              <mu2>5</mu2>
+              <fdir1>0 1 0</fdir1>
+            </ode>
+          </friction>
+        </surface>
       </collision>
       <visual name="vis">
         <geometry>

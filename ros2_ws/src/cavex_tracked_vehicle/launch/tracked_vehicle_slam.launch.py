@@ -78,6 +78,21 @@ def generate_launch_description():
                    '--roll', '-1.5707963', '--pitch', '0', '--yaw', '-1.5707963',
                    '--frame-id', 'camera_link', '--child-frame-id', 'camera_link_optical'],
     )
+    # Same lidar_link/camera_link gap (imu_link only exists in
+    # model.sdf.tracked, not in cavex_tracked_vehicle.urdf's stub
+    # robot_state_publisher actually publishes TF from) -- missed when the
+    # lidar/camera static TFs above were added, causing rtabmap's
+    # "getTransform() ... imu_link ... does not exist" lookup failures.
+    # imu_link's own <joint>/<link> in the SDF carry no <pose> override, so
+    # the real offset is identity, same as camera_optical_static_tf above.
+    imu_static_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='imu_static_tf',
+        output='screen',
+        arguments=['--x', '0', '--y', '0', '--z', '0',
+                   '--frame-id', 'base_link', '--child-frame-id', 'imu_link'],
+    )
 
     # RTAB-Map's rtabmap_slam node doesn't compute its own odometry from raw
     # lidar data -- it only does SLAM (map graph + loop closure) given an
@@ -422,6 +437,7 @@ def generate_launch_description():
         lidar_static_tf,
         camera_static_tf,
         camera_optical_static_tf,
+        imu_static_tf,
         icp_odometry,
         rtabmap,
         slam_pose_publisher,

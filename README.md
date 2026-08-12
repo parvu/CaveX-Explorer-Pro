@@ -325,11 +325,40 @@ hits) with an `ObstacleBubble` circular slowdown polygon (0.8m radius from
 `base_link`, i.e. ~0.5m clearance beyond the 0.3m footprint) plus a
 footprint-based `approach` polygon for imminent-contact braking. This is
 independent of the local costmap's own inflation-based avoidance used by the
-MPPI controller during normal path following (`inflation_radius=1.8`,
-`cost_scaling_factor=1.5`, tuned for corridor centering — `CostCritic`
-weight 10.0 kept above `PathAlignCritic`'s 8.0 so centering wins over
-blindly hugging the global plan, which itself has no centering incentive
-since `global_costmap` inflation stays low to protect frontier detection).
+MPPI controller during normal path following (`inflation_radius=0.35`,
+`cost_scaling_factor=3.0`, `CostCritic` weight 3.81, `PathAlignCritic`
+weight 14.0 — **reverted** from an earlier corridor-centering tuning
+(`inflation_radius=1.8`/`cost_scaling_factor=1.5`/`CostCritic=10.0`/
+`PathAlignCritic=8.0`) after that tuning caused the vehicle to stall
+motionless in the middle of an OPEN corridor: a wide, flat, high-cost
+inflation zone from both walls meeting in the middle gave MPPI's
+`CostCritic` nowhere low-cost to aim for. Live-verified over multiple
+90-180s driving windows with the reverted values: continuous,
+non-stalling forward progress. See git history on
+`tracked_vehicle_nav2_params.yaml` for the original tuning this reverts).
+
+**Track collision friction (fixed, partially)** — `model.sdf.tracked`'s
+track collision boxes had zero `<surface><friction>` at all, despite
+gz-sim's own reference example (`worlds/tracked_vehicle_simple.sdf`)
+requiring anisotropic friction (`fdir1` + `mu`/`mu2`) for the
+`TrackedVehicle` system's belt simulation to convert commanded track speed
+into correct real motion. Without it, commanded forward motion produced
+mostly *lateral* real motion (measured live at 71-92° off-axis) — the same
+bug already flagged below as a "known open issue" on the ArduPilotPlugin
+block, there measured at ~60°. Fixed with `fdir1="0 1 0"`, `mu=0.7`,
+`mu2=5` (lowered from the reference's own `mu2=150`, which caused real,
+measured real-time-factor collapse — 0.6+ down to ~0.09 — and near-zero
+real displacement on this world's cave floor *mesh*, unlike the
+reference's flat ground plane; splitting the collision into multiple
+segments, matching the reference's own structure, did not help and was
+reverted). Live-verified: direction improved from 71-92° off-axis to
+~5-11° (genuinely forward now), with stable real-time-factor under
+sustained driving. **Not yet resolved**: real achieved speed at `mu2=5` is
+still only ~3-4% of commanded — a separate limitation from the
+(now-fixed) direction bug, likely needing `cavex_world.world`'s ODE solver
+iteration count raised (currently unset/default) to let a higher, more
+realistic `mu2` stay numerically stable against the uneven floor mesh —
+not yet attempted.
 
 **Cave scaled 2x** (`ros2_ws/src/cavex_slam_nav/models/cave_world/model.sdf`)
 — the vendored mesh's `<collision>`/`<visual>` geometry carries a real
