@@ -145,9 +145,9 @@ RegistrationResult registerScans(
     for (auto & p : moving) {
       p = applyTransform(p, step);
     }
-    double c1 = std::cos(accumulated.yaw), s1 = std::sin(accumulated.yaw);
-    double new_dx = c1 * step.dx - s1 * step.dy + accumulated.dx;
-    double new_dy = s1 * step.dx + c1 * step.dy + accumulated.dy;
+    double c1 = std::cos(step.yaw), s1 = std::sin(step.yaw);
+    double new_dx = c1 * accumulated.dx - s1 * accumulated.dy + step.dx;
+    double new_dy = s1 * accumulated.dx + c1 * accumulated.dy + step.dy;
     accumulated.dx = new_dx;
     accumulated.dy = new_dy;
     accumulated.yaw += step.yaw;
