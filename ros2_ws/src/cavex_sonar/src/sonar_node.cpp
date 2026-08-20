@@ -4,8 +4,19 @@
 // dependencies so it can be tested off-simulator.
 //
 // This models a real sonar's behaviour. It is NOT calibrated against hardware.
+//
+// Frame ID: by default the output LaserScan carries the input scan's
+// header.frame_id verbatim (typically Gazebo's scoped sensor name). Setting
+// the `frame_id` parameter to a non-empty string overrides it, e.g. to
+// publish under a stable TF frame such as `bluerov2/sonar` that a
+// static_transform_publisher ties to `base_link`.
+//
+// A total non-detection beam (formBeams() found no valid rays at all) is
+// published with intensity -inf, never 0.0 -- consumers must check
+// isfinite() before doing arithmetic on LaserScan.intensities.
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
@@ -35,6 +46,7 @@ public:
     params_.backscatter_exponent =
       this->declare_parameter<double>("backscatter_exponent", 1.5);
     seed_ = static_cast<uint32_t>(this->declare_parameter<int>("seed", 42));
+    frame_id_ = this->declare_parameter<std::string>("frame_id", "");
 
     pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>("/bluerov2/sonar", 10);
     sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
@@ -57,11 +69,22 @@ private:
     // estimate from the real geometry.
     cfg_.angular_step_rad = in.angle_increment;
 
+    if (in.ranges.empty()) {
+      RCLCPP_WARN_ONCE(
+        this->get_logger(),
+        "sonar_node: incoming scan on /bluerov2/sonar_rays has no rays -- "
+        "the sonar ray engine produced no returns. Dropping this scan.");
+      return;
+    }
+
     std::vector<double> ranges(in.ranges.begin(), in.ranges.end());
-    const auto beams = formBeams(ranges, cfg_, params_, seed_);
+    const auto beams = formBeams(ranges, cfg_, params_, seed_, ping_index_++);
 
     sensor_msgs::msg::LaserScan out;
     out.header = in.header;
+    if (!frame_id_.empty()) {
+      out.header.frame_id = frame_id_;
+    }
 
     // Each beam integrates rays_per_beam dense rays, so its true bearing is
     // the centre of that group, not the group's start. beamScanGeometry()
@@ -73,7 +96,7 @@ private:
       out.angle_increment = in.angle_increment;
     } else {
       const auto geom = beamScanGeometry(
-        in.angle_min, in.angle_increment, cfg_.rays_per_beam, beams.size());
+        in.angle_min, in.angle_increment, cfg_.rays_per_beam);
       out.angle_min = static_cast<float>(geom.angle_min);
       out.angle_increment = static_cast<float>(geom.angle_increment);
       out.angle_max = static_cast<float>(
@@ -100,6 +123,11 @@ private:
   BeamFormerConfig cfg_;
   AcousticParams params_;
   uint32_t seed_ = 42;
+  std::string frame_id_;
+  // Monotonically increasing per-scan counter, fed into the speckle seed so
+  // consecutive pings draw independent Rayleigh samples instead of freezing
+  // into a static per-beam bias (see the FIX 1 note in sonar_acoustics.hpp).
+  uint32_t ping_index_ = 0;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr pub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sub_;
 };

@@ -36,7 +36,7 @@ double transmissionLossDb(double range_m, const AcousticParams & p);
 /// 0 means the beam is perpendicular to the surface.
 double backscatterDb(double incidence_rad, const AcousticParams & p);
 
-/// Full one-way-out-and-back echo level in dB at the receiver.
+/// Two-way (out-and-back) echo level in dB at the receiver.
 double echoLevelDb(double range_m, double incidence_rad, const AcousticParams & p);
 
 /// The outcome of sounding one beam.
@@ -48,17 +48,27 @@ struct BeamReturn
   /// Valid only when detected is true.
   double range_m = 0.0;
   /// Post-speckle echo level in dB, carried to ROS in LaserScan.intensities.
+  /// A total non-detection (every ray in the beam out of range) carries
+  /// negative infinity here, not 0.0 -- 0.0 would look like a valid
+  /// moderate return on a dB scale. Callers must check `isfinite()` before
+  /// doing arithmetic on this field.
   double intensity = 0.0;
 };
 
 /// Sound one beam: apply Rayleigh speckle to the echo level and threshold it.
 ///
-/// Randomness is derived deterministically from (seed, beam_index) rather than
-/// from shared mutable generator state, so results are reproducible regardless
-/// of evaluation order or threading. The A/B evaluation depends on this.
+/// Randomness is derived deterministically from (seed, beam_index,
+/// ping_index) rather than from shared mutable generator state, so results
+/// are reproducible regardless of evaluation order or threading -- the same
+/// triple always yields bit-identical output, and a run replayed from the
+/// same seed reproduces exactly. `ping_index` is what keeps speckle from
+/// degenerating into a static per-beam bias: without it, beam `b` would draw
+/// the identical Rayleigh sample on every scan forever, which is the worst
+/// case for downstream SLAM (a constant bias gets absorbed into the map
+/// instead of averaging out). The A/B evaluation depends on this.
 BeamReturn applySpeckleAndThreshold(
   double range_m, double incidence_rad, const AcousticParams & p,
-  uint32_t seed, uint32_t beam_index);
+  uint32_t seed, uint32_t beam_index, uint32_t ping_index);
 
 }  // namespace cavex_sonar
 

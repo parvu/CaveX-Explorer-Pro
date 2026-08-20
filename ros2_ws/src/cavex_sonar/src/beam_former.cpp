@@ -40,7 +40,7 @@ double incidenceAngleAt(
 
 std::vector<BeamReturn> formBeams(
   const std::vector<double> & ranges, const BeamFormerConfig & cfg,
-  const AcousticParams & p, uint32_t seed)
+  const AcousticParams & p, uint32_t seed, uint32_t ping_index)
 {
   std::vector<BeamReturn> beams;
   beams.reserve(cfg.beam_count);
@@ -70,24 +70,26 @@ std::vector<BeamReturn> formBeams(
 
     if (valid == 0) {
       // Every ray in this beam hit nothing: report an honest non-detection.
-      beams.push_back(BeamReturn{});
+      // Intensity is -inf (zero linear echo amplitude), never 0.0 -- on a
+      // dB scale 0.0 would look like a valid moderate return.
+      BeamReturn none;
+      none.intensity = -std::numeric_limits<double>::infinity();
+      beams.push_back(none);
       continue;
     }
 
     const double mean_range = range_sum / static_cast<double>(valid);
     const double mean_incidence = incidence_sum / static_cast<double>(valid);
     beams.push_back(applySpeckleAndThreshold(
-      mean_range, mean_incidence, p, seed, static_cast<uint32_t>(b)));
+      mean_range, mean_incidence, p, seed, static_cast<uint32_t>(b), ping_index));
   }
 
   return beams;
 }
 
 BeamScanGeometry beamScanGeometry(
-  double in_angle_min, double in_angle_increment, std::size_t rays_per_beam,
-  std::size_t beam_count)
+  double in_angle_min, double in_angle_increment, std::size_t rays_per_beam)
 {
-  (void)beam_count;  // Not needed for angle_min/angle_increment themselves.
   const double half_span = static_cast<double>(rays_per_beam - 1) / 2.0;
   return BeamScanGeometry{
     in_angle_min + in_angle_increment * half_span,

@@ -44,6 +44,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_beam_former test/test_beam_former.cpp)
   target_link_libraries(test_beam_former sonar_acoustics)
+
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_current_profiles test/test_current_profiles.py)
 endif()
 
 ament_python_install_package(${PROJECT_NAME})

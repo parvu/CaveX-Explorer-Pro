@@ -53,7 +53,7 @@ TEST(FormBeams, ReducesDenseRaysToConfiguredBeamCount) {
   cfg.angular_step_rad = 0.01;
   AcousticParams p;
   std::vector<double> ranges(100, 4.0);
-  const auto beams = formBeams(ranges, cfg, p, 7u);
+  const auto beams = formBeams(ranges, cfg, p, 7u, 0u);
   EXPECT_EQ(beams.size(), 20u);
 }
 
@@ -66,11 +66,10 @@ TEST(FormBeams, IgnoresNonFiniteRaysInsteadOfPropagatingThem) {
   cfg.angular_step_rad = 0.01;
   AcousticParams p;
   std::vector<double> ranges = {4.0, std::numeric_limits<double>::infinity(), 4.0, 4.0};
-  const auto beams = formBeams(ranges, cfg, p, 7u);
+  const auto beams = formBeams(ranges, cfg, p, 7u, 0u);
   ASSERT_EQ(beams.size(), 1u);
-  if (beams[0].detected) {
-    EXPECT_NEAR(beams[0].range_m, 4.0, 1e-6);
-  }
+  ASSERT_TRUE(beams[0].detected);
+  EXPECT_NEAR(beams[0].range_m, 4.0, 1e-6);
 }
 
 TEST(FormBeams, ReportsNoDetectionWhenEveryRayInABeamIsOutOfRange) {
@@ -81,9 +80,27 @@ TEST(FormBeams, ReportsNoDetectionWhenEveryRayInABeamIsOutOfRange) {
   AcousticParams p;
   const double inf = std::numeric_limits<double>::infinity();
   std::vector<double> ranges = {inf, inf, inf};
-  const auto beams = formBeams(ranges, cfg, p, 7u);
+  const auto beams = formBeams(ranges, cfg, p, 7u, 0u);
   ASSERT_EQ(beams.size(), 1u);
   EXPECT_FALSE(beams[0].detected);
+}
+
+TEST(FormBeams, TotalNonDetectionCarriesNegativeInfinityIntensity) {
+  // 0.0 looks like a valid moderate dB return; a total non-detection must be
+  // unmistakable so downstream intensity weighting cannot treat "no data"
+  // as "moderate signal".
+  BeamFormerConfig cfg;
+  cfg.rays_per_beam = 3;
+  cfg.beam_count = 1;
+  cfg.angular_step_rad = 0.01;
+  AcousticParams p;
+  const double inf = std::numeric_limits<double>::infinity();
+  std::vector<double> ranges = {inf, inf, inf};
+  const auto beams = formBeams(ranges, cfg, p, 7u, 0u);
+  ASSERT_EQ(beams.size(), 1u);
+  EXPECT_FALSE(beams[0].detected);
+  EXPECT_TRUE(std::isinf(beams[0].intensity));
+  EXPECT_LT(beams[0].intensity, 0.0);
 }
 
 TEST(BeamScanGeometry, BeamCentreOffsetMatchesRealFanGeometry) {
@@ -95,7 +112,7 @@ TEST(BeamScanGeometry, BeamCentreOffsetMatchesRealFanGeometry) {
   const std::size_t beam_count = 64;
 
   const auto geom = beamScanGeometry(
-    in_angle_min, in_angle_increment, rays_per_beam, beam_count);
+    in_angle_min, in_angle_increment, rays_per_beam);
 
   EXPECT_NEAR(geom.angle_min, in_angle_min + in_angle_increment * 3.5, 1e-9);
   EXPECT_NEAR(geom.angle_increment, in_angle_increment * 8.0, 1e-9);

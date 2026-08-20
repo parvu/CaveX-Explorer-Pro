@@ -32,12 +32,14 @@ double echoLevelDb(double range_m, double incidence_rad, const AcousticParams & 
 
 BeamReturn applySpeckleAndThreshold(
   double range_m, double incidence_rad, const AcousticParams & p,
-  uint32_t seed, uint32_t beam_index)
+  uint32_t seed, uint32_t beam_index, uint32_t ping_index)
 {
-  // Seed per (seed, beam) so output does not depend on call order or
-  // threading. A single shared generator would make the A/B evaluation
-  // irreproducible for reasons that are very hard to track down later.
-  std::seed_seq seq{seed, beam_index};
+  // Seed per (seed, beam, ping) so output does not depend on call order or
+  // threading, yet still varies from one ping to the next. A single shared
+  // generator would make the A/B evaluation irreproducible for reasons that
+  // are very hard to track down later; omitting ping_index would freeze
+  // speckle into a static per-beam bias instead of averaging out over time.
+  std::seed_seq seq{seed, beam_index, ping_index};
   std::mt19937 gen(seq);
 
   // Rayleigh-distributed amplitude is the standard first-order model for

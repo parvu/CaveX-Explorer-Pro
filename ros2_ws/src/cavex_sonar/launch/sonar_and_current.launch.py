@@ -9,6 +9,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -32,13 +33,25 @@ def generate_launch_description():
             executable='sonar_node',
             name='sonar_node',
             output='screen',
-            parameters=[{'seed': seed}],
+            parameters=[{
+                'seed': ParameterValue(seed, value_type=int),
+                'frame_id': 'bluerov2/sonar',
+            }],
         ),
         Node(
             package='cavex_sonar',
             executable='current_field_node.py',
             name='current_field_node',
             output='screen',
-            parameters=[{'profile': profile, 'vx': vx}],
+            parameters=[{
+                'profile': ParameterValue(profile, value_type=str),
+                'vx': ParameterValue(vx, value_type=float),
+            }],
+        ),
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='sonar_static_tf',
+            arguments=['0.15', '0', '0', '0', '0', '0', 'base_link', 'bluerov2/sonar'],
         ),
     ])

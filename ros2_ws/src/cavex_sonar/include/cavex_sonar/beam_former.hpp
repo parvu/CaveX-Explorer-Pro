@@ -33,10 +33,16 @@ double incidenceAngleAt(
 ///
 /// Non-finite ranges (a gpu_lidar ray that hit nothing) are excluded rather
 /// than averaged in. A beam whose rays are all out of range reports no
-/// detection.
+/// detection, with `intensity` set to negative infinity (zero linear echo
+/// amplitude) rather than 0.0, so a total non-detection cannot be mistaken
+/// for a moderate dB return. `ping_index` must be a monotonically
+/// increasing per-scan counter; it is threaded into the speckle seed so
+/// speckle varies from ping to ping instead of freezing into a static
+/// per-beam bias, while remaining fully deterministic for a fixed
+/// (seed, beam_index, ping_index).
 std::vector<BeamReturn> formBeams(
   const std::vector<double> & ranges, const BeamFormerConfig & cfg,
-  const AcousticParams & p, uint32_t seed);
+  const AcousticParams & p, uint32_t seed, uint32_t ping_index);
 
 /// Angular description of the output beam scan, in the same units/frame as
 /// the input dense-ray scan.
@@ -53,8 +59,7 @@ struct BeamScanGeometry
 /// rays_per_beam - 1]`, so its true centre sits at input ray index
 /// `b*rays_per_beam + (rays_per_beam-1)/2`, not at `b*rays_per_beam`.
 BeamScanGeometry beamScanGeometry(
-  double in_angle_min, double in_angle_increment, std::size_t rays_per_beam,
-  std::size_t beam_count);
+  double in_angle_min, double in_angle_increment, std::size_t rays_per_beam);
 
 }  // namespace cavex_sonar
 
