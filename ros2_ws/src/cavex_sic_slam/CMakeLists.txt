@@ -44,6 +44,10 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_dynamics_model test/test_dynamics_model.cpp)
   target_link_libraries(test_dynamics_model sic_slam_core)
+
+  find_package(GTSAM REQUIRED)
+  ament_add_gtest(test_current_factor test/test_current_factor.cpp)
+  target_link_libraries(test_current_factor sic_slam_core gtsam)
 endif()
 
 ament_package()
