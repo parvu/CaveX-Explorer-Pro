@@ -68,3 +68,54 @@ TEST(EchoLevel, FallsOffWithBothRangeAndIncidence) {
   EXPECT_GT(near_normal, far_normal) << "range must reduce echo level";
   EXPECT_GT(near_normal, near_grazing) << "incidence must reduce echo level";
 }
+
+#include <cstdint>
+using cavex_sonar::BeamReturn;
+using cavex_sonar::applySpeckleAndThreshold;
+
+TEST(Speckle, IsReproducibleForAFixedSeed) {
+  AcousticParams p;
+  const BeamReturn a = applySpeckleAndThreshold(5.0, 0.2, p, 42u, 7u);
+  const BeamReturn b = applySpeckleAndThreshold(5.0, 0.2, p, 42u, 7u);
+  EXPECT_EQ(a.detected, b.detected);
+  EXPECT_DOUBLE_EQ(a.intensity, b.intensity);
+  EXPECT_DOUBLE_EQ(a.range_m, b.range_m);
+}
+
+TEST(Speckle, DiffersBetweenBeamsWithinTheSameSeed) {
+  AcousticParams p;
+  // Independent speckle per beam; identical values across beams would mean
+  // the beam index is not reaching the generator.
+  const BeamReturn a = applySpeckleAndThreshold(5.0, 0.2, p, 42u, 1u);
+  const BeamReturn b = applySpeckleAndThreshold(5.0, 0.2, p, 42u, 2u);
+  EXPECT_NE(a.intensity, b.intensity);
+}
+
+TEST(Threshold, StrongNearNormalReturnIsDetected) {
+  AcousticParams p;
+  const BeamReturn r = applySpeckleAndThreshold(2.0, 0.0, p, 1u, 0u);
+  EXPECT_TRUE(r.detected);
+  EXPECT_NEAR(r.range_m, 2.0, 1e-9) << "a detected beam reports its true range";
+}
+
+TEST(Threshold, VeryWeakReturnDropsOutRatherThanReportingAWrongRange) {
+  AcousticParams p;
+  // Force everything below threshold: a dropout must report detected=false,
+  // never a confident wrong range. Reporting a bogus range here would inject
+  // false constraints straight into the SLAM factor graph.
+  p.detection_threshold_db = 1e9;
+  const BeamReturn r = applySpeckleAndThreshold(2.0, 0.0, p, 1u, 0u);
+  EXPECT_FALSE(r.detected);
+}
+
+TEST(Threshold, DropoutRateRisesWithIncidenceAcrossManyBeams) {
+  AcousticParams p;
+  p.detection_threshold_db = 120.0;
+  int near_normal_hits = 0, grazing_hits = 0;
+  for (uint32_t i = 0; i < 500; ++i) {
+    if (applySpeckleAndThreshold(8.0, 0.05, p, 99u, i).detected) {++near_normal_hits;}
+    if (applySpeckleAndThreshold(8.0, 1.45, p, 99u, i).detected) {++grazing_hits;}
+  }
+  EXPECT_GT(near_normal_hits, grazing_hits)
+      << "grazing beams must drop out more often than near-normal ones";
+}

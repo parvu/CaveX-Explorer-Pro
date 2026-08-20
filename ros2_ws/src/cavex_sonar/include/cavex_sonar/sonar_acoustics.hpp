@@ -1,6 +1,8 @@
 #ifndef CAVEX_SONAR__SONAR_ACOUSTICS_HPP_
 #define CAVEX_SONAR__SONAR_ACOUSTICS_HPP_
 
+#include <cstdint>
+
 namespace cavex_sonar
 {
 
@@ -23,6 +25,8 @@ struct AcousticParams
   double backscatter_exponent = 1.5;
   /// Floor on cos(incidence) before the logarithm, so grazing beams stay finite.
   double min_cos_incidence = 1e-3;
+  /// Echo level in dB below which a beam reports no detection at all.
+  double detection_threshold_db = 100.0;
 };
 
 /// One-way transmission loss in dB: spherical spreading plus absorption.
@@ -34,6 +38,27 @@ double backscatterDb(double incidence_rad, const AcousticParams & p);
 
 /// Full one-way-out-and-back echo level in dB at the receiver.
 double echoLevelDb(double range_m, double incidence_rad, const AcousticParams & p);
+
+/// The outcome of sounding one beam.
+struct BeamReturn
+{
+  /// False means no detection. A non-detection reports NO range at all --
+  /// it must never be turned into a confident wrong range downstream.
+  bool detected = false;
+  /// Valid only when detected is true.
+  double range_m = 0.0;
+  /// Post-speckle echo level in dB, carried to ROS in LaserScan.intensities.
+  double intensity = 0.0;
+};
+
+/// Sound one beam: apply Rayleigh speckle to the echo level and threshold it.
+///
+/// Randomness is derived deterministically from (seed, beam_index) rather than
+/// from shared mutable generator state, so results are reproducible regardless
+/// of evaluation order or threading. The A/B evaluation depends on this.
+BeamReturn applySpeckleAndThreshold(
+  double range_m, double incidence_rad, const AcousticParams & p,
+  uint32_t seed, uint32_t beam_index);
 
 }  // namespace cavex_sonar
 
