@@ -24,6 +24,7 @@ include_directories(include)
 
 add_library(sic_slam_core
   src/dynamics_model.cpp
+  src/scan_registration.cpp
 )
 target_link_libraries(sic_slam_core Eigen3::Eigen)
 target_include_directories(sic_slam_core PUBLIC
@@ -48,6 +49,9 @@ if(BUILD_TESTING)
   find_package(GTSAM REQUIRED)
   ament_add_gtest(test_current_factor test/test_current_factor.cpp)
   target_link_libraries(test_current_factor sic_slam_core gtsam)
+
+  ament_add_gtest(test_scan_registration test/test_scan_registration.cpp)
+  target_link_libraries(test_scan_registration sic_slam_core)
 endif()
 
 ament_package()
