@@ -158,3 +158,40 @@
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS
+
+# Task 6 (cavex_sic_slam): BlueROV2's six real thruster commands, relayed
+# GZ->ROS for sic_slam_node's CurrentFactor (needs the actual commanded
+# thrust per thruster to predict through-water body velocity). gz_topic_name
+# matches model.sdf's own <cmd_topic> for each gz-sim-thruster-system plugin
+# exactly (confirmed by reading model.sdf; live-verified empirically per
+# this project's convention -- see task-6-report.md).
+- ros_topic_name: "/bluerov2/thruster1/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster1_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: GZ_TO_ROS
+- ros_topic_name: "/bluerov2/thruster2/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster2_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: GZ_TO_ROS
+- ros_topic_name: "/bluerov2/thruster3/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster3_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: GZ_TO_ROS
+- ros_topic_name: "/bluerov2/thruster4/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster4_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: GZ_TO_ROS
+- ros_topic_name: "/bluerov2/thruster5/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster5_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: GZ_TO_ROS
+- ros_topic_name: "/bluerov2/thruster6/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster6_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: GZ_TO_ROS

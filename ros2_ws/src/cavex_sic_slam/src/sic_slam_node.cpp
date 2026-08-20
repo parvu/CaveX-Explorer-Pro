@@ -7,20 +7,25 @@
 #include <sensor_msgs/msg/point_cloud.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/point32.hpp>
+#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/float64.hpp>
 
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/nonlinear/ISAM2.h>
 #include <gtsam/nonlinear/Values.h>
+#include <gtsam/nonlinear/Marginals.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/slam/BetweenFactor.h>
 
 #include "cavex_sic_slam/scan_registration.hpp"
+#include "cavex_sic_slam/current_factor.hpp"
 
 using gtsam::symbol_shorthand::X;
 using gtsam::symbol_shorthand::V;
 using gtsam::symbol_shorthand::B;
+using gtsam::symbol_shorthand::C;
 
 namespace cavex_sic_slam
 {
@@ -65,12 +70,33 @@ public:
     graph_.addPrior(V(0), prior_vel, vel_noise);
     graph_.addPrior(B(0), prior_bias, bias_noise);
 
+    gtsam::Vector3 prior_current = gtsam::Vector3::Zero();
+    values_.insert(C(0), prior_current);
+    auto current_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.05);
+    graph_.addPrior(C(0), prior_current, current_noise);
+
     isam_.update(graph_, values_);
     graph_.resize(0);
     values_.clear();
     last_pose_ = prior_pose;
     last_vel_ = prior_vel;
     last_bias_ = prior_bias;
+    last_current_ = prior_current;
+
+    thruster_geom_ = cavex_sic_slam::defaultBlueRov2Geometry();
+    thruster_drag_ = cavex_sic_slam::defaultBlueRov2Drag();
+    thrust_n_.fill(0.0);
+    for (int i = 0; i < 6; ++i) {
+      std::string topic = "/bluerov2/thruster" + std::to_string(i + 1) + "/cmd_thrust";
+      thruster_subs_[i] = this->create_subscription<std_msgs::msg::Float64>(
+        topic, rclcpp::SensorDataQoS(),
+        [this, i](const std_msgs::msg::Float64::SharedPtr msg) {
+          std::lock_guard<std::mutex> lock(mutex_);
+          thrust_n_[i] = msg->data;
+        });
+    }
+    current_pub_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(
+      "/sic_slam/current_estimate", 10);
 
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
       "/bluerov2/imu", rclcpp::SensorDataQoS(),
@@ -196,11 +222,27 @@ protected:
       }
     }
 
+    std::array<double, 6> thrust_snapshot = thrust_n_;
+    auto current_factor_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.15);
+    graph_.add(cavex_sic_slam::CurrentFactor(
+      X(curr), V(curr), C(curr), thrust_snapshot, thruster_geom_, thruster_drag_,
+      current_factor_noise));
+
+    auto current_walk_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.02);
+    graph_.add(gtsam::BetweenFactor<gtsam::Vector3>(
+      C(prev), C(curr), gtsam::Vector3::Zero(), current_walk_noise));
+
+    values_.insert(C(curr), last_current_);
+
     isam_.update(graph_, values_);
     gtsam::Values result = isam_.calculateEstimate();
     last_pose_ = result.at<gtsam::Pose3>(X(curr));
     last_vel_ = result.at<gtsam::Vector3>(V(curr));
     last_bias_ = result.at<gtsam::imuBias::ConstantBias>(B(curr));
+    last_current_ = result.at<gtsam::Vector3>(C(curr));
+    gtsam::Marginals marginals(isam_.getFactorsUnsafe(), result);
+    gtsam::Matrix current_cov = marginals.marginalCovariance(C(curr));
+    publishCurrent(stamp, last_current_, current_cov);
 
     // Sonar map/keyframe publishing (Task 5). Self-contained: only reads
     // curr_scan_points, last_pose_, keyframe_history_ -- safe regardless of
@@ -240,6 +282,23 @@ protected:
     msg.twist.twist.linear.y = vel.y();
     msg.twist.twist.linear.z = vel.z();
     odom_pub_->publish(msg);
+  }
+
+  void publishCurrent(
+    const rclcpp::Time & stamp, const gtsam::Vector3 & current, const gtsam::Matrix & cov)
+  {
+    geometry_msgs::msg::TwistWithCovarianceStamped msg;
+    msg.header.stamp = stamp;
+    msg.header.frame_id = "map";
+    msg.twist.twist.linear.x = current.x();
+    msg.twist.twist.linear.y = current.y();
+    msg.twist.twist.linear.z = current.z();
+    for (int r = 0; r < 3; ++r) {
+      for (int c = 0; c < 3; ++c) {
+        msg.twist.covariance[r * 6 + c] = cov(r, c);
+      }
+    }
+    current_pub_->publish(msg);
   }
 
   void publishMap(
@@ -284,6 +343,11 @@ protected:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sonar_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud>::SharedPtr map_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr keyframes_pub_;
+  std::array<rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr, 6> thruster_subs_;
+  std::array<double, 6> thrust_n_;
+  cavex_sic_slam::ThrusterGeometry thruster_geom_;
+  cavex_sic_slam::DragCoefficients thruster_drag_;
+  rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr current_pub_;
 
   sensor_msgs::msg::LaserScan::SharedPtr latest_scan_;
   std::vector<cavex_sic_slam::ScanPoint> prev_keyframe_scan_;
@@ -306,6 +370,7 @@ protected:
   gtsam::Pose3 last_pose_;
   gtsam::Vector3 last_vel_;
   gtsam::imuBias::ConstantBias last_bias_;
+  gtsam::Vector3 last_current_;
 };
 
 }  // namespace cavex_sic_slam
