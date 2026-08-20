@@ -16,7 +16,7 @@ find_package(geometry_msgs REQUIRED)
 # Host-agnostic acoustic physics. Deliberately has NO ROS and NO Gazebo
 # dependencies so it can be unit-tested off-simulator and relocated into a
 # gz-sim system plugin later without touching its physics or its tests.
-add_library(sonar_acoustics src/sonar_acoustics.cpp)
+add_library(sonar_acoustics src/sonar_acoustics.cpp src/beam_former.cpp)
 target_include_directories(sonar_acoustics PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
@@ -35,6 +35,9 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_sonar_acoustics test/test_sonar_acoustics.cpp)
   target_link_libraries(test_sonar_acoustics sonar_acoustics)
+
+  ament_add_gtest(test_beam_former test/test_beam_former.cpp)
+  target_link_libraries(test_beam_former sonar_acoustics)
 endif()
 
 ament_package()
