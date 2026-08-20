@@ -118,10 +118,26 @@ Four components, in dependency order.
 A new C++ `gz-sim8` system plugin implementing a mechanically-scanning
 profiling sonar, because Gazebo Harmonic ships no sonar sensor type.
 
-**Range acquisition.** Reuse the GPU depth path that `gz-sensors8`'s
-`GpuLidarSensor` already uses (`gz::rendering` `GpuRays`), configured as a
-horizontal fan. This gives geometrically correct first-return ranges off the
-cave mesh at simulation rate without writing a ray tracer.
+**Hosting decision (revised 2026-08-20, during planning).** Gazebo Harmonic
+cannot readily host a custom *rendering* sensor: `gz-sim8`'s `Sensors` system
+only instantiates sensor types it already knows, which is the same root cause
+that rules out the DVL above. Rather than fight render-thread integration, the
+acoustic model is built as a **host-agnostic C++ library with no Gazebo and no
+ROS dependencies**, and a dense, real `gpu_lidar` declared in the BlueROV2 SDF
+serves purely as the **ray engine**.
+
+This keeps the acoustic physics real and fully unit-testable off-simulator, and
+it is emphatically *not* the "bare gpu_lidar stand-in" option that was rejected
+— the beam-forming and acoustic layers below are all still built. Because the
+library is host-agnostic, it can later be relocated inside a gz-sim system
+plugin without touching its physics or its tests, should that ever be worth the
+render-thread work.
+
+**Range acquisition.** A dense horizontal-fan `gpu_lidar` on the BlueROV2
+supplies geometrically correct first-return ranges off the cave mesh at
+simulation rate, without writing a ray tracer. Several adjacent dense rays are
+integrated per sonar beam (see "Beam spread"), and surface normals for the
+incidence term are estimated from adjacent range returns within the dense scan.
 
 **Acoustic layer**, applied per beam on top of the raw range:
 
