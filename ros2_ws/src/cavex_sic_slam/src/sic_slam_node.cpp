@@ -3,6 +3,10 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
+#include <sensor_msgs/msg/point_cloud.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
+#include <geometry_msgs/msg/point32.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <gtsam/navigation/CombinedImuFactor.h>
@@ -10,6 +14,9 @@
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/geometry/Pose3.h>
+#include <gtsam/slam/BetweenFactor.h>
+
+#include "cavex_sic_slam/scan_registration.hpp"
 
 using gtsam::symbol_shorthand::X;
 using gtsam::symbol_shorthand::V;
@@ -70,6 +77,13 @@ public:
       std::bind(&SicSlamNode::imuCallback, this, std::placeholders::_1));
     odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/sic_slam/odometry", 10);
 
+    sonar_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
+      "/bluerov2/sonar", rclcpp::SensorDataQoS(),
+      std::bind(&SicSlamNode::sonarCallback, this, std::placeholders::_1));
+    map_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud>("/sic_slam/map", 10);
+    keyframes_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>(
+      "/sic_slam/keyframes", 10);
+
     RCLCPP_INFO(
       this->get_logger(),
       "sic_slam_node ready: /bluerov2/imu -> /sic_slam/odometry (IMU-only graph).");
@@ -112,6 +126,12 @@ protected:
     }
   }
 
+  void sonarCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    latest_scan_ = msg;
+  }
+
   // Extended in Task 5 (sonar BetweenFactor) and Task 6 (CurrentFactor,
   // current random walk, thruster subscriptions). Kept as its own method so
   // later tasks can insert factors between the IMU factor and the
@@ -131,11 +151,66 @@ protected:
     values_.insert(V(curr), predicted.velocity());
     values_.insert(B(curr), last_bias_);
 
+    std::vector<cavex_sic_slam::ScanPoint> curr_scan_points;
+    if (latest_scan_) {
+      // LaserScan stores ranges/intensities as float; registerScans/
+      // laserScanToPoints operate on double.
+      std::vector<double> ranges(latest_scan_->ranges.begin(), latest_scan_->ranges.end());
+      std::vector<double> intensities(
+        latest_scan_->intensities.begin(), latest_scan_->intensities.end());
+      curr_scan_points = cavex_sic_slam::laserScanToPoints(
+        ranges, intensities, latest_scan_->angle_min, latest_scan_->angle_increment);
+    }
+
+    if (!curr_scan_points.empty() && !prev_keyframe_scan_.empty()) {
+      auto reg = cavex_sic_slam::registerScans(
+        curr_scan_points, prev_keyframe_scan_, 0.5, 20);
+      if (reg.converged) {
+        gtsam::Pose3 odom_delta(
+          gtsam::Rot3::Yaw(reg.dyaw), gtsam::Point3(reg.dx, reg.dy, 0.0));
+        // roll,pitch,yaw sigma (rad), then x,y,z sigma (m) -- z loose,
+        // sonar can't observe depth.
+        auto sonar_noise = gtsam::noiseModel::Diagonal::Sigmas(
+          (gtsam::Vector(6) << 0.3, 0.3, 0.02, 0.1, 0.1, 0.5).finished());
+        graph_.add(gtsam::BetweenFactor<gtsam::Pose3>(
+          X(prev), X(curr), odom_delta, sonar_noise));
+      }
+
+      // Loop closure: try registering against earlier, non-adjacent
+      // keyframes. Gate on match quality so a bad match never enters the
+      // graph as a confident constraint.
+      for (const auto & [hist_pose, hist_scan] : keyframe_history_) {
+        auto loop_reg = cavex_sic_slam::registerScans(
+          curr_scan_points, hist_scan, 0.5, 20);
+        if (loop_reg.converged && loop_reg.matched_fraction > 0.7 &&
+          loop_reg.mean_residual < 0.15)
+        {
+          gtsam::Pose3 loop_delta(
+            gtsam::Rot3::Yaw(loop_reg.dyaw), gtsam::Point3(loop_reg.dx, loop_reg.dy, 0.0));
+          auto loop_noise = gtsam::noiseModel::Diagonal::Sigmas(
+            (gtsam::Vector(6) << 0.3, 0.3, 0.05, 0.15, 0.15, 0.6).finished());
+          std::size_t hist_index = &hist_pose - &keyframe_history_.front().first;
+          graph_.add(gtsam::BetweenFactor<gtsam::Pose3>(
+            X(hist_index), X(curr), loop_delta, loop_noise));
+        }
+      }
+    }
+
     isam_.update(graph_, values_);
     gtsam::Values result = isam_.calculateEstimate();
     last_pose_ = result.at<gtsam::Pose3>(X(curr));
     last_vel_ = result.at<gtsam::Vector3>(V(curr));
     last_bias_ = result.at<gtsam::imuBias::ConstantBias>(B(curr));
+
+    // Sonar map/keyframe publishing (Task 5). Self-contained: only reads
+    // curr_scan_points, last_pose_, keyframe_history_ -- safe regardless of
+    // where later tasks insert their own post-estimate blocks.
+    if (!curr_scan_points.empty()) {
+      prev_keyframe_scan_ = curr_scan_points;
+      keyframe_history_.emplace_back(last_pose_, curr_scan_points);
+      publishMap(stamp, curr_scan_points, last_pose_);
+    }
+    publishKeyframes(stamp);
 
     graph_.resize(0);
     values_.clear();
@@ -167,9 +242,52 @@ protected:
     odom_pub_->publish(msg);
   }
 
+  void publishMap(
+    const rclcpp::Time & stamp,
+    const std::vector<cavex_sic_slam::ScanPoint> & points,
+    const gtsam::Pose3 & pose)
+  {
+    sensor_msgs::msg::PointCloud msg;
+    msg.header.stamp = stamp;
+    msg.header.frame_id = "map";
+    for (const auto & p : points) {
+      gtsam::Point3 world_pt = pose.transformFrom(gtsam::Point3(p.x, p.y, 0.0));
+      geometry_msgs::msg::Point32 pt32;
+      pt32.x = static_cast<float>(world_pt.x());
+      pt32.y = static_cast<float>(world_pt.y());
+      pt32.z = static_cast<float>(world_pt.z());
+      msg.points.push_back(pt32);
+    }
+    map_pub_->publish(msg);
+  }
+
+  void publishKeyframes(const rclcpp::Time & stamp)
+  {
+    geometry_msgs::msg::PoseArray msg;
+    msg.header.stamp = stamp;
+    msg.header.frame_id = "map";
+    for (const auto & [pose, scan] : keyframe_history_) {
+      geometry_msgs::msg::Pose p;
+      const auto & t = pose.translation();
+      p.position.x = t.x(); p.position.y = t.y(); p.position.z = t.z();
+      auto q = pose.rotation().toQuaternion();
+      p.orientation.w = q.w(); p.orientation.x = q.x();
+      p.orientation.y = q.y(); p.orientation.z = q.z();
+      msg.poses.push_back(p);
+    }
+    keyframes_pub_->publish(msg);
+  }
+
   std::mutex mutex_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
+  rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sonar_sub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud>::SharedPtr map_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr keyframes_pub_;
+
+  sensor_msgs::msg::LaserScan::SharedPtr latest_scan_;
+  std::vector<cavex_sic_slam::ScanPoint> prev_keyframe_scan_;
+  std::vector<std::pair<gtsam::Pose3, std::vector<cavex_sic_slam::ScanPoint>>> keyframe_history_;
 
   boost::shared_ptr<gtsam::PreintegratedCombinedMeasurements::Params> imu_params_;
   std::shared_ptr<gtsam::PreintegratedCombinedMeasurements> preint_;
