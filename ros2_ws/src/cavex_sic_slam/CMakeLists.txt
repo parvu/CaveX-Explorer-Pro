@@ -60,4 +60,7 @@ if(BUILD_TESTING)
   target_link_libraries(test_scan_registration sic_slam_core)
 endif()
 
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME})
+
 ament_package()

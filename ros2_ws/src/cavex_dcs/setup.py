@@ -26,6 +26,7 @@ setup(
     entry_points={
         'console_scripts': [
             'dcs_controller = cavex_dcs.dcs_controller:main',
+            'dcs_ab_eval = cavex_dcs.dcs_ab_eval:main',
         ],
     },
 )
