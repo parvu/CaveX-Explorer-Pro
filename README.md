@@ -99,10 +99,25 @@ own input odometry is that same ground truth, so treat this as a best-case/
 idealized-loop number, not a real-sensor-noise result — a real caveat for any
 report that cites it.
 
-**On "sonar"**: there is no sonar sensor in this simulation (the robot has an
-RGB camera, 2D lidar, and IMU only). The frontend's sonar panels and `sonarActive`/
-`sonarDepth`/`sonarEchoStrength` fields are concept-demo values, not backed by
-any real sensor or ROS2 topic — don't wire them up as if they were.
+**On "sonar"**: the BlueROV2 now carries a simulated acoustic sonar
+(`cavex_sonar`), publishing real per-beam ranges and echo strengths on
+`/bluerov2/sonar`. Because Gazebo Harmonic ships no sonar sensor type — and
+`gz-sim8` will not instantiate a custom rendering sensor, the same constraint
+that rules out its DVL — a dense `gpu_lidar` supplies the ray geometry, and the
+acoustic physics (beam spread, spherical spreading and absorption,
+incidence-dependent backscatter, Rayleigh speckle, detection threshold and
+dropout) is applied on top by the `sonar_acoustics` library. That library has
+no ROS or Gazebo dependencies and is unit-tested off-simulator.
+
+This is a physically-motivated model, **not calibrated against real sonar
+hardware**, and it has not been validated against real sonar data. Cite it as a
+simulation result. The frontend's `sonarActive`/`sonarDepth`/`sonarEchoStrength`
+fields remain concept-demo values and are still not wired to this topic.
+
+**On water current**: current is real upstream Gazebo physics — the stock
+`Hydrodynamics` plugin's own ocean-current support, driven by
+`current_field_node.py` over the `/ocean_current` topic. The disturbance is not
+faked, but it is one we inject ourselves rather than a measured real-world flow.
 
 ## Phase 1: Tracked BlueBoat-like Vehicle + BlueROV2
 
