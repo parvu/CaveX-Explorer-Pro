@@ -26,6 +26,12 @@ install(TARGETS sonar_acoustics
   LIBRARY DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)
 
+add_executable(sonar_node src/sonar_node.cpp)
+target_link_libraries(sonar_node sonar_acoustics)
+ament_target_dependencies(sonar_node rclcpp sensor_msgs)
+
+install(TARGETS sonar_node DESTINATION lib/${PROJECT_NAME})
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)
