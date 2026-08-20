@@ -29,3 +29,6 @@ docs/superpowers/
 # (README documents this; it was not actually ignored before -- a stray `git add -A`
 # would have committed a multi-GB second autopilot tree).
 PX4-Autopilot/
+
+# Launch runbook: full historical notes, design rationale (kept locally, not shipped)
+launch.txt
