@@ -179,7 +179,8 @@ protected:
       // Loop closure: try registering against earlier, non-adjacent
       // keyframes. Gate on match quality so a bad match never enters the
       // graph as a confident constraint.
-      for (const auto & [hist_pose, hist_scan] : keyframe_history_) {
+      for (std::size_t hist_index = 0; hist_index < keyframe_history_.size(); ++hist_index) {
+        const auto & [hist_pose, hist_scan] = keyframe_history_[hist_index];
         auto loop_reg = cavex_sic_slam::registerScans(
           curr_scan_points, hist_scan, 0.5, 20);
         if (loop_reg.converged && loop_reg.matched_fraction > 0.7 &&
@@ -189,7 +190,6 @@ protected:
             gtsam::Rot3::Yaw(loop_reg.dyaw), gtsam::Point3(loop_reg.dx, loop_reg.dy, 0.0));
           auto loop_noise = gtsam::noiseModel::Diagonal::Sigmas(
             (gtsam::Vector(6) << 0.3, 0.3, 0.05, 0.15, 0.15, 0.6).finished());
-          std::size_t hist_index = &hist_pose - &keyframe_history_.front().first;
           graph_.add(gtsam::BetweenFactor<gtsam::Pose3>(
             X(hist_index), X(curr), loop_delta, loop_noise));
         }
