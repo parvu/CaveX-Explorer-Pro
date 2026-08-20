@@ -83,4 +83,15 @@ std::vector<BeamReturn> formBeams(
   return beams;
 }
 
+BeamScanGeometry beamScanGeometry(
+  double in_angle_min, double in_angle_increment, std::size_t rays_per_beam,
+  std::size_t beam_count)
+{
+  (void)beam_count;  // Not needed for angle_min/angle_increment themselves.
+  const double half_span = static_cast<double>(rays_per_beam - 1) / 2.0;
+  return BeamScanGeometry{
+    in_angle_min + in_angle_increment * half_span,
+    in_angle_increment * static_cast<double>(rays_per_beam)};
+}
+
 }  // namespace cavex_sonar

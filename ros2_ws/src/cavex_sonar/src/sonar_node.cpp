@@ -62,11 +62,23 @@ private:
 
     sensor_msgs::msg::LaserScan out;
     out.header = in.header;
-    out.angle_min = in.angle_min;
-    out.angle_max = in.angle_max;
-    out.angle_increment =
-      beams.empty() ? in.angle_increment :
-      (in.angle_max - in.angle_min) / static_cast<float>(beams.size());
+
+    // Each beam integrates rays_per_beam dense rays, so its true bearing is
+    // the centre of that group, not the group's start. beamScanGeometry()
+    // computes that centre offset so ranges[i] decodes to the beam's actual
+    // pointing direction, not a naive even split of the input fan.
+    if (beams.empty()) {
+      out.angle_min = in.angle_min;
+      out.angle_max = in.angle_max;
+      out.angle_increment = in.angle_increment;
+    } else {
+      const auto geom = beamScanGeometry(
+        in.angle_min, in.angle_increment, cfg_.rays_per_beam, beams.size());
+      out.angle_min = static_cast<float>(geom.angle_min);
+      out.angle_increment = static_cast<float>(geom.angle_increment);
+      out.angle_max = static_cast<float>(
+        geom.angle_min + static_cast<double>(beams.size() - 1) * geom.angle_increment);
+    }
     out.time_increment = in.time_increment;
     out.scan_time = in.scan_time;
     out.range_min = in.range_min;

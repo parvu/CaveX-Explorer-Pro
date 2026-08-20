@@ -5,6 +5,7 @@
 #include "cavex_sonar/beam_former.hpp"
 
 using cavex_sonar::AcousticParams;
+using cavex_sonar::beamScanGeometry;
 using cavex_sonar::BeamFormerConfig;
 using cavex_sonar::formBeams;
 using cavex_sonar::incidenceAngleAt;
@@ -83,4 +84,25 @@ TEST(FormBeams, ReportsNoDetectionWhenEveryRayInABeamIsOutOfRange) {
   const auto beams = formBeams(ranges, cfg, p, 7u);
   ASSERT_EQ(beams.size(), 1u);
   EXPECT_FALSE(beams[0].detected);
+}
+
+TEST(BeamScanGeometry, BeamCentreOffsetMatchesRealFanGeometry) {
+  // Fan matching the SDF: 512 dense rays across +/-60deg, 64 beams of 8 rays
+  // each. Beam b's true centre is at input ray index b*8 + 3.5, not b*8.
+  const double in_angle_min = -1.0472;
+  const double in_angle_increment = 2.0944 / 511.0;
+  const std::size_t rays_per_beam = 8;
+  const std::size_t beam_count = 64;
+
+  const auto geom = beamScanGeometry(
+    in_angle_min, in_angle_increment, rays_per_beam, beam_count);
+
+  EXPECT_NEAR(geom.angle_min, in_angle_min + in_angle_increment * 3.5, 1e-9);
+  EXPECT_NEAR(geom.angle_increment, in_angle_increment * 8.0, 1e-9);
+
+  // The last beam's centre must not overshoot the input fan's far edge.
+  const double in_angle_max = in_angle_min + in_angle_increment * 511.0;
+  const double last_beam_bearing =
+    geom.angle_min + static_cast<double>(beam_count - 1) * geom.angle_increment;
+  EXPECT_LE(last_beam_bearing, in_angle_max);
 }

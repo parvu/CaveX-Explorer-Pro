@@ -38,6 +38,24 @@ std::vector<BeamReturn> formBeams(
   const std::vector<double> & ranges, const BeamFormerConfig & cfg,
   const AcousticParams & p, uint32_t seed);
 
+/// Angular description of the output beam scan, in the same units/frame as
+/// the input dense-ray scan.
+struct BeamScanGeometry
+{
+  double angle_min;
+  double angle_increment;
+};
+
+/// Compute the bearing of beam 0's centre and the spacing between beam
+/// centres, given the input dense-ray scan's angle_min/angle_increment.
+///
+/// Beam `b` integrates input rays `[b*rays_per_beam, b*rays_per_beam +
+/// rays_per_beam - 1]`, so its true centre sits at input ray index
+/// `b*rays_per_beam + (rays_per_beam-1)/2`, not at `b*rays_per_beam`.
+BeamScanGeometry beamScanGeometry(
+  double in_angle_min, double in_angle_increment, std::size_t rays_per_beam,
+  std::size_t beam_count);
+
 }  // namespace cavex_sonar
 
 #endif  // CAVEX_SONAR__BEAM_FORMER_HPP_
