@@ -90,6 +90,10 @@
         name="gz::sim::systems::Hydrodynamics">
       <link_name>base_link</link_name>
       <water_density>998.0</water_density>
+      <!-- Baseline water current. Overridden at runtime by current_field_node
+           publishing to the /ocean_current topic this plugin already listens
+           on -- current support is stock upstream Gazebo, not added here. -->
+      <default_current>0 0 0</default_current>
       <!-- Added mass: -->
       <xDotU>0</xDotU>
       <yDotV>0</yDotV>

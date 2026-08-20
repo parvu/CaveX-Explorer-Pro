@@ -46,4 +46,11 @@ if(BUILD_TESTING)
   target_link_libraries(test_beam_former sonar_acoustics)
 endif()
 
+ament_python_install_package(${PROJECT_NAME})
+
+install(PROGRAMS
+  cavex_sonar/current_field_node.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

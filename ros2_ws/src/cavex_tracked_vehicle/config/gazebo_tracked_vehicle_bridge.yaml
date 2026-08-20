@@ -138,3 +138,14 @@
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
+
+# Task 8: current_field_node.py's ocean current, relayed onto the real
+# gz-transport topic the stock Hydrodynamics plugin already listens on. A
+# plain rclpy node can't publish gz-transport directly, so this bridges it
+# rather than shelling out to `gz topic` per tick (confirmed both types
+# present via `strings` on the installed libros_gz_bridge.so).
+- ros_topic_name: "/ocean_current"
+  gz_topic_name: "/ocean_current"
+  ros_type_name: "geometry_msgs/msg/Vector3"
+  gz_type_name: "gz.msgs.Vector3d"
+  direction: ROS_TO_GZ
