@@ -197,7 +197,7 @@ protected:
         // roll,pitch,yaw sigma (rad), then x,y,z sigma (m) -- z loose,
         // sonar can't observe depth.
         auto sonar_noise = gtsam::noiseModel::Diagonal::Sigmas(
-          (gtsam::Vector(6) << 0.3, 0.3, 0.02, 0.1, 0.1, 0.5).finished());
+          (gtsam::Vector(6) << 0.3, 0.3, 0.1, 0.1, 0.1, 0.5).finished());
         graph_.add(gtsam::BetweenFactor<gtsam::Pose3>(
           X(prev), X(curr), odom_delta, sonar_noise));
       }
@@ -205,8 +205,12 @@ protected:
       // Loop closure: try registering against earlier, non-adjacent
       // keyframes. Gate on match quality so a bad match never enters the
       // graph as a confident constraint.
-      for (std::size_t hist_index = 0; hist_index < keyframe_history_.size(); ++hist_index) {
-        const auto & [hist_pose, hist_scan] = keyframe_history_[hist_index];
+      for (const auto & [hist_key, hist_pose, hist_scan] : keyframe_history_) {
+        if (hist_key == prev) {
+          // Already covered by the odometry BetweenFactor above -- the
+          // most recent history entry is the same scan pair as (prev, curr).
+          continue;
+        }
         auto loop_reg = cavex_sic_slam::registerScans(
           curr_scan_points, hist_scan, 0.5, 20);
         if (loop_reg.converged && loop_reg.matched_fraction > 0.7 &&
@@ -215,9 +219,9 @@ protected:
           gtsam::Pose3 loop_delta(
             gtsam::Rot3::Yaw(loop_reg.dyaw), gtsam::Point3(loop_reg.dx, loop_reg.dy, 0.0));
           auto loop_noise = gtsam::noiseModel::Diagonal::Sigmas(
-            (gtsam::Vector(6) << 0.3, 0.3, 0.05, 0.15, 0.15, 0.6).finished());
+            (gtsam::Vector(6) << 0.3, 0.3, 0.15, 0.15, 0.15, 0.6).finished());
           graph_.add(gtsam::BetweenFactor<gtsam::Pose3>(
-            X(hist_index), X(curr), loop_delta, loop_noise));
+            X(hist_key), X(curr), loop_delta, loop_noise));
         }
       }
     }
@@ -249,7 +253,7 @@ protected:
     // where later tasks insert their own post-estimate blocks.
     if (!curr_scan_points.empty()) {
       prev_keyframe_scan_ = curr_scan_points;
-      keyframe_history_.emplace_back(last_pose_, curr_scan_points);
+      keyframe_history_.emplace_back(curr, last_pose_, curr_scan_points);
       publishMap(stamp, curr_scan_points, last_pose_);
     }
     publishKeyframes(stamp);
@@ -278,9 +282,12 @@ protected:
     msg.pose.pose.orientation.x = q.x();
     msg.pose.pose.orientation.y = q.y();
     msg.pose.pose.orientation.z = q.z();
-    msg.twist.twist.linear.x = vel.x();
-    msg.twist.twist.linear.y = vel.y();
-    msg.twist.twist.linear.z = vel.z();
+    // nav_msgs/Odometry requires twist to be expressed in child_frame_id
+    // (the body frame), but `vel` is the graph's map/world-frame V(i).
+    gtsam::Vector3 body_vel = pose.rotation().unrotate(vel);
+    msg.twist.twist.linear.x = body_vel.x();
+    msg.twist.twist.linear.y = body_vel.y();
+    msg.twist.twist.linear.z = body_vel.z();
     odom_pub_->publish(msg);
   }
 
@@ -325,7 +332,8 @@ protected:
     geometry_msgs::msg::PoseArray msg;
     msg.header.stamp = stamp;
     msg.header.frame_id = "map";
-    for (const auto & [pose, scan] : keyframe_history_) {
+    for (const auto & [key, pose, scan] : keyframe_history_) {
+      (void)key;
       geometry_msgs::msg::Pose p;
       const auto & t = pose.translation();
       p.position.x = t.x(); p.position.y = t.y(); p.position.z = t.z();
@@ -351,7 +359,8 @@ protected:
 
   sensor_msgs::msg::LaserScan::SharedPtr latest_scan_;
   std::vector<cavex_sic_slam::ScanPoint> prev_keyframe_scan_;
-  std::vector<std::pair<gtsam::Pose3, std::vector<cavex_sic_slam::ScanPoint>>> keyframe_history_;
+  std::vector<std::tuple<std::size_t, gtsam::Pose3,
+    std::vector<cavex_sic_slam::ScanPoint>>> keyframe_history_;
 
   boost::shared_ptr<gtsam::PreintegratedCombinedMeasurements::Params> imu_params_;
   std::shared_ptr<gtsam::PreintegratedCombinedMeasurements> preint_;

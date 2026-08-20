@@ -110,8 +110,8 @@ class DcsController(Node):
         else:
             corr_vx = corr_vy = 0.0
 
-        cmd_vx = ff_vx + corr_vx
-        cmd_vy = ff_vy + corr_vy
+        cmd_vx = ff_vx - corr_vx
+        cmd_vy = ff_vy - corr_vy
         cmd_vx, cmd_vy, shortfall = saturate(cmd_vx, cmd_vy, self._max_speed_mps)
 
         out = Twist()

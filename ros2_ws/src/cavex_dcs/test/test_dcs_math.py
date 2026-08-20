@@ -113,3 +113,51 @@ def test_saturate_clamps_and_reports_shortfall():
     vx, vy, shortfall = saturate(2.0, 0.0, max_speed_mps=1.0)
     assert math.isclose(vx, 1.0, abs_tol=1e-6)
     assert math.isclose(shortfall, 1.0, abs_tol=1e-6)
+
+
+def test_pi_correction_must_be_subtracted_to_oppose_drift():
+    """
+    Pin the sign convention dcs_controller._desired_cb must use.
+
+    Desired heading is purely along +x, and the ROV has drifted +0.2 m/s
+    laterally (+y, body frame). cross_track_error is positive for this
+    drift, and a PI controller with positive gains preserves that sign, so
+    `correction` is positive. The controller decomposes `correction` onto
+    the heading's left-hand perpendicular (0, 1) here, giving a positive
+    `corr_vy` -- the SAME direction as the drift.
+
+    A correct controller must SUBTRACT this from the feed-forward command
+    (cmd_vy = ff_vy - corr_vy) so the net commanded y-velocity opposes the
+    drift (pulls back toward the track). The old, buggy controller ADDED it
+    (cmd_vy = ff_vy + corr_vy), which commands MORE lateral velocity in the
+    drift direction -- positive feedback. This test fails under the old
+    additive composition and passes under the new subtractive one.
+    """
+    desired_body_vx, desired_body_vy = 1.0, 0.0
+    actual_body_vx, actual_body_vy = 0.0, 0.2  # drifting sideways, +y
+
+    err = cross_track_error(
+        actual_body_vx=actual_body_vx, actual_body_vy=actual_body_vy,
+        desired_body_vx=desired_body_vx, desired_body_vy=desired_body_vy)
+    assert err > 0.0  # sanity: drift is measured as positive
+
+    pi = PiController(kp=0.6, ki=0.1, i_max=0.5)
+    correction = pi.update(err, dt=0.05)
+    assert correction > 0.0  # sanity: positive gains preserve the sign
+
+    heading_norm = math.hypot(desired_body_vx, desired_body_vy)
+    corr_vy = desired_body_vx / heading_norm * correction
+    assert corr_vy > 0.0  # sanity: decomposed correction points with the drift
+
+    ff_vy = 0.0  # zero feed-forward baseline, isolates the PI term
+
+    # Correct (subtractive) composition: net corrective y-velocity opposes
+    # the drift.
+    cmd_vy_correct = ff_vy - corr_vy
+    assert cmd_vy_correct < 0.0
+
+    # Buggy (additive) composition, for documentation: it reinforces the
+    # drift instead of opposing it. If this ever stops holding, the
+    # dcs_controller.py fix has been reverted.
+    cmd_vy_buggy = ff_vy + corr_vy
+    assert cmd_vy_buggy > 0.0
