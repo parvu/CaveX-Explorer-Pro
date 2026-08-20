@@ -237,10 +237,77 @@ gz topic -t /world/cavex_world/pose/info -e -n 1 | grep -A5 'name: "bluerov2"'
 gz service -s /world/cavex_world/remove --reqtype gz.msgs.Entity --reptype gz.msgs.Boolean --timeout 2000 \
   --req "name: 'bluerov2', type: MODEL"
 
+# --- 8c. Acoustic sonar + ocean current (cavex_sonar) — real, live-tested
+# ============================================================
+# This needs NO ArduPilot SITL and NO micro-ROS: a headless gz server plus the
+# bluerov2 model is enough, because the sonar is a gpu_lidar-fed ROS node and the
+# current is the stock Hydrodynamics plugin. Far lighter and far less exposed to
+# the intermittent WSL/D3D12 crashes than a full launch.
+#
+# The ROV can stay in the DRY cave for this: cavex_world.world's Buoyancy plugin
+# keys water density off world-frame z alone (below z=7.9 -> density 1000), so a
+# ROV parked at z~6.9 in the dry section is already "underwater" as far as
+# buoyancy and ocean current are concerned. No need to drive to x=15 first.
+
+# 8c.1 headless server + spawn (entity name MUST be exactly "bluerov2", see 8 above)
+gz sim -s -r -v2 src/cavex_slam_nav/worlds/cavex_world.world &
+# wait for the world, don't guess a sleep:
+until gz topic -l 2>/dev/null | grep -q "/world/cavex_world/pose/info"; do sleep 1; done
+gz service -s /world/cavex_world/create --reqtype gz.msgs.EntityFactory --reptype gz.msgs.Boolean --timeout 10000 \
+  --req 'sdf_filename: "src/cavex_tracked_vehicle/models/bluerov2/model.sdf", name: "bluerov2", pose: {position: {x: -88.88, y: -31.4, z: 6.9}}'
+sleep 5
+gz topic -e -t /bluerov2/sonar_rays -n 1 | head -20
+# Expected: 512 ranges. Live-confirmed all finite, 2.7-29.2 m (the ROV is enclosed
+# by cave mesh, so nothing reaches the 30 m max). All-inf here means the sensor
+# sees no geometry -- fix that before touching anything downstream.
+
+# 8c.2 bridge + sonar node
+ros2 run ros_gz_bridge parameter_bridge \
+  /bluerov2/sonar_rays@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan \
+  /ocean_current@geometry_msgs/msg/Vector3]gz.msgs.Vector3d &
+sleep 6
+ros2 run cavex_sonar sonar_node --ros-args -p seed:=42 &
+sleep 5
+ros2 topic echo /bluerov2/sonar --once
+# Expected: 64 beams (512 rays / 8 rays-per-beam), ranges 2.85-28.04 m, echo levels
+# 130-166 dB. Non-detections appear as +inf range, never a fabricated range.
+# NOTE: detection_threshold_db is a DOUBLE -- `-p detection_threshold_db:=140` is
+# rejected with InvalidParameterTypeException (correctly). Use `:=140.0`.
+
+# 8c.3 ocean current
+ros2 run cavex_sonar current_field_node.py --ros-args -p profile:=constant -p vx:=1.5 &
+sleep 4
+gz topic -e -t /ocean_current -n 1          # expect x: 1.5 -- proves the ROS->GZ bridge
+ros2 topic echo /cavex/current_ground_truth --once
+# /cavex/current_ground_truth is SCORER-ONLY. Never subscribe a perception or
+# control node to it -- same discipline as ground-truth pose elsewhere here.
+gz topic -e -t /world/cavex_world/pose/info -n 1 | grep -A5 'name: "bluerov2"'
+sleep 20
+gz topic -e -t /world/cavex_world/pose/info -n 1 | grep -A5 'name: "bluerov2"'
+# Live-confirmed: +8.75 m of x drift in 20 s at 1.5 m/s, against a measured
+# no-current baseline of +0.0007 m over the same interval. If you are quantifying
+# drift, measure that baseline -- an unactuated ROV can be moving before you start.
+
+# 8c.4 measurement gotchas (all three cost real time here -- don't repeat them)
+# * `ros2 run` FORKS the node binary. Killing the `ros2 run` pid leaves the node
+#   alive and still publishing. Six sonar_node publishers accumulated this way and
+#   silently poisoned three measurement sweeps -- every sample was read from a
+#   stale publisher at the wrong threshold. Kill the real binary pid:
+#     ps -eo pid,cmd | grep install/cavex_sonar/lib/cavex_sonar/sonar_node | grep -v grep
+#   and confirm `ros2 topic info /bluerov2/sonar` reports "Publisher count: 1"
+#   BEFORE sampling.
+# * That publisher count LAGS process death by the DDS discovery timeout (~20 s),
+#   so it cannot gate a fast loop -- allow the wait, or the count lies to you.
+# * `pkill -f <pattern>` self-matches the invoking shell's own command line and
+#   kills your script. This file already says never to use pkill -f (section 9);
+#   that warning is correct and it applies here too.
+
+# Remove the sonar test spawn when done (same as 8 above), then section 9 cleanup.
+
 # ============================================================
 # 9. Cleanup — ALWAYS run after finishing
 # ============================================================
-ps aux | grep -iE "gz sim|ardurover|ardusub|micro_ros_agent|MicroXRCEAgent|rtabmap|icp_odometry|nav2|explore|rviz2|mavproxy|sitl_dds_udp|parameter_bridge|robot_state_publisher|spawner|controller_server|planner_server|bt_navigator|behavior_server|lifecycle_manager|smoother_server|route_server|velocity_smoother|waypoint_follower|collision_monitor|docking_server|sic_slam_node" | grep -v grep
+ps aux | grep -iE "gz sim|ardurover|ardusub|micro_ros_agent|MicroXRCEAgent|rtabmap|icp_odometry|nav2|explore|rviz2|mavproxy|sitl_dds_udp|parameter_bridge|robot_state_publisher|spawner|controller_server|planner_server|bt_navigator|behavior_server|lifecycle_manager|smoother_server|route_server|velocity_smoother|waypoint_follower|collision_monitor|docking_server|sic_slam_node|sonar_node|current_field_node" | grep -v grep
 # kill -9 <pid> for EVERY PID found (never pkill -f -- unreliable in this
 # environment); re-check ps aux afterward to confirm none survive. Two full launch
 # trees have been found running simultaneously in this project before -- don't

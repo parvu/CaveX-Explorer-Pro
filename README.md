@@ -637,6 +637,71 @@ vehicle" throughout; it makes no official Blue Robotics/ArduPilot
 endorsement claim and no marine/floating capability claim (tracks only,
 ArduPilot Rover firmware, not ArduBoat).
 
+## Phase 2 sensing substrate: acoustic sonar + ocean current
+
+`ros2_ws/src/cavex_sonar` gives the BlueROV2 a simulated acoustic sonar and
+puts it in a real water current. This is the foundation the SIC-SLAM work
+builds on; the factor graph and the current-suppression controller themselves
+are **not** built yet (see `docs/superpowers/specs/` locally — that directory
+is gitignored and does not ship with the repo).
+
+**Design.** Gazebo Harmonic ships no sonar sensor type, and `gz-sim8` will not
+instantiate a custom *rendering* sensor — the same constraint that rules out
+its `DopplerVelocityLog`. So the acoustic physics lives in a host-agnostic C++
+library (`sonar_acoustics` + `beam_former`) with **zero ROS and zero Gazebo
+includes**, unit-tested off-simulator, and a dense `gpu_lidar` on the BlueROV2
+supplies ray geometry only. `sonar_node` joins them and publishes
+`sensor_msgs/LaserScan` with echo strength in `intensities`, so stock
+`ros_gz_bridge` and normal tooling carry it with no custom message type.
+
+The acoustic layer applies beam spread (8 dense rays per beam), spherical
+spreading plus frequency-dependent absorption, incidence-dependent
+backscatter, Rayleigh speckle, and a detection threshold with honest dropouts.
+A non-detected beam publishes `+inf` range — never a fabricated one — and a
+beam whose rays all miss carries `-inf` intensity, so downstream weighting
+gives it zero weight rather than treating "no data" as a moderate return.
+
+Water current is **real upstream Gazebo physics**: the stock `Hydrodynamics`
+plugin already implements ocean current, so no new physics is written here.
+`current_field_node.py` only scripts repeatable profiles (constant, step,
+sinusoidal) onto `/ocean_current` via `ros_gz_bridge`.
+
+```bash
+cd ros2_ws && source /opt/ros/jazzy/setup.bash && source install/setup.bash
+colcon build --symlink-install --packages-select cavex_sonar
+ros2 launch cavex_sonar sonar_and_current.launch.py profile:=constant vx:=0.3 seed:=42
+ros2 topic echo /bluerov2/sonar --once     # 64 beams: ranges + intensities
+```
+
+Run it alongside the simulation (section 8 of `launch.txt` has a full
+standalone recipe that needs no ArduPilot SITL).
+
+**Live-verified 2026-08-20** (headless `gz sim -s`, BlueROV2 spawned in the dry
+cave, which sits below the world's `z=7.9` water-density cutoff so buoyancy and
+current both apply): real-time factor **1.00**; 512 rays finite at 2.7–29.2 m;
+64 beams at 2.85–28.04 m with echo levels 130–166 dB; speckle differs on 64/64
+beams between consecutive pings; a 1.5 m/s current drifts the ROV **+8.75 m in
+20 s** against a **+0.0007 m** no-current baseline.
+
+**Honesty caveats.** The sonar is a physically-motivated model, **not
+calibrated against real sonar hardware** and not validated against real sonar
+data — cite it as a simulation result. The current is real Gazebo physics but
+is a disturbance we inject ourselves, not a measured real-world flow. At the
+default `detection_threshold_db = 100.0` the dropout fraction in the *dry*
+cave is 0%, because the weakest echo there is ~130 dB; the threshold logic
+itself is verified correct (138 dB → 6.2% dropped, 160 dB → 96.9%, matching
+the sub-threshold beam count exactly). The default was deliberately left
+untuned — that is one dry-cave sample with close, near-normal walls, and the
+flooded section this sonar is actually for has longer ranges and more grazing
+geometry. Re-measure there before tuning. The frontend's `sonarActive`/
+`sonarDepth`/`sonarEchoStrength` fields remain concept-demo values and are
+still not wired to this topic.
+
+**GTSAM** 4.2.0 (`libgtsam-dev`) is installed and verified to compile and link
+against ROS 2 Jazzy's ABI, with `CombinedImuFactor` preintegration and `ISAM2`
+both working — so the SIC-SLAM factor graph can use the apt package rather
+than a source build.
+
 ## Third-party assets
 
 **Cave geometry** — `ros2_ws/src/cavex_slam_nav/models/cave_world/` is

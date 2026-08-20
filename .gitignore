@@ -21,3 +21,11 @@ __pycache__/
 
 # superpowers SDD scratch workspace (ledger, briefs, review packages)
 .superpowers/
+
+# Superpowers design docs / implementation plans (kept locally, not shipped)
+docs/superpowers/
+
+# PX4 SITL tree: cloned locally, deliberately NOT vendored into git history
+# (README documents this; it was not actually ignored before -- a stray `git add -A`
+# would have committed a multi-GB second autopilot tree).
+PX4-Autopilot/
