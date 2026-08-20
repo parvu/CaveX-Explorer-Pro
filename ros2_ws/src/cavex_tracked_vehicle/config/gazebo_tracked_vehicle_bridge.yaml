@@ -149,3 +149,12 @@
   ros_type_name: "geometry_msgs/msg/Vector3"
   gz_type_name: "gz.msgs.Vector3d"
   direction: ROS_TO_GZ
+
+# Task 4 (cavex_sic_slam): BlueROV2's own IMU sensor, for sic_slam_node's
+# IMU-only preintegration graph. Distinct from the /imu entry above, which
+# is cavex_tracked_blueboat's IMU, a different model/link entirely.
+- ros_topic_name: "/bluerov2/imu"
+  gz_topic_name: "/world/cavex_world/model/bluerov2/link/base_link/sensor/imu_sensor/imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: GZ_TO_ROS

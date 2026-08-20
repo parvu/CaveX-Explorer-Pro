@@ -36,6 +36,12 @@ install(TARGETS sic_slam_core
 install(DIRECTORY include/
   DESTINATION include)
 
+add_executable(sic_slam_node src/sic_slam_node.cpp)
+target_link_libraries(sic_slam_node sic_slam_core gtsam)
+ament_target_dependencies(sic_slam_node rclcpp sensor_msgs nav_msgs geometry_msgs tf2_ros tf2_geometry_msgs std_msgs)
+install(TARGETS sic_slam_node
+  DESTINATION lib/${PROJECT_NAME})
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)
