@@ -32,3 +32,39 @@ TEST(TransmissionLoss, ZeroRangeIsFiniteNotNegativeInfinity) {
   AcousticParams p;
   EXPECT_TRUE(std::isfinite(transmissionLossDb(0.0, p)));
 }
+
+using cavex_sonar::backscatterDb;
+using cavex_sonar::echoLevelDb;
+
+TEST(Backscatter, NormalIncidenceIsStrongest) {
+  AcousticParams p;
+  // 0 rad == beam perpendicular to the surface == strongest return.
+  EXPECT_GT(backscatterDb(0.0, p), backscatterDb(0.6, p));
+  EXPECT_GT(backscatterDb(0.6, p), backscatterDb(1.2, p));
+}
+
+TEST(Backscatter, DecreasesMonotonicallyWithIncidence) {
+  AcousticParams p;
+  double prev = backscatterDb(0.0, p);
+  for (double a = 0.05; a < 1.55; a += 0.05) {
+    const double cur = backscatterDb(a, p);
+    EXPECT_LE(cur, prev) << "backscatter must not increase at incidence " << a;
+    prev = cur;
+  }
+}
+
+TEST(Backscatter, GrazingIncidenceIsFiniteNotNegativeInfinity) {
+  AcousticParams p;
+  // cos(pi/2) == 0; log10(0) is -inf. Must be floored, or a grazing beam
+  // poisons the echo level with NaN instead of simply being a weak return.
+  EXPECT_TRUE(std::isfinite(backscatterDb(M_PI / 2.0, p)));
+}
+
+TEST(EchoLevel, FallsOffWithBothRangeAndIncidence) {
+  AcousticParams p;
+  const double near_normal = echoLevelDb(2.0, 0.0, p);
+  const double far_normal = echoLevelDb(20.0, 0.0, p);
+  const double near_grazing = echoLevelDb(2.0, 1.4, p);
+  EXPECT_GT(near_normal, far_normal) << "range must reduce echo level";
+  EXPECT_GT(near_normal, near_grazing) << "incidence must reduce echo level";
+}
