@@ -397,3 +397,58 @@ this work is the single most tempting place in the repo to break it.
 4. DCS controller (Component 4).
 5. Evaluation harness and the A/B result.
 6. Naming cleanup (separable, droppable).
+
+## Live-simulation verification results (2026-08-20)
+
+Run headless (`gz sim -s -r`, no ArduPilot SITL) against `cavex_world.world` with
+`bluerov2` spawned at `(-88.88, -31.4, 6.9)` in the dry cave section. The ROV sits below
+the world's `z = 7.9` water-density cutoff, so buoyancy and ocean current both apply
+without driving the tracked vehicle to the water boundary.
+
+| Check | Result |
+|---|---|
+| Real-time factor | **1.00** |
+| `/bluerov2/sonar_rays` | 512 rays, all finite, **2.7 – 29.2 m** — ray engine sees the cave mesh |
+| `/bluerov2/sonar` | **64 beams**, ranges 2.85 – 28.04 m, echo levels 130 – 166 dB |
+| Per-ping speckle | **0/64 beams identical** across consecutive scans — the Ruling 9 fix is live |
+| `/cavex/current_ground_truth` | publishes commanded value; **no subscribers** |
+| `/ocean_current` → Gazebo | reaches `gz.msgs.Vector3d` via `ros_gz_bridge` |
+| Current drift | **+8.75 m in 20 s** at 1.5 m/s, vs **+0.0007 m** no-current baseline |
+
+### Bug found and fixed
+`current_field_node.py` was not executable, so `ros2 run` reported "No executable found"
+and the Task 9 launch file would have failed identically. `--show-args` only introspects
+declared arguments and never resolves the executable, which is why static verification
+missed it. Fixed in commit `21f2cee2` (mode 100644 → 100755, matching the 0755 convention
+of every `cavex_slam_nav` Python node).
+
+### Dropout fraction: measured, and NOT changed
+At the default `detection_threshold_db = 100.0`, dropout is **0/64 (0%)** at this location —
+the weakest echo here is ~130 dB, roughly 30 dB clear of the threshold. Verified the
+threshold logic itself is correct end-to-end, with exactly one publisher enforced:
+
+| threshold | dropped | consistency |
+|---|---|---|
+| 100 dB | 0/64 (0%) | — |
+| 138 dB | 4/64 (6.2%) | CONSISTENT |
+| 160 dB | 62/64 (96.9%) | CONSISTENT — exactly the 62 beams with echo < 160 dB |
+
+"CONSISTENT" means the dropped count equalled the count of beams whose echo level fell
+below the threshold, so the model is behaving correctly; only the default is loose.
+
+**The default was deliberately left at 100.0.** This measurement comes from one spawn
+position in the *dry* cave, where walls are close (2.8–28 m) and near-normal, so echoes are
+strong. The flooded section this sonar is actually for has longer ranges and more grazing
+geometry, where the same 100 dB threshold may well produce a natural dropout mixture.
+Retuning a physics default to one dry-cave sample would be overfitting. **Re-measure in the
+flooded section before the SIC-SLAM plan starts**, and tune then if it is still 0%.
+
+### Measurement-harness pitfalls hit (recorded so they are not repeated)
+- `ros2 run` forks the node binary; killing the `ros2 run` pid leaves the node alive.
+  Six `sonar_node` publishers accumulated and silently poisoned three sweep attempts.
+  Kill the real binary pid, and assert `Publisher count: 1` before sampling.
+- `ros2 topic info` publisher counts lag process death by the DDS discovery timeout
+  (~20 s), so they cannot gate a fast sweep.
+- `pkill -f <pattern>` self-matches the invoking shell's own command line.
+- Integer parameter values (`:=100`) are rejected for double-typed parameters; the node
+  correctly throws `InvalidParameterTypeException` and aborts. Use `:=100.0`.
