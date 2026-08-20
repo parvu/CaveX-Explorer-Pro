@@ -1,13 +1,8 @@
-/*
- * Copyright 2026 CaveX Explorer Pro
- * Licensed under MIT
- */
-
 #ifndef CAVEX_SIC_SLAM__DYNAMICS_MODEL_HPP_
 #define CAVEX_SIC_SLAM__DYNAMICS_MODEL_HPP_
 
-#include <Eigen/Dense>
 #include <array>
+#include <Eigen/Dense>
 
 namespace cavex_sic_slam
 {

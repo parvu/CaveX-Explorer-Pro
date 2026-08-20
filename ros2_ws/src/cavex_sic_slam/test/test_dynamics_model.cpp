@@ -1,8 +1,3 @@
-/*
- * Copyright 2026 CaveX Explorer Pro
- * Licensed under MIT
- */
-
 #include <gtest/gtest.h>
 #include <cmath>
 #include "cavex_sic_slam/dynamics_model.hpp"
