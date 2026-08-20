@@ -47,6 +47,41 @@
         <update_rate>1000.0</update_rate>
       </sensor>
 
+      <!-- Dense ray engine for the simulated acoustic sonar.
+           Gazebo Harmonic ships no sonar sensor type, and gz-sim8's Sensors
+           system will not instantiate a custom rendering sensor (the same
+           reason gz::sensors::DopplerVelocityLog is unusable here). So this
+           gpu_lidar supplies geometrically correct ranges only; all acoustic
+           physics -- beam spread, transmission loss, incidence backscatter,
+           speckle, dropout -- lives in cavex_sonar and is applied downstream.
+           Do not treat this topic as sonar output. -->
+      <sensor name="sonar_ray_engine" type="gpu_lidar">
+        <pose>0.15 0 0 0 0 0</pose>
+        <always_on>1</always_on>
+        <update_rate>10</update_rate>
+        <topic>bluerov2/sonar_rays</topic>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>512</samples>
+              <resolution>1</resolution>
+              <min_angle>-1.0472</min_angle>
+              <max_angle>1.0472</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>1</samples>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.2</min>
+            <max>30.0</max>
+            <resolution>0.01</resolution>
+          </range>
+        </lidar>
+      </sensor>
+
     </link>
 
     <!-- Hydrodynamics plugin -->

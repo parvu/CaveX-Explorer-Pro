@@ -129,3 +129,12 @@
   ros_type_name: "std_msgs/msg/Empty"
   gz_type_name: "gz.msgs.Empty"
   direction: ROS_TO_GZ
+
+# Task 6: dense gpu_lidar ray engine standing in for the BlueROV2's sonar
+# (Gazebo Harmonic has no sonar sensor type). Geometry only -- acoustic
+# physics is applied downstream in cavex_sonar (Task 7).
+- ros_topic_name: "/bluerov2/sonar_rays"
+  gz_topic_name: "/bluerov2/sonar_rays"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
