@@ -47,6 +47,8 @@ commands, and verification steps for each:
 | `cavex_tracked_vehicle` | Tracked BlueBoat + BlueROV2, ArduPilot Rover/Sub SITL |
 | `cavex_sonar` | Simulated BlueROV2 acoustic sonar + ocean current |
 | `cavex_perception` | RGB-D + lidar instance clustering |
+| `cavex_sic_slam` | Real GTSAM Sonar-Inertial-Current factor-graph SLAM |
+| `cavex_dcs` | Drift/Current Suppression controller (feed-forward + PI) |
 
 ## Third-party assets
 
