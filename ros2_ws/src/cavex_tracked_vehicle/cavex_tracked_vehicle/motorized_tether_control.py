@@ -58,7 +58,7 @@ ANCHOR_LOCAL_OFFSET = (-0.2, 0.0, 0.05)
 # (an earlier 0.5185m-derived floor accounted for that; this value does
 # not). Real straight-line anchor-to-ROV distance at the new spawn: anchor
 # world x ~= boat spawn x(-35) + ANCHOR_LOCAL_OFFSET's x(-0.2) = -35.2,
-# world z ~= hull's own settled z (6.408, see launch.txt) +
+# world z ~= hull's own settled z (6.408, see history.txt) +
 # ANCHOR_LOCAL_OFFSET's z (0.05) = 6.458; dx = -35.2-(-35.1) = -0.1,
 # dz = 6.458-6.5155 = -0.0575 -> sqrt(0.1^2+0.0575^2) = 0.1153m, rounded to
 # 0.12m. Safe only because the rigid DetachableJoint lock, not tether

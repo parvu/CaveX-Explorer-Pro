@@ -30,5 +30,5 @@ docs/superpowers/
 # would have committed a multi-GB second autopilot tree).
 PX4-Autopilot/
 
-# Launch runbook: full historical notes, design rationale (kept locally, not shipped)
-launch.txt
+# History/runbook: full historical notes, design rationale (kept locally, not shipped)
+history.txt

@@ -2,7 +2,7 @@
 
 A cave-exploration robot dashboard: a React/Express web frontend, and a ROS 2
 Jazzy / Gazebo Harmonic simulation stack (`ros2_ws/`). Design rationale,
-verification results, and historical notes live in `launch.txt`, not here —
+verification results, and historical notes live in `history.txt`, not here —
 this file is build/run instructions only.
 
 ## Web frontend
@@ -38,7 +38,7 @@ source install/setup.bash
 source ardupilot_gazebo_env.sh   # ArduPilot SITL env, incl. mavproxy.py on PATH
 ```
 
-Package quick reference — see `launch.txt` (local-only) for full launch
+Package quick reference — see `history.txt` (local-only) for full launch
 sequences, driving commands, and verification steps for each:
 
 | Package | What |

@@ -93,7 +93,7 @@ def generate_launch_description():
     # repeated CPU-saturation stalls (system load observed as high as
     # 39 on an 8-core box with it running). Headless is now the real
     # default, matching the comment's own stated intent; attach a GUI on
-    # demand exactly as launch.txt's own section 6 already documents:
+    # demand exactly as history.txt's own section 6 already documents:
     # `gz sim -g &` connects to this already-running headless server, no
     # separate world/relaunch needed.
     gz_sim = IncludeLaunchDescription(
