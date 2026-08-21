@@ -38,8 +38,8 @@ source install/setup.bash
 source ardupilot_gazebo_env.sh   # ArduPilot SITL env, incl. mavproxy.py on PATH
 ```
 
-Package quick reference — see `launch.txt` for full launch sequences, driving
-commands, and verification steps for each:
+Package quick reference — see `launch.txt` (local-only) for full launch
+sequences, driving commands, and verification steps for each:
 
 | Package | What |
 |---|---|
@@ -49,6 +49,33 @@ commands, and verification steps for each:
 | `cavex_perception` | RGB-D + lidar instance clustering |
 | `cavex_sic_slam` | Real GTSAM Sonar-Inertial-Current factor-graph SLAM |
 | `cavex_dcs` | Drift/Current Suppression controller (feed-forward + PI) |
+
+### Phase 1: tracked BlueBoat + BlueROV2 (dry cave, ArduPilot)
+
+```bash
+ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py &
+sleep 25
+ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py &
+sleep 15
+ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
+```
+
+### Phase 2: BlueROV2 sonar + current + SIC-SLAM + DCS (flooded section)
+
+```bash
+gz sim -s -r -v2 src/cavex_slam_nav/worlds/cavex_world.world &
+until gz topic -l 2>/dev/null | grep -q "/world/cavex_world/pose/info"; do sleep 1; done
+gz service -s /world/cavex_world/create --reqtype gz.msgs.EntityFactory --reptype gz.msgs.Boolean --timeout 10000 \
+  --req 'sdf_filename: "src/cavex_tracked_vehicle/models/bluerov2/model.sdf", name: "bluerov2", pose: {position: {x: -88.88, y: -31.4, z: 6.9}}'
+sleep 5
+ros2 run ros_gz_bridge parameter_bridge --ros-args \
+  -p config_file:=src/cavex_tracked_vehicle/config/gazebo_tracked_vehicle_bridge.yaml &
+sleep 10
+ros2 run cavex_sonar sonar_node --ros-args -p seed:=42 -p frame_id:=bluerov2/sonar &
+sleep 3
+ros2 run cavex_sic_slam sic_slam_node &
+ros2 run cavex_dcs dcs_controller &
+```
 
 ## Third-party assets
 
