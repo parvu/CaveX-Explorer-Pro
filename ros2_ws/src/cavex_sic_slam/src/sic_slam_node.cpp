@@ -72,7 +72,10 @@ public:
 
     gtsam::Vector3 prior_current = gtsam::Vector3::Zero();
     values_.insert(C(0), prior_current);
-    auto current_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.05);
+    // Loose: 0.05 actively fought convergence to a real nonzero current --
+    // it should say "no information yet", not "confidently zero". See the
+    // matching current_walk_noise change below for the full reasoning.
+    auto current_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.5);
     graph_.addPrior(C(0), prior_current, current_noise);
 
     isam_.update(graph_, values_);
@@ -232,7 +235,15 @@ protected:
       X(curr), V(curr), C(curr), thrust_snapshot, thruster_geom_, thruster_drag_,
       current_factor_noise));
 
-    auto current_walk_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.02);
+    // Was 0.02: against a real ~1.5 m/s current and current_factor_noise's
+    // own 0.15 measurement sigma, a 0.02 walk needs ~5600 keyframes
+    // (sigma*sqrt(N) ~ 1.5) to diffuse that far -- the chain was 1-2 orders
+    // of magnitude stiffer than the measurement meant to drive it, so any
+    // real current change got pushed into V/X instead of C. Raised to the
+    // same order as current_factor_noise so a real per-keyframe current
+    // change is treated as comparably plausible to a dynamics-prediction
+    // miss, letting the factor actually do its job.
+    auto current_walk_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.2);
     graph_.add(gtsam::BetweenFactor<gtsam::Vector3>(
       C(prev), C(curr), gtsam::Vector3::Zero(), current_walk_noise));
 
