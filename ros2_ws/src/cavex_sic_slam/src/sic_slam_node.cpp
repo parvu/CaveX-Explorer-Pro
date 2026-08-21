@@ -41,6 +41,12 @@ public:
     keyframe_period_s_ = this->declare_parameter<double>("keyframe_period_s", 0.5);
     keyframe_distance_m_ = this->declare_parameter<double>("keyframe_distance_m", 0.3);
     keyframe_rotation_rad_ = this->declare_parameter<double>("keyframe_rotation_rad", 0.2);
+    // Ablation switch: false runs the identical IMU+sonar iSAM2 graph with
+    // no C(i) variable, no CurrentFactor, no current random walk at all --
+    // not "CurrentFactor present but unconstrained". Same pipeline, same
+    // keyframe triggers, same live-sim/ATE methodology; only the current
+    // observability mechanism is removed, for an apples-to-apples baseline.
+    enable_current_factor_ = this->declare_parameter<bool>("enable_current_factor", true);
 
     auto imu_params = gtsam::PreintegratedCombinedMeasurements::Params::MakeSharedU(9.81);
     // Roll-180 mount into the ArduPilot body frame: accel/gyro measurements
@@ -71,12 +77,14 @@ public:
     graph_.addPrior(B(0), prior_bias, bias_noise);
 
     gtsam::Vector3 prior_current = gtsam::Vector3::Zero();
-    values_.insert(C(0), prior_current);
-    // Loose: 0.05 actively fought convergence to a real nonzero current --
-    // it should say "no information yet", not "confidently zero". See the
-    // matching current_walk_noise change below for the full reasoning.
-    auto current_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.5);
-    graph_.addPrior(C(0), prior_current, current_noise);
+    if (enable_current_factor_) {
+      values_.insert(C(0), prior_current);
+      // Loose: 0.05 actively fought convergence to a real nonzero current --
+      // it should say "no information yet", not "confidently zero". See the
+      // matching current_walk_noise change below for the full reasoning.
+      auto current_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.5);
+      graph_.addPrior(C(0), prior_current, current_noise);
+    }
 
     isam_.update(graph_, values_);
     graph_.resize(0);
@@ -115,7 +123,8 @@ public:
 
     RCLCPP_INFO(
       this->get_logger(),
-      "sic_slam_node ready: /bluerov2/imu -> /sic_slam/odometry (IMU-only graph).");
+      "sic_slam_node ready: /bluerov2/imu + /bluerov2/sonar -> /sic_slam/odometry (%s).",
+      enable_current_factor_ ? "IMU+sonar+CurrentFactor" : "IMU+sonar only, no CurrentFactor");
   }
 
 protected:
@@ -229,35 +238,39 @@ protected:
       }
     }
 
-    std::array<double, 6> thrust_snapshot = thrust_n_;
-    auto current_factor_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.15);
-    graph_.add(cavex_sic_slam::CurrentFactor(
-      X(curr), V(curr), C(curr), thrust_snapshot, thruster_geom_, thruster_drag_,
-      current_factor_noise));
+    if (enable_current_factor_) {
+      std::array<double, 6> thrust_snapshot = thrust_n_;
+      auto current_factor_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.15);
+      graph_.add(cavex_sic_slam::CurrentFactor(
+        X(curr), V(curr), C(curr), thrust_snapshot, thruster_geom_, thruster_drag_,
+        current_factor_noise));
 
-    // Was 0.02: against a real ~1.5 m/s current and current_factor_noise's
-    // own 0.15 measurement sigma, a 0.02 walk needs ~5600 keyframes
-    // (sigma*sqrt(N) ~ 1.5) to diffuse that far -- the chain was 1-2 orders
-    // of magnitude stiffer than the measurement meant to drive it, so any
-    // real current change got pushed into V/X instead of C. Raised to the
-    // same order as current_factor_noise so a real per-keyframe current
-    // change is treated as comparably plausible to a dynamics-prediction
-    // miss, letting the factor actually do its job.
-    auto current_walk_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.2);
-    graph_.add(gtsam::BetweenFactor<gtsam::Vector3>(
-      C(prev), C(curr), gtsam::Vector3::Zero(), current_walk_noise));
+      // Was 0.02: against a real ~1.5 m/s current and current_factor_noise's
+      // own 0.15 measurement sigma, a 0.02 walk needs ~5600 keyframes
+      // (sigma*sqrt(N) ~ 1.5) to diffuse that far -- the chain was 1-2 orders
+      // of magnitude stiffer than the measurement meant to drive it, so any
+      // real current change got pushed into V/X instead of C. Raised to the
+      // same order as current_factor_noise so a real per-keyframe current
+      // change is treated as comparably plausible to a dynamics-prediction
+      // miss, letting the factor actually do its job.
+      auto current_walk_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.2);
+      graph_.add(gtsam::BetweenFactor<gtsam::Vector3>(
+        C(prev), C(curr), gtsam::Vector3::Zero(), current_walk_noise));
 
-    values_.insert(C(curr), last_current_);
+      values_.insert(C(curr), last_current_);
+    }
 
     isam_.update(graph_, values_);
     gtsam::Values result = isam_.calculateEstimate();
     last_pose_ = result.at<gtsam::Pose3>(X(curr));
     last_vel_ = result.at<gtsam::Vector3>(V(curr));
     last_bias_ = result.at<gtsam::imuBias::ConstantBias>(B(curr));
-    last_current_ = result.at<gtsam::Vector3>(C(curr));
-    gtsam::Marginals marginals(isam_.getFactorsUnsafe(), result);
-    gtsam::Matrix current_cov = marginals.marginalCovariance(C(curr));
-    publishCurrent(stamp, last_current_, current_cov);
+    if (enable_current_factor_) {
+      last_current_ = result.at<gtsam::Vector3>(C(curr));
+      gtsam::Marginals marginals(isam_.getFactorsUnsafe(), result);
+      gtsam::Matrix current_cov = marginals.marginalCovariance(C(curr));
+      publishCurrent(stamp, last_current_, current_cov);
+    }
 
     // Sonar map/keyframe publishing (Task 5). Self-contained: only reads
     // curr_scan_points, last_pose_, keyframe_history_ -- safe regardless of
@@ -380,6 +393,7 @@ protected:
   gtsam::Values values_;
 
   std::size_t keyframe_index_;
+  bool enable_current_factor_;
   double keyframe_period_s_;
   double keyframe_distance_m_;
   double keyframe_rotation_rad_;
