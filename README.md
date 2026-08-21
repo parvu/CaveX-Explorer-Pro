@@ -63,7 +63,7 @@ ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
 ### Phase 2: BlueROV2 sonar + current + SIC-SLAM + DCS (flooded section)
 
 ```bash
-gz sim -s -r -v2 src/cavex_slam_nav/worlds/cavex_world.world &
+gz sim -r -v2 src/cavex_slam_nav/worlds/cavex_world.world &
 until gz topic -l 2>/dev/null | grep -q "/world/cavex_world/pose/info"; do sleep 1; done
 gz service -s /world/cavex_world/create --reqtype gz.msgs.EntityFactory --reptype gz.msgs.Boolean --timeout 10000 \
   --req 'sdf_filename: "src/cavex_tracked_vehicle/models/bluerov2/model.sdf", name: "bluerov2", pose: {position: {x: -88.88, y: -31.4, z: 6.9}}'
