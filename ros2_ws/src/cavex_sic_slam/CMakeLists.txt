@@ -61,6 +61,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_continuous_trajectory test/test_continuous_trajectory.cpp)
   target_link_libraries(test_continuous_trajectory sic_slam_core gtsam)
+
+  ament_add_gtest(test_continuous_current_estimator test/test_continuous_current_estimator.cpp)
+  target_link_libraries(test_continuous_current_estimator sic_slam_core gtsam)
 endif()
 
 install(DIRECTORY launch

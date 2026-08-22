@@ -9,6 +9,7 @@
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/point32.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/float64.hpp>
 
@@ -23,6 +24,7 @@
 
 #include "cavex_sic_slam/scan_registration.hpp"
 #include "cavex_sic_slam/current_factor.hpp"
+#include "cavex_sic_slam/continuous_current_estimator.hpp"
 
 using gtsam::symbol_shorthand::X;
 using gtsam::symbol_shorthand::V;
@@ -49,6 +51,13 @@ public:
     // keyframe triggers, same live-sim/ATE methodology; only the current
     // observability mechanism is removed, for an apples-to-apples baseline.
     enable_current_factor_ = this->declare_parameter<bool>("enable_current_factor", true);
+    // Additive continuous-time smoothing of the existing discrete C(i)
+    // estimates -- see .superpowers/plans/2026-08-23-continuous-current-
+    // field-integration.md. Does NOT touch pose (X/V) estimation and does
+    // NOT independently re-derive current; only meaningful when
+    // enable_current_factor_ is also true. Default off.
+    enable_continuous_current_field_ = this->declare_parameter<bool>(
+      "enable_continuous_current_field", false);
     // Dynamic Covariance Scaling (real request, 2026-08-22): tests whether
     // a proper robust M-estimator on the actual outlier-prone geometric
     // constraints (sonar odometry + loop-closure BetweenFactors -- a bad
@@ -135,6 +144,8 @@ public:
     }
     current_pub_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(
       "/sic_slam/current_estimate", 10);
+    continuous_current_pub_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>(
+      "/sic_slam/current_estimate_continuous", 10);
 
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
       "/bluerov2/imu", rclcpp::SensorDataQoS(),
@@ -364,6 +375,24 @@ protected:
       publishCurrent(stamp, last_current_, current_cov);
     }
 
+    if (enable_current_factor_ && enable_continuous_current_field_) {
+      double t_seconds = rclcpp::Time(stamp).seconds();
+      continuous_current_estimator_.addSample(t_seconds, last_current_);
+      if (++continuous_current_refit_counter_ % 5 == 0) {
+        continuous_current_estimator_.refit();
+      }
+      auto smoothed = continuous_current_estimator_.evaluate(t_seconds);
+      if (smoothed) {
+        geometry_msgs::msg::Vector3Stamped msg;
+        msg.header.stamp = stamp;
+        msg.header.frame_id = "map";
+        msg.vector.x = (*smoothed)(0);
+        msg.vector.y = (*smoothed)(1);
+        msg.vector.z = (*smoothed)(2);
+        continuous_current_pub_->publish(msg);
+      }
+    }
+
     // Sonar map/keyframe publishing (Task 5). Self-contained: only reads
     // curr_scan_points, last_pose_, keyframe_history_ -- safe regardless of
     // where later tasks insert their own post-estimate blocks.
@@ -472,6 +501,7 @@ protected:
   cavex_sic_slam::ThrusterGeometry thruster_geom_;
   cavex_sic_slam::DragCoefficients thruster_drag_;
   rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr current_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr continuous_current_pub_;
 
   sensor_msgs::msg::LaserScan::SharedPtr latest_scan_;
   std::vector<cavex_sic_slam::ScanPoint> prev_keyframe_scan_;
@@ -486,6 +516,9 @@ protected:
 
   std::size_t keyframe_index_;
   bool enable_current_factor_;
+  bool enable_continuous_current_field_;
+  cavex_sic_slam::ContinuousCurrentEstimator continuous_current_estimator_{90.0, 6};
+  size_t continuous_current_refit_counter_ = 0;
   bool enable_dcs_robust_;
   double dcs_c_;
   double keyframe_period_s_;
