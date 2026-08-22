@@ -233,7 +233,6 @@ protected:
   {
     std::size_t prev = keyframe_index_;
     std::size_t curr = keyframe_index_ + 1;
-    double t_seconds = rclcpp::Time(stamp).seconds();
 
     gtsam::CombinedImuFactor imu_factor(
       X(prev), V(prev), X(curr), V(curr), B(prev), B(curr), *preint_);
@@ -330,25 +329,6 @@ protected:
       graph_.add(gtsam::BetweenFactor<gtsam::Vector3>(
         C(prev), C(curr), gtsam::Vector3::Zero(), current_walk_noise));
 
-      // Real closed loop, 2026-08-23 (previously this layer only smoothed
-      // C(i) downstream -- a passive side-channel demonstrated inert
-      // w.r.t. crash rate/ATE, see history.txt). Ties C(curr) itself to
-      // the continuous field's own prediction as an additional prior.
-      // Causally sound, not circular: evaluate() at this point only ever
-      // reflects samples added at strictly earlier keyframes (this
-      // keyframe's own addSample() call happens later, after
-      // isam_.update()), so this prior is built from PAST information
-      // only. Noise matches the continuous estimator's own sample_model
-      // sigma (continuous_current_estimator.hpp) -- treating its
-      // prediction with the same confidence as a real discrete sample.
-      if (enable_continuous_current_field_) {
-        auto continuous_pred = continuous_current_estimator_.evaluate(t_seconds);
-        if (continuous_pred) {
-          auto continuous_prior_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.15);
-          graph_.addPrior(C(curr), *continuous_pred, continuous_prior_noise);
-        }
-      }
-
       values_.insert(C(curr), last_current_);
     }
 
@@ -396,6 +376,7 @@ protected:
     }
 
     if (enable_current_factor_ && enable_continuous_current_field_) {
+      double t_seconds = rclcpp::Time(stamp).seconds();
       continuous_current_estimator_.addSample(t_seconds, last_current_);
       if (++continuous_current_refit_counter_ % 5 == 0) {
         continuous_current_estimator_.refit();
