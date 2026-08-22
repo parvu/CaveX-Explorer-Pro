@@ -6,7 +6,7 @@
 # 2026-08-21) found no measurable with/without difference, but that ran
 # under true zero current, which gives CurrentFactor nothing to absorb.
 #
-# Usage: run_ate_current.sh <with|without> <n_target> <label> [current_vx] [absorption_db_per_m] [dcs]
+# Usage: run_ate_current.sh <with|without> <n_target> <label> [current_vx] [absorption_db_per_m] [dcs] [continuous]
 # current_vx: ocean current speed in m/s (default 2.0).
 # absorption_db_per_m: sonar one-way transmission loss, the knob this
 # project uses as its turbidity proxy -- higher = murkier water, shorter
@@ -16,6 +16,11 @@
 # 6th arg "dcs" enables Dynamic Covariance Scaling (the robust M-estimator
 # on sonar/loop-closure factors) on sic_slam_node via
 # -p enable_dcs_robust:=true.
+# 7th arg "continuous" enables the continuous-time current field smoothing
+# layer (.superpowers/plans/2026-08-23-continuous-current-field-
+# integration.md) via -p enable_continuous_current_field:=true. Only
+# meaningful with MODE=with (that layer requires enable_current_factor).
+# Does NOT touch pose estimation -- not expected to change crash rate.
 # Results/logs go to $ATE_OUT_DIR (default /tmp/cavex_ate_results).
 MODE="$1"        # "with" or "without"
 N_TARGET="${2:-25}"
@@ -25,6 +30,10 @@ ABSORPTION="${5:-0.4}"
 DCS_FLAG=""
 if [ "${6:-}" = "dcs" ]; then
   DCS_FLAG="-p enable_dcs_robust:=true"
+fi
+CONTINUOUS_FLAG=""
+if [ "${7:-}" = "continuous" ]; then
+  CONTINUOUS_FLAG="-p enable_continuous_current_field:=true"
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -109,7 +118,7 @@ while [ "$VALID" -lt "$N_TARGET" ]; do
   sleep 3
 
   if [ "$MODE" = "with" ]; then
-    ros2 run cavex_sic_slam sic_slam_node --ros-args $DCS_FLAG \
+    ros2 run cavex_sic_slam sic_slam_node --ros-args $DCS_FLAG $CONTINUOUS_FLAG \
       > "$SP/Nx_${LABEL}_slam_$RUN.log" 2>&1 &
   else
     ros2 run cavex_sic_slam sic_slam_node --ros-args -p enable_current_factor:=false $DCS_FLAG \
