@@ -19,6 +19,10 @@ struct BeamFormerConfig
   std::size_t beam_count = 64;
   /// Angular spacing between adjacent dense rays, radians.
   double angular_step_rad = 0.002;
+  /// Bearing of the first dense ray (input scan's angle_min), radians --
+  /// needed to compute each beam's real pointing direction for
+  /// current-correlated clutter drift (AcousticParams::current_direction_rad).
+  double angle_min_rad = 0.0;
 };
 
 /// Estimate the incidence angle at ray `index` from the local range gradient

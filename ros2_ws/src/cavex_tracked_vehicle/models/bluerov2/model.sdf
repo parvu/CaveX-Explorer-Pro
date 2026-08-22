@@ -8,7 +8,28 @@
     <link name="base_link">
       <inertial>
         <pose>0.0 0.0 0.011 0 0 0</pose>
-        <mass>10.0</mass>
+        <!-- Was 10.0 -- barely positively buoyant against base_link_collision's
+             own displaced mass (0.457*0.338*0.065 m^3 * fluid_density 1000 =
+             10.04 kg, see that collision's own comment on how Buoyancy uses
+             it): net +0.04 kg (~0.4 N) upward, unopposed by anything except
+             velocity-proportional drag, so it steadily rose to the water
+             surface every test regardless of starting depth.
+
+             First fix (10.34, ~3% over displaced) overcorrected: live-tested
+             at 120N of wrench force and it did not move at all -- z had
+             settled to 5.955, resting ON cave_floor_patch's own top surface
+             (z=5.9), pinned there by real ODE friction (mu=mu2=1.0 on that
+             collision, ~100N of static resistance against a ~10.34*9.81 N
+             weight) that no free-swimming submersible should ever
+             experience. "Submerged" meant "under the surface," not "resting
+             on the bottom" -- there is no active depth-hold here, so
+             anything but near-neutral buoyancy either floats up or sinks to
+             rest on whatever is below it. Set to 10.05 (~0.1% over
+             displaced, ~0.1N net) -- close enough to neutral that it stays
+             near wherever it's placed/pushed without meaningfully drifting
+             either direction over a normal demo's timescale, while still
+             not being the earlier problem's exact positive value. -->
+        <mass>10.05</mass>
         <inertia>
           <ixx>0.099</ixx>
           <ixy>0</ixy>

@@ -45,11 +45,12 @@ from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Empty, Float64, String
 
-# The real, live-verified x edge of the flooded chamber -- NOT the plan's
-# original guess of 10.0. Derived from cave_floor_patch's own real,
-# vertex-confirmed floor coverage (cavex_world.world), the same real
-# geometry the water_surface region (x [15,65]) was re-anchored to. See
-# that file's own comments for the full derivation.
+# Matches water_surface's own x-start in cavex_world.world (re-derived by
+# real mesh-vertex inspection, not the plan's original guess of 10.0 --
+# see that file's own comments for the full derivation and history). Was
+# briefly moved to 0.0 when the water region got extended to x=0; reverted
+# back to 15.0 along with that region after live-testing confirmed x<15 is
+# a real void in the cave mesh, not just unverified.
 WATER_BOUNDARY_X = 15.0
 
 # Matches motorized_tether_control.py's own MIN_PAYOUT_LENGTH (see that

@@ -1,3 +1,4 @@
+#include <limits>
 #include <memory>
 #include <mutex>
 
@@ -18,6 +19,7 @@
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/slam/BetweenFactor.h>
+#include <gtsam/linear/LossFunctions.h>
 
 #include "cavex_sic_slam/scan_registration.hpp"
 #include "cavex_sic_slam/current_factor.hpp"
@@ -47,6 +49,18 @@ public:
     // keyframe triggers, same live-sim/ATE methodology; only the current
     // observability mechanism is removed, for an apples-to-apples baseline.
     enable_current_factor_ = this->declare_parameter<bool>("enable_current_factor", true);
+    // Dynamic Covariance Scaling (real request, 2026-08-22): tests whether
+    // a proper robust M-estimator on the actual outlier-prone geometric
+    // constraints (sonar odometry + loop-closure BetweenFactors -- a bad
+    // scan match is a real outlier, unlike CurrentFactor's role which is
+    // absorbing a smoothly-varying disturbance, not rejecting bad
+    // measurements) achieves comparable graph stability to CurrentFactor,
+    // which would make CurrentFactor's incidental stabilizing effect
+    // (found earlier this session: it reduces IndeterminantLinearSystem-
+    // Exception crash RATE) redundant with a more targeted fix. Default
+    // off -- preserves existing behavior exactly.
+    enable_dcs_robust_ = this->declare_parameter<bool>("enable_dcs_robust", false);
+    dcs_c_ = this->declare_parameter<double>("dcs_c", 1.0);
 
     auto imu_params = gtsam::PreintegratedCombinedMeasurements::Params::MakeSharedU(9.81);
     // Roll-180 mount into the ArduPilot body frame: accel/gyro measurements
@@ -58,7 +72,20 @@ public:
     preint_ = std::make_shared<gtsam::PreintegratedCombinedMeasurements>(
       imu_params_, zero_bias);
 
+    // This was a fully-default ISAM2Params() -- relinearizeSkip defaults to
+    // 10 (only every 10th update() call actually relinearizes) and
+    // relinearizeThreshold defaults to 0.1. Tightened while chasing a
+    // chaotic pose-estimate oscillation under real current (2026-08-22);
+    // that oscillation's actual root cause turned out to be an upstream
+    // test-harness bug (zero real thrust signal reaching CurrentFactor),
+    // not stale ISAM2 linearization, so this alone did not fix it either.
+    // Left in regardless -- forcing full relinearization every update is a
+    // real robustness improvement on its own merits (trades more CPU per
+    // update for never letting a variable go stale), independent of that
+    // investigation.
     gtsam::ISAM2Params isam_params;
+    isam_params.relinearizeThreshold = 0.01;
+    isam_params.relinearizeSkip = 1;
     isam_ = gtsam::ISAM2(isam_params);
 
     gtsam::Pose3 prior_pose = gtsam::Pose3::Identity();
@@ -170,6 +197,23 @@ protected:
     latest_scan_ = msg;
   }
 
+  // Dynamic Covariance Scaling (real request, 2026-08-22): wraps a base
+  // noise model in GTSAM's built-in DCS M-estimator (Agarwal et al.,
+  // "Robust Map Optimization using Dynamic Covariance Scaling") when
+  // enabled, otherwise returns it unchanged. Applied only to the
+  // sonar/loop-closure BetweenFactors -- the actual outlier-prone
+  // geometric constraints (a bad scan match is a real measurement
+  // outlier) -- not to CombinedImuFactor or CurrentFactor, whose role is
+  // absorbing a smoothly-varying quantity, not rejecting bad data.
+  gtsam::SharedNoiseModel wrapDcsIfEnabled(const gtsam::SharedNoiseModel & base) const
+  {
+    if (!enable_dcs_robust_) {
+      return base;
+    }
+    return gtsam::noiseModel::Robust::Create(
+      gtsam::noiseModel::mEstimator::DCS::Create(dcs_c_), base);
+  }
+
   // Extended in Task 5 (sonar BetweenFactor) and Task 6 (CurrentFactor,
   // current random walk, thruster subscriptions). Kept as its own method so
   // later tasks can insert factors between the IMU factor and the
@@ -200,18 +244,33 @@ protected:
         ranges, intensities, latest_scan_->angle_min, latest_scan_->angle_increment);
     }
 
+    // TEMP diagnostic, 2026-08-22: investigating a recurring
+    // gtsam::IndeterminantLinearSystemException. Real hypothesis: when a
+    // keyframe's sonar scan has zero valid returns (real range/detection
+    // limits, not just turbidity), or registration fails to converge, the
+    // whole sonar-constraint block below is skipped and X(curr)/V(curr)
+    // are constrained by IMU (+CurrentFactor) alone -- if that happens
+    // for several consecutive keyframes, the chain could become
+    // ill-conditioned. Remove once confirmed/fixed.
+    RCLCPP_INFO(
+      this->get_logger(),
+      "kf %zu: curr_scan=%zu prev_scan=%zu", curr, curr_scan_points.size(),
+      prev_keyframe_scan_.size());
     if (!curr_scan_points.empty() && !prev_keyframe_scan_.empty()) {
       auto reg = cavex_sic_slam::registerScans(
         curr_scan_points, prev_keyframe_scan_, 0.5, 20);
+      RCLCPP_INFO(
+        this->get_logger(), "kf %zu: reg.converged=%d matched_fraction=%.3f",
+        curr, reg.converged, reg.matched_fraction);
       if (reg.converged) {
         gtsam::Pose3 odom_delta(
           gtsam::Rot3::Yaw(reg.dyaw), gtsam::Point3(reg.dx, reg.dy, 0.0));
         // roll,pitch,yaw sigma (rad), then x,y,z sigma (m) -- z loose,
         // sonar can't observe depth.
-        auto sonar_noise = gtsam::noiseModel::Diagonal::Sigmas(
+        gtsam::SharedNoiseModel sonar_noise = gtsam::noiseModel::Diagonal::Sigmas(
           (gtsam::Vector(6) << 0.3, 0.3, 0.1, 0.1, 0.1, 0.5).finished());
         graph_.add(gtsam::BetweenFactor<gtsam::Pose3>(
-          X(prev), X(curr), odom_delta, sonar_noise));
+          X(prev), X(curr), odom_delta, wrapDcsIfEnabled(sonar_noise)));
       }
 
       // Loop closure: try registering against earlier, non-adjacent
@@ -230,10 +289,10 @@ protected:
         {
           gtsam::Pose3 loop_delta(
             gtsam::Rot3::Yaw(loop_reg.dyaw), gtsam::Point3(loop_reg.dx, loop_reg.dy, 0.0));
-          auto loop_noise = gtsam::noiseModel::Diagonal::Sigmas(
+          gtsam::SharedNoiseModel loop_noise = gtsam::noiseModel::Diagonal::Sigmas(
             (gtsam::Vector(6) << 0.3, 0.3, 0.15, 0.15, 0.15, 0.6).finished());
           graph_.add(gtsam::BetweenFactor<gtsam::Pose3>(
-            X(hist_key), X(curr), loop_delta, loop_noise));
+            X(hist_key), X(curr), loop_delta, wrapDcsIfEnabled(loop_noise)));
         }
       }
     }
@@ -245,14 +304,16 @@ protected:
         X(curr), V(curr), C(curr), thrust_snapshot, thruster_geom_, thruster_drag_,
         current_factor_noise));
 
-      // Was 0.02: against a real ~1.5 m/s current and current_factor_noise's
-      // own 0.15 measurement sigma, a 0.02 walk needs ~5600 keyframes
-      // (sigma*sqrt(N) ~ 1.5) to diffuse that far -- the chain was 1-2 orders
-      // of magnitude stiffer than the measurement meant to drive it, so any
-      // real current change got pushed into V/X instead of C. Raised to the
-      // same order as current_factor_noise so a real per-keyframe current
-      // change is treated as comparably plausible to a dynamics-prediction
-      // miss, letting the factor actually do its job.
+      // Briefly tried tightening this 0.2 -> 0.02 while chasing a chaotic
+      // pose-estimate oscillation under real current (2026-08-22) --
+      // reverted back to 0.2. Root cause of that oscillation turned out to
+      // be upstream: the test harness driving the vehicle via
+      // ApplyLinkWrench never fed real thrust into `thrust_n_`, so
+      // CurrentFactor's `v_pred_` was zero for the whole test, making its
+      // residual the maximally-degenerate `V - C` -- no noise-sigma choice
+      // fixes an upstream zero-signal input. The original 0.2 rationale
+      // (see above: 0.02 needs ~5600 keyframes to track a real changing
+      // current) is still valid and untouched by this.
       auto current_walk_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.2);
       graph_.add(gtsam::BetweenFactor<gtsam::Vector3>(
         C(prev), C(curr), gtsam::Vector3::Zero(), current_walk_noise));
@@ -265,6 +326,37 @@ protected:
     last_pose_ = result.at<gtsam::Pose3>(X(curr));
     last_vel_ = result.at<gtsam::Vector3>(V(curr));
     last_bias_ = result.at<gtsam::imuBias::ConstantBias>(B(curr));
+
+    // TEMP diagnostic, 2026-08-22: sonar registration health was ruled
+    // out (matched_fraction stayed ~1.0 right through observed
+    // divergence events, both in a 1000+-keyframe run and a
+    // ~10-15-keyframe-old fresh graph). Real next hypothesis: the graph
+    // is briefly near-singular, catchable via the condition number
+    // (max/min eigenvalue) of X(curr)/V(curr)'s marginal covariance --
+    // a large, spiking condition number right before a divergence event
+    // would confirm this. Computed unconditionally (not just when
+    // CurrentFactor is on) so both ablation legs get the same diagnostic.
+    // Remove once confirmed/fixed -- Marginals computation is real cost
+    // added to every keyframe.
+    {
+      gtsam::Marginals diag_marginals(isam_.getFactorsUnsafe(), result);
+      auto log_condition = [&](const char * name, const gtsam::Matrix & cov) {
+          Eigen::SelfAdjointEigenSolver<gtsam::Matrix> es(cov);
+          double min_eig = es.eigenvalues().minCoeff();
+          double max_eig = es.eigenvalues().maxCoeff();
+          double cond = (std::abs(min_eig) > 1e-15) ? max_eig / min_eig :
+            std::numeric_limits<double>::infinity();
+          RCLCPP_INFO(
+            this->get_logger(), "kf %zu: %s cond=%.3e min_eig=%.3e max_eig=%.3e",
+            curr, name, cond, min_eig, max_eig);
+        };
+      log_condition("X", diag_marginals.marginalCovariance(X(curr)));
+      log_condition("V", diag_marginals.marginalCovariance(V(curr)));
+      if (enable_current_factor_) {
+        log_condition("C", diag_marginals.marginalCovariance(C(curr)));
+      }
+    }
+
     if (enable_current_factor_) {
       last_current_ = result.at<gtsam::Vector3>(C(curr));
       gtsam::Marginals marginals(isam_.getFactorsUnsafe(), result);
@@ -394,6 +486,8 @@ protected:
 
   std::size_t keyframe_index_;
   bool enable_current_factor_;
+  bool enable_dcs_robust_;
+  double dcs_c_;
   double keyframe_period_s_;
   double keyframe_distance_m_;
   double keyframe_rotation_rad_;

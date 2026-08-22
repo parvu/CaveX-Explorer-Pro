@@ -1,6 +1,123 @@
 <?xml version="1.0" ?>
 <sdf version="1.9">
   <world name="cavex_world">
+    <!-- Real gap found and fixed: this file had NO <gui> element at all,
+         so every GUI launch fell back to gz-sim's generic default camera
+         pose (-6 0 6 0 0.5 0) -- nowhere near this world's actual action
+         (the cave mesh itself sits far from world origin, per the
+         cave_world include's own pose below, and every spawn point used in
+         this project is out near x=20+ or x=-88). Confirmed as the real
+         cause of "I don't see the ROV" complaints even when ground-truth
+         pose showed it was really there and moving -- not a rendering bug,
+         just an unaimed camera.
+
+         First attempt at this fix used a bare <gui><camera> shorthand --
+         wrong syntax, gz-sim logged "<gui><camera> can't be converted yet"
+         and silently ignored the whole block (confirmed via a headless
+         load check). The real, working mechanism is a <plugin
+         filename="MinimalScene"> with a <camera_pose> child -- verified by
+         reading the actual installed default GUI config
+         (/usr/share/gz/gz-sim8/gui/gui.config, from the gz-sim8 apt
+         package), not guessed.
+
+         A second pass initially copied that default config's FULL plugin
+         set (window chrome, world stats, entity tree, transform/
+         screenshot/copy-paste tools, etc.) wholesale -- correct in
+         principle (reuse tested upstream config over hand-rolling), but it
+         crowded the window with floating toolbars nobody asked for. Pared
+         down to the 4 plugins actually needed: MinimalScene (3D view, with
+         the camera_pose fix), GzSceneManager (required -- this is what
+         syncs simulated entities into the render scene at all, removing it
+         would break visuals again), InteractiveViewControl (mouse
+         drag/scroll camera control), WorldControl (play/pause). WorldStats
+         kept too (small, useful sim-time readout). Everything else from
+         the full default (Shapes, Lights, TransformControl, Screenshot,
+         CopyPaste, ComponentInspector, EntityTree, Spawn, SelectEntities,
+         MarkerManager, CameraTracking, VisualizationCapabilities,
+         EntityContextMenuPlugin) dropped -- editing tools this project
+         doesn't use. -->
+    <gui fullscreen="false">
+      <plugin filename="MinimalScene" name="3D View">
+        <gz-gui>
+          <title>3D View</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">docked</property>
+        </gz-gui>
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <ambient_light>0.4 0.4 0.4</ambient_light>
+        <background_color>0.8 0.8 0.8</background_color>
+        <camera_pose>0 -25 15 0 0.2215 0.8491</camera_pose>
+      </plugin>
+      <plugin filename="GzSceneManager" name="Scene Manager">
+        <gz-gui>
+          <property key="resizable" type="bool">false</property>
+          <property key="width" type="double">5</property>
+          <property key="height" type="double">5</property>
+          <property key="state" type="string">floating</property>
+          <property key="showTitleBar" type="bool">false</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="InteractiveViewControl" name="Interactive view control">
+        <gz-gui>
+          <property key="resizable" type="bool">false</property>
+          <property key="width" type="double">5</property>
+          <property key="height" type="double">5</property>
+          <property key="state" type="string">floating</property>
+          <property key="showTitleBar" type="bool">false</property>
+        </gz-gui>
+      </plugin>
+      <!-- Re-added after being trimmed out with the other clutter -- needed
+           for follow-mode: exposes the real /gui/follow (gz.msgs.StringMsg
+           -> gz.msgs.Boolean) and /gui/follow/offset services, confirmed via
+           `strings` on the installed libCameraTracking.so, not guessed. -->
+      <plugin filename="CameraTracking" name="Camera Tracking">
+        <gz-gui>
+          <property key="resizable" type="bool">false</property>
+          <property key="width" type="double">5</property>
+          <property key="height" type="double">5</property>
+          <property key="state" type="string">floating</property>
+          <property key="showTitleBar" type="bool">false</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="WorldControl" name="World control">
+        <gz-gui>
+          <title>World control</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">72</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="left" target="left"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+        <play_pause>true</play_pause>
+        <step>true</step>
+        <start_paused>true</start_paused>
+        <use_event>true</use_event>
+      </plugin>
+      <plugin filename="WorldStats" name="World stats">
+        <gz-gui>
+          <title>World stats</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">110</property>
+          <property type="double" key="width">290</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="right" target="right"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+        <sim_time>true</sim_time>
+        <real_time>true</real_time>
+        <real_time_factor>true</real_time_factor>
+        <iterations>true</iterations>
+      </plugin>
+    </gui>
     <physics name="4ms" type="ode">
       <max_step_size>0.004</max_step_size>
       <real_time_factor>1.0</real_time_factor>
@@ -182,7 +299,7 @@
         <collision name="collision">
           <geometry><box><size>110 24 1</size></box></geometry>
           <surface>
-            <contact><ode><max_vel>0.01</max_vel></ode></contact>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
@@ -221,7 +338,7 @@
         <collision name="collision">
           <geometry><box><size>60 29 1</size></box></geometry>
           <surface>
-            <contact><ode><max_vel>0.01</max_vel></ode></contact>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
@@ -254,12 +371,63 @@
         <collision name="collision">
           <geometry><box><size>24 58 1</size></box></geometry>
           <surface>
-            <contact><ode><max_vel>0.01</max_vel></ode></contact>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
           <geometry><box><size>24 58 1</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Shoreline ramp: the dry-section floor (cave_floor_patch, flat top
+         z=5.9) met the water region (water_surface, x [15,35] y [-12,12]
+         z=7.9) as an abrupt 2m-deep step right at x=15 -- real request to
+         reshape the floor so it meets the water's own z at the boundary
+         instead. A box <size> can't be a smooth curve, so this is a single
+         flat, tilted box whose TOP SURFACE is a straight ramp.
+
+         MOVED after live-testing: the first version spanned x [15,23] --
+         INSIDE the water box -- rising to within 0.3m of the surface right
+         where the ROV's own circling demo orbited, and it got stuck on the
+         ramp's collision volume. Real fix, not a smaller version of the
+         same mistake: moved the whole ramp to x [6,14.5], entirely OUTSIDE
+         the water parallelepiped (water starts at x=15), so none of its
+         solid collision geometry can be in the water region's own
+         navigable volume at all. Top surface still runs from (x=6, z=5.9)
+         -- meeting cave_floor_patch's real height, no seam gap -- up to
+         (x=14.5, z=7.6) -- close to the water's z=7.9 right at the
+         boundary, matching the original request -- with a further 0.3m
+         margin to x=15 itself. Pitch = atan2(rise, run) =
+         atan2(-1.7, 8.5) = -0.1974 rad (-11.31 deg); box center offset
+         from the top-surface midpoint by Ry(pitch) @ (0,0,-thickness/2)
+         to account for the box's own thickness after rotation. Verified
+         this time by checking ALL FOUR corners (top AND bottom, not just
+         the top surface line) -- the largest x-extent among them is
+         14.696, confirmed still short of the x=15 boundary with margin,
+         before writing this in. Same friction/contact convention as its
+         neighbors.
+
+         Y EXTENDED to match water_surface's own y-extension (12 -> 25,
+         same real request, same asymmetric-extend convention: lower bound
+         kept at -12, only the upper edge pushed to 25). center_y=6.5,
+         size_y=37 -- tilt/x-profile unchanged, only lengthens the ramp
+         along its own long axis. -->
+    <model name="shoreline_ramp">
+      <static>true</static>
+      <pose>10.3481 6.5 6.2597 0 -0.1974 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>8.668 37 1</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>8.668 37 1</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>
@@ -277,17 +445,107 @@
          at z~=0, was itself resting on ground_plane by mistake; see
          ground_plane's own comment for that discovery). Water surface at
          z = CAVE_FLOOR_Z + 2.0 = 7.9 -- a real 2m partial flood above the
-         actual cave floor. Region: x [15,65] y [-10,10], center (40, 0,
-         7.9), plane size 50 x 20 (within cave_floor_patch's x [-40,70]
-         y [-12,12] coverage, inset for margin). Task 19's water-boundary
-         handoff should treat x=15 as the wet/dry boundary. -->
+         actual cave floor.
+
+         SHRUNK from the earlier x [15,65] y [-10,10]: that region was only
+         checked against the synthetic cave_floor_patch collision box, never
+         the real mesh. Direct mesh-vertex inspection (same transform as
+         CAVE_FLOOR_Z's own derivation: cave_world.obj vertices x2 scale,
+         then the cave_world include's pose) found the floor-height vertex
+         cluster near y=0 holds together through x~=15-40 (consistent with
+         cave_floor_patch's trusted y [-12,12] and its own validated floor
+         points at x=27, x=57), but a completely different, disconnected
+         floor-height cluster appears at y~=-27..-40 for x>=40 -- a separate
+         chamber/branch, not a continuation of this corridor by any simple
+         coordinate measure. x>=35 is unverified territory for water
+         placement; re-derive properly (real mesh connected-component
+         analysis, not vertex-coordinate clustering) before extending the
+         flood further that direction.
+
+         EXTENDED to x=0, then REVERTED: extending to x=0 was flagged at the
+         time as unverified (x [0,15] had almost no floor-height mesh data),
+         and live-testing confirmed it was actually wrong, not just
+         unverified -- checked mesh proximity directly (any vertex within 3m
+         xy, any z) at several candidates: x=1 and x=10 have ZERO nearby
+         mesh vertices at any height (a real void, not sparse coverage of
+         real space), while x=15 has real geometry including a z=5.98 floor
+         vertex matching CAVE_FLOOR_Z. The vehicle spawned there visually
+         vanished ("spawned in a hole") -- consistent with a void, not a
+         rendering gap over real floor. Region restored to x [15,35]
+         y [-10,10], center (25, 0, 7.9), plane size 20 x 20 -- back inside
+         the one cluster actually confirmed to hold real cave geometry.
+         x<15 is now confirmed void, not just unverified; do not extend the
+         water there again without first confirming real mesh geometry
+         exists (proximity check, not just floor-height clustering, since
+         clustering alone can't distinguish "sparse real corridor" from "no
+         mesh at all"). x>=35 remains unverified territory per the entry
+         above (chamber-vs-corridor ambiguity, not a confirmed void).
+         Task 19's water-boundary handoff treats x=15 as the wet/dry
+         boundary -- restored to matching the water's own edge again.
+
+         Y EXTENDED to [-12,12]: tried deriving real wall positions from
+         raw mesh-vertex clustering at 1m x-resolution across x [15,35] --
+         too sparse/noisy to trust (many slices had 1-3 stray vertices, no
+         coherent signal; this is the same class of unreliable-clustering
+         mistake that caused the x=0 void, not repeated a third time by
+         treating noisy output as fact). Instead of a third vertex-derived
+         guess, reused cave_floor_patch's own y [-12,12] -- the SAME
+         synthetic-patch philosophy already applied to that model (a flat
+         proxy grounded in real mesh data at specific validated points, not
+         a perfect match to every wall/bump, filling real coverage gaps
+         rather than trying to trace them exactly). This is a real, if
+         approximate, extension -- not vertex-clustering fiction -- since
+         cave_floor_patch's y-bounds were themselves derived from and
+         validated against real floor vertices in this exact x-range. -->
+    <!-- Y upper bound EXTENDED from 12 to 25 by real request, after live
+         GUI teleport checks at (20,20) and (20,25) showed the vehicle
+         visibly past the water plane's old edge. This plane is purely
+         cosmetic -- the gz-sim-buoyancy-system plugin above gates on Z
+         depth only (<above_depth>7.9</above_depth>), not X/Y region -- so
+         this is a visual sync fix, not a physics change. Kept the lower
+         bound at -12 (still the cave_floor_patch-derived, validated edge)
+         and only pushed the upper edge out: center_y=(-12+25)/2=6.5,
+         size_y=25-(-12)=37. -->
     <model name="water_surface">
       <static>true</static>
-      <pose>40 0 7.9 0 0 0</pose>
+      <pose>25 6.5 7.9 0 0 0</pose>
       <link name="surface">
         <visual name="water_visual">
-          <geometry><plane><size>50 20</size></plane></geometry>
+          <geometry><plane><size>20 37</size></plane></geometry>
           <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- North boundary wall, added alongside the y=25 water extension above:
+         extending the water plane's own y-bound is purely cosmetic (see its
+         comment -- buoyancy gates on Z only), so without a real collision
+         object at that edge nothing physically stops the vehicle drifting
+         past y=25 the way shoreline_ramp stops it at the x=15 edge. This is
+         a straight (untilted) wall, not a ramp -- y=25 is deep water
+         (z=7.9), not a wet/dry floor transition, so there is no floor
+         height to meet. Spans the same x range as water_surface
+         (x[15,35], size_x=20, center_x=25), thin in y (1m) centered right
+         at the y=25 boundary, and tall enough to block the vehicle from
+         cave_floor_patch height up through just above the water surface:
+         z[5.9,8.9], size_z=3, center_z=7.4. Same friction/contact
+         convention as its neighbors (max_vel=2.0, confirmed live to
+         actually stop a thrust-driven approach -- see shoreline_ramp's own
+         live wall-stop verification the same session). -->
+    <model name="north_boundary_wall">
+      <static>true</static>
+      <pose>25 25 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>20 1 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>20 1 3</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>
     </model>

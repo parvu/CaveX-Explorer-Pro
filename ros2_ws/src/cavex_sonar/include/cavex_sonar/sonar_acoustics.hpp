@@ -27,6 +27,30 @@ struct AcousticParams
   double min_cos_incidence = 1e-3;
   /// Echo level in dB below which a beam reports no detection at all.
   double detection_threshold_db = 100.0;
+  /// Probability (0-1) that an otherwise-undetected beam instead reports a
+  /// spurious short-range "clutter" return -- real gap found 2026-08-22:
+  /// the model previously had speckle noise on TRUE returns but never
+  /// injected a FALSE one, so turbidity-driven false returns (suspended
+  /// particles scattering the pulse before it reaches anything real) were
+  /// unmodeled. 0.0 (default) reproduces the old behavior exactly.
+  double clutter_probability = 0.0;
+  /// Clutter appears at short range -- real suspended-particle returns are
+  /// much closer than the seafloor/walls, not spread across the whole
+  /// range window. Uniform in [min_range_m, clutter_max_range_m].
+  double clutter_max_range_m = 2.0;
+  /// Real current heading, radians, world/sensor-frame convention matching
+  /// beam_angle_rad below. 0.0 default (paired with current_drift_range_m
+  /// defaulting to 0.0) means no directional bias -- old behavior.
+  double current_direction_rad = 0.0;
+  /// How far the suspended-particle field has notionally drifted along
+  /// current_direction_rad, metres -- real request 2026-08-22: clutter
+  /// should move frame-to-frame with the current, not sit at a static
+  /// random range. Beams looking upstream (into where the current comes
+  /// from) get closer clutter as this grows; downstream beams get
+  /// farther clutter, both clamped to [min_range_m, clutter_max_range_m].
+  /// Typically current_speed_mps * elapsed_time_s, computed by the caller
+  /// (this struct doesn't track time itself).
+  double current_drift_range_m = 0.0;
 };
 
 /// One-way transmission loss in dB: spherical spreading plus absorption.
@@ -66,9 +90,23 @@ struct BeamReturn
 /// the identical Rayleigh sample on every scan forever, which is the worst
 /// case for downstream SLAM (a constant bias gets absorbed into the map
 /// instead of averaging out). The A/B evaluation depends on this.
+/// `beam_angle_rad` is this beam's real pointing direction (same frame as
+/// `p.current_direction_rad`), used only to bias injected clutter's range
+/// with the current -- has no effect on the real echo model.
 BeamReturn applySpeckleAndThreshold(
   double range_m, double incidence_rad, const AcousticParams & p,
-  uint32_t seed, uint32_t beam_index, uint32_t ping_index);
+  uint32_t seed, uint32_t beam_index, uint32_t ping_index,
+  double beam_angle_rad = 0.0);
+
+/// Real fix, 2026-08-22: a beam with ZERO valid rays (true open-water
+/// non-detection) previously bypassed clutter entirely (formBeams()
+/// short-circuited before ever calling applySpeckleAndThreshold). This
+/// gives that case the same clutter roll as a weak-but-present echo that
+/// fell below threshold -- the more realistic case for turbidity clutter,
+/// since it's exactly "nothing real was there."
+BeamReturn applyClutterToEmptyBeam(
+  const AcousticParams & p, uint32_t seed, uint32_t beam_index, uint32_t ping_index,
+  double beam_angle_rad = 0.0);
 
 }  // namespace cavex_sonar
 

@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <chrono>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -1855,6 +1856,25 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
     gz::math::Pose3d wldGToBdyG = worldPose->Data();
     gz::math::Pose3d wldAToBdyA =
         wldAToWldG * wldGToBdyG * bdyAToBdyG.Inverse();
+
+    {
+      static int dbg_count = 0;
+      if ((dbg_count++ % 250) == 0)
+      {
+        std::cerr << "[DEBUG_FRAME] wldGToBdyG (raw Gazebo world pose) yaw="
+                  << wldGToBdyG.Rot().Yaw() * 180.0 / GZ_PI << " deg, quat(w,x,y,z)=("
+                  << wldGToBdyG.Rot().W() << "," << wldGToBdyG.Rot().X() << ","
+                  << wldGToBdyG.Rot().Y() << "," << wldGToBdyG.Rot().Z() << ")" << std::endl;
+        std::cerr << "[DEBUG_FRAME] wldAToWldG yaw="
+                  << wldAToWldG.Rot().Yaw() * 180.0 / GZ_PI << " deg" << std::endl;
+        std::cerr << "[DEBUG_FRAME] bdyAToBdyG yaw="
+                  << bdyAToBdyG.Rot().Yaw() * 180.0 / GZ_PI << " deg" << std::endl;
+        std::cerr << "[DEBUG_FRAME] wldAToBdyA (SENT to ArduPilot) yaw="
+                  << wldAToBdyA.Rot().Yaw() * 180.0 / GZ_PI << " deg, quat(w,x,y,z)=("
+                  << wldAToBdyA.Rot().W() << "," << wldAToBdyA.Rot().X() << ","
+                  << wldAToBdyA.Rot().Y() << "," << wldAToBdyA.Rot().Z() << ")" << std::endl;
+      }
+    }
 
     // velocity transformation
     gz::math::Vector3d velWldG = worldLinearVel->Data();

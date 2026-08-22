@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace cavex_sonar
 {
@@ -48,6 +47,8 @@ std::vector<BeamReturn> formBeams(
     return beams;
   }
 
+  const auto geom = beamScanGeometry(cfg.angle_min_rad, cfg.angular_step_rad, cfg.rays_per_beam);
+
   for (std::size_t b = 0; b < cfg.beam_count; ++b) {
     const std::size_t begin = b * cfg.rays_per_beam;
 
@@ -69,19 +70,22 @@ std::vector<BeamReturn> formBeams(
     }
 
     if (valid == 0) {
-      // Every ray in this beam hit nothing: report an honest non-detection.
-      // Intensity is -inf (zero linear echo amplitude), never 0.0 -- on a
-      // dB scale 0.0 would look like a valid moderate return.
-      BeamReturn none;
-      none.intensity = -std::numeric_limits<double>::infinity();
-      beams.push_back(none);
+      // Every ray in this beam hit nothing: an honest non-detection --
+      // UNLESS clutter fires (real fix, 2026-08-22: this is the most
+      // realistic case for turbidity clutter, "nothing real was there").
+      // applyClutterToEmptyBeam is a no-op (returns the same -inf/false
+      // non-detection) when clutter_probability is 0.0, the default.
+      const double beam_angle = geom.angle_min + static_cast<double>(b) * geom.angle_increment;
+      beams.push_back(
+        applyClutterToEmptyBeam(p, seed, static_cast<uint32_t>(b), ping_index, beam_angle));
       continue;
     }
 
     const double mean_range = range_sum / static_cast<double>(valid);
     const double mean_incidence = incidence_sum / static_cast<double>(valid);
+    const double beam_angle = geom.angle_min + static_cast<double>(b) * geom.angle_increment;
     beams.push_back(applySpeckleAndThreshold(
-      mean_range, mean_incidence, p, seed, static_cast<uint32_t>(b), ping_index));
+      mean_range, mean_incidence, p, seed, static_cast<uint32_t>(b), ping_index, beam_angle));
   }
 
   return beams;

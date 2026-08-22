@@ -1,0 +1,144 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+  - Class: rviz_common/Selection
+    Name: Selection
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Plane: XY
+      Cell Size: 1
+      Line Style:
+        Value: Lines
+      Color: 60; 65; 70
+      Alpha: 0.5
+    # SIC-SLAM Map: this IS what GTSAM's optimized graph produces -- every
+    # point here comes from a sonar return re-projected using the
+    # optimizer's current best estimate of X(i) at the keyframe it was
+    # taken from, not raw sensor data in isolation. Colored by height
+    # (AxisColor on Z) instead of flat intensity so the reconstructed
+    # 3D structure actually reads as 3D at a glance, not a flat speckle.
+    - Class: rviz_default_plugins/PointCloud
+      Name: GTSAM Map (colored by height)
+      Enabled: true
+      Topic:
+        Value: /sic_slam/map
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Style: Flat Squares
+      Size (Pixels): 5
+      Color Transformer: AxisColor
+      Axis: Z
+      # Pinned, NOT autocomputed (real fix, 2026-08-22): a single
+      # divergent point from a rare graph near-singularity event stretches
+      # an autocomputed range so far that every normal, correct point
+      # collapses into one flat color -- reads as "no map colored" even
+      # though hundreds of good points are there. Fixed range matches the
+      # real expected local-frame depth band for this demo.
+      Autocompute Intensity Bounds: false
+      Min Intensity: -3
+      Max Intensity: 3
+      Alpha: 1
+    # The optimized trajectory: X(i) for every keyframe, as GTSAM actually
+    # solved it (not raw dead-reckoning) -- a continuous trail, not a
+    # single arrow, so the real path shape is visible.
+    - Class: rviz_default_plugins/Odometry
+      Name: GTSAM Trajectory X(i)
+      Enabled: true
+      Topic:
+        Value: /sic_slam/odometry
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Position Tolerance: 0.02
+      Angle Tolerance: 0.02
+      Keep: 2000
+      Shape:
+        Value: Axes
+        Alpha: 1
+        Axes Length: 0.35
+        Axes Radius: 0.03
+      Covariance:
+        Position:
+          Value: false
+        Orientation:
+          Value: false
+    # Real fix, 2026-08-22: this and the Odometry display above were
+    # plotting the SAME poses -- publishOdometry() and publishKeyframes()
+    # are both called once per keyframe with the same X(i), just via two
+    # different message types. Both used "Axes" shape, so they looked
+    # like two separate, overlapping trajectories. Given a distinct role
+    # here (small flat arrows = discrete graph nodes) so the two displays
+    # read as "path" (above) + "nodes along it" (here), not a duplicate.
+    - Class: rviz_default_plugins/PoseArray
+      Name: GTSAM Keyframe Nodes
+      Enabled: true
+      Topic:
+        Value: /sic_slam/keyframes
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+      Shape: Arrow (Flat)
+      Arrow Length: 0.2
+      Color: 255; 255; 255
+      Alpha: 0.8
+    - Class: rviz_default_plugins/LaserScan
+      Name: Raw Sonar (pre-optimization)
+      Enabled: true
+      Topic:
+        Value: /bluerov2/sonar
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+      Style: Points
+      Size (Pixels): 3
+      Color Transformer: Intensity
+      Alpha: 0.35
+  Enabled: true
+  Global Options:
+    Fixed Frame: map
+    Background Color: 8; 10; 12
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 12
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Focal Shape Size: 0.05
+      Focal Shape Fixed Size: true
+      Pitch: 0.7
+      Yaw: 1.2
+      Near Clip Distance: 0.01
+      Invert Z Axis: false
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 1000
+  Width: 1600
+  X: 60
+  Y: 40
+  Tool Properties:
+    collapsed: false
+  Views:
+    collapsed: false

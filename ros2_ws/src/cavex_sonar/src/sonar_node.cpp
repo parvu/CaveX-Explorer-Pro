@@ -14,6 +14,7 @@
 // A total non-detection beam (formBeams() found no valid rays at all) is
 // published with intensity -inf, never 0.0 -- consumers must check
 // isfinite() before doing arithmetic on LaserScan.intensities.
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
@@ -21,6 +22,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
 
 #include "cavex_sonar/beam_former.hpp"
 
@@ -45,6 +47,21 @@ public:
       this->declare_parameter<double>("detection_threshold_db", 100.0);
     params_.backscatter_exponent =
       this->declare_parameter<double>("backscatter_exponent", 1.5);
+    params_.clutter_probability =
+      this->declare_parameter<double>("clutter_probability", 0.0);
+    params_.clutter_max_range_m =
+      this->declare_parameter<double>("clutter_max_range_m", 2.0);
+    // Real, informational per-beam timing (real gap, 2026-08-22): the
+    // underlying gz-sim gpu_lidar source samples every ray at one
+    // simulated instant -- there is no real motion distortion within a
+    // scan to correct for here. This does NOT fabricate that distortion;
+    // it populates LaserScan's own standard time_increment/scan_time
+    // fields with the timing a real mechanically-scanned sonar (e.g.
+    // Ping360) would have for this many beams over scan_duration_s, so a
+    // consumer that DOES want motion-distortion correction has the real
+    // field a real sensor driver would provide, instead of it silently
+    // being left at 0.0/uninitialized.
+    scan_duration_s_ = this->declare_parameter<double>("scan_duration_s", 1.0);
     seed_ = static_cast<uint32_t>(this->declare_parameter<int>("seed", 42));
     frame_id_ = this->declare_parameter<std::string>("frame_id", "");
 
@@ -52,6 +69,20 @@ public:
     sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       "/bluerov2/sonar_rays", rclcpp::SensorDataQoS(),
       [this](sensor_msgs::msg::LaserScan::SharedPtr msg) {this->onRays(*msg);});
+    // Real current, for clutter drift only (real request, 2026-08-22) --
+    // this is simulator-side sensor-noise physics (analogous to how
+    // gz-sim's own Hydrodynamics plugin already consumes this same
+    // topic), not a perception node reading ground truth to cheat.
+    // Defaults to (0,0) until a message arrives, matching
+    // current_direction_rad=0/current_drift_range_m=0's documented
+    // no-op default.
+    current_sub_ = this->create_subscription<geometry_msgs::msg::Vector3>(
+      "/ocean_current", 10,
+      [this](geometry_msgs::msg::Vector3::SharedPtr msg) {
+        current_vx_ = msg->x;
+        current_vy_ = msg->y;
+      });
+    start_time_ = this->now();
 
     RCLCPP_INFO(
       this->get_logger(),
@@ -68,6 +99,17 @@ private:
     // so a change to the SDF fan cannot silently desynchronise the incidence
     // estimate from the real geometry.
     cfg_.angular_step_rad = in.angle_increment;
+    cfg_.angle_min_rad = in.angle_min;
+
+    // Real current direction/drift for clutter only (real request,
+    // 2026-08-22) -- current_vx_/current_vy_ default to 0,0 until a
+    // message arrives on /ocean_current, which makes current_drift_range_m
+    // 0.0 too, a documented no-op matching clutter_probability's own
+    // default-off behavior.
+    params_.current_direction_rad = std::atan2(current_vy_, current_vx_);
+    const double current_speed = std::hypot(current_vx_, current_vy_);
+    const double elapsed_s = (this->now() - start_time_).seconds();
+    params_.current_drift_range_m = current_speed * elapsed_s;
 
     if (in.ranges.empty()) {
       RCLCPP_WARN_ONCE(
@@ -102,8 +144,17 @@ private:
       out.angle_max = static_cast<float>(
         geom.angle_min + static_cast<double>(beams.size() - 1) * geom.angle_increment);
     }
-    out.time_increment = in.time_increment;
-    out.scan_time = in.scan_time;
+    // Real, informational per-beam timing (see the constructor comment for
+    // why this doesn't fabricate real motion distortion). Falls back to
+    // passing the input scan's own values through if there are no beams
+    // to time.
+    if (beams.empty()) {
+      out.time_increment = in.time_increment;
+      out.scan_time = in.scan_time;
+    } else {
+      out.time_increment = static_cast<float>(scan_duration_s_ / static_cast<double>(beams.size()));
+      out.scan_time = static_cast<float>(scan_duration_s_);
+    }
     out.range_min = in.range_min;
     out.range_max = in.range_max;
     out.ranges.reserve(beams.size());
@@ -130,6 +181,11 @@ private:
   uint32_t ping_index_ = 0;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr pub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sub_;
+  rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr current_sub_;
+  double current_vx_ = 0.0;
+  double current_vy_ = 0.0;
+  rclcpp::Time start_time_;
+  double scan_duration_s_ = 1.0;
 };
 
 }  // namespace cavex_sonar

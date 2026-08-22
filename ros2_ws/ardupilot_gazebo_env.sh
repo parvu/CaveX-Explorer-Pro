@@ -2,6 +2,20 @@
 export GZ_SIM_SYSTEM_PLUGIN_PATH=/home/parvu/CaveX-Explorer-Pro/ardupilot_gazebo/build:$GZ_SIM_SYSTEM_PLUGIN_PATH
 export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/ardupilot_gazebo/models:/home/parvu/CaveX-Explorer-Pro/ardupilot_gazebo/worlds:$GZ_SIM_RESOURCE_PATH
 export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models:$GZ_SIM_RESOURCE_PATH
+# Real gap found and fixed: cavex_tracked_vehicle/models (bluerov2, blueboat,
+# x500) was never on this path, only cavex_slam_nav/models (the cave mesh).
+# `ros2 launch cavex_tracked_vehicle ...` never hit this because ROS2 launch
+# injects its own package-share resource path automatically -- but every
+# manual `gz sim` + `gz service create` spawn (used throughout this
+# project's standalone/headless testing) never got that injection. Effect:
+# `model://bluerov2/meshes/*.dae` never resolved, so the ROV spawned with
+# a real, moving physics body and ZERO visible geometry (confirmed via gz
+# sim's own log: "Failed to load geometry for visual: base_link_visual" and
+# the same for both thruster prop visuals) -- invisible in the GUI the
+# whole time, silently, because collision shapes are separate primitive
+# geometry unaffected by mesh-loading failures, so physics/pose telemetry
+# was always genuinely correct even while nothing rendered.
+export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models:$GZ_SIM_RESOURCE_PATH
 
 # micro_ros_agent fix (Task 10 follow-up): micro_ros_msgs isn't a real apt/rosdep package on
 # ROS2 Jazzy, so this environment vendors it as a prebuilt extract at .local-deps/ros-extract.
