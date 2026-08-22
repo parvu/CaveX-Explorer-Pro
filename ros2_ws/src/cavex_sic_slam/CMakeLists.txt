@@ -58,6 +58,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_scan_registration test/test_scan_registration.cpp)
   target_link_libraries(test_scan_registration sic_slam_core)
+
+  ament_add_gtest(test_continuous_trajectory test/test_continuous_trajectory.cpp)
+  target_link_libraries(test_continuous_trajectory sic_slam_core gtsam)
 endif()
 
 install(DIRECTORY launch
