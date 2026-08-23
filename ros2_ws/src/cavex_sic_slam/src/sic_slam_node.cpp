@@ -330,20 +330,6 @@ protected:
       graph_.add(gtsam::BetweenFactor<gtsam::Vector3>(
         C(prev), C(curr), gtsam::Vector3::Zero(), current_walk_noise));
 
-      // Real closed loop, retry 2026-08-23 (first attempt reverted --
-      // see history.txt and continuous_current_estimator.hpp's own
-      // evaluateSettled() comment for why). Uses evaluateSettled(), NOT
-      // evaluate(), specifically because it must never be built from
-      // data close enough to "now" to double-count what this exact
-      // update is currently estimating.
-      if (enable_continuous_current_field_) {
-        auto settled_pred = continuous_current_estimator_.evaluateSettled(t_seconds);
-        if (settled_pred) {
-          auto continuous_prior_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.15);
-          graph_.addPrior(C(curr), *settled_pred, continuous_prior_noise);
-        }
-      }
-
       values_.insert(C(curr), last_current_);
     }
 
