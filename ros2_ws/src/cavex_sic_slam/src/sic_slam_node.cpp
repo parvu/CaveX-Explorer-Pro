@@ -330,22 +330,6 @@ protected:
       graph_.add(gtsam::BetweenFactor<gtsam::Vector3>(
         C(prev), C(curr), gtsam::Vector3::Zero(), current_walk_noise));
 
-      // Real closed loop, fourth attempt 2026-08-23 (first three
-      // reverted -- see history.txt and continuous_current_estimator.hpp's
-      // own comments for why). Same as attempt 3 (truncate-then-
-      // extrapolate via evaluateForFeedback), but evaluateForFeedback()
-      // now has an internal maturity gate (see its own comment) that
-      // refuses to return a value until grace_seconds have passed since
-      // the delayed fit first activated -- closing the specific hole
-      // (a confirmed warm-up transient) that crashed attempt 3 twice.
-      if (enable_continuous_current_field_) {
-        auto feedback_pred = continuous_current_estimator_.evaluateForFeedback(t_seconds);
-        if (feedback_pred) {
-          auto continuous_prior_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.15);
-          graph_.addPrior(C(curr), *feedback_pred, continuous_prior_noise);
-        }
-      }
-
       values_.insert(C(curr), last_current_);
     }
 
@@ -397,7 +381,6 @@ protected:
       if (++continuous_current_refit_counter_ % 5 == 0) {
         continuous_current_estimator_.refit();
       }
-      continuous_current_estimator_.refitDelayed(15.0);
       auto smoothed = continuous_current_estimator_.evaluate(t_seconds);
       if (smoothed) {
         geometry_msgs::msg::Vector3Stamped msg;
