@@ -10,13 +10,21 @@
   direction: GZ_TO_ROS
 
 # Dense gpu_lidar ray engine standing in for the BlueROV2's Ping360 sonar
-# (Gazebo Harmonic has no sonar sensor type). Geometry only -- ping360_sim_node
-# converts this into a fake acoustic intensity row.
+# (Gazebo Harmonic has no sonar sensor type). Geometry only -- cavex_sonar's
+# real sonar_node (absorption/backscatter/clutter physics, launched by
+# sim_launch.py) turns this into real acoustic returns on /bluerov2/sonar;
+# ping360_sim_node.py then adapts that into the CNN's expected input shape.
 - ros_topic_name: "/bluerov2/sonar_rays"
   gz_topic_name: "/bluerov2/sonar_rays"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
+
+- ros_topic_name: "/ocean_current"
+  gz_topic_name: "/ocean_current"
+  ros_type_name: "geometry_msgs/msg/Vector3"
+  gz_type_name: "gz.msgs.Vector3d"
+  direction: ROS_TO_GZ
 
 - ros_topic_name: "/imu/data"
   gz_topic_name: "/world/sic_slam_tank/model/bluerov2/link/base_link/sensor/imu_sensor/imu"

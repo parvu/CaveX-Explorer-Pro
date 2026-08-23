@@ -18,6 +18,10 @@
        to reuse its already-vendored bluerov2 meshes instead of duplicating
        them here. -->
   <exec_depend>cavex_tracked_vehicle</exec_depend>
+  <!-- Real acoustic-physics sonar_node (absorption/backscatter/clutter) and
+       current_field_node, reused unmodified instead of duplicating them --
+       see ping360_sim_node.py's docstring. -->
+  <exec_depend>cavex_sonar</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

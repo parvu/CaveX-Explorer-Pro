@@ -44,6 +44,7 @@ setup(
             'sic_slam_graph_backend.py = sic_slam.sic_slam_graph_backend:main',
             'sic_slam_flight_logger.py = sic_slam.sic_slam_flight_logger:main',
             'ping360_sim_node.py = sic_slam.ping360_sim_node:main',
+            'training_data_logger.py = sic_slam.training_data_logger:main',
         ],
     },
 )
