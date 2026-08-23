@@ -5,6 +5,11 @@ Jazzy / Gazebo Harmonic simulation stack (`ros2_ws/`). Design rationale,
 verification results, and historical notes live in `history.txt`, not here —
 this file is build/run instructions only.
 
+**`perception` branch (in progress):** porting a standalone SIC-SLAM
+prototype (real GTSAM ISAM2 backend, PyTorch acoustic perception bridge,
+simulated Ping360 sonar) into this repo. Status and plan in `history.md`
+(local-only, not shipped, same convention as `history.txt`).
+
 ## Web frontend
 
 Requires Node.js.

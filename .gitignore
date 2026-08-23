@@ -32,6 +32,7 @@ PX4-Autopilot/
 
 # History/runbook: full historical notes, design rationale (kept locally, not shipped)
 history.txt
+history.md
 
 # Local-only, machine-specific: MCP server config with local paths
 .mcp.json
