@@ -31,8 +31,9 @@ docs/superpowers/
 PX4-Autopilot/
 
 # History/runbook: full historical notes, design rationale (kept locally, not shipped)
-history.txt
-history.md
+history_main.md
+history_perception.md
+history_px4_rover_sitl.md
 
 # Local-only, machine-specific: MCP server config with local paths
 .mcp.json

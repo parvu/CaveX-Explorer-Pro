@@ -5,7 +5,9 @@ Jazzy / Gazebo Harmonic simulation stack (`ros2_ws/`). Design rationale,
 verification results, and historical notes live in `history.txt`, not here —
 this file is build/run instructions only.
 
-**`perception` branch (in progress):** porting a standalone SIC-SLAM
+**'PX4-rover-SITL' branch :** (in construction)
+
+**`perception` branch :** porting a standalone SIC-SLAM
 prototype (real GTSAM ISAM2 backend, PyTorch acoustic perception bridge,
 simulated Ping360 sonar) into this repo. Status and plan in `history.md`
 (local-only, not shipped, same convention as `history.txt`).
@@ -43,7 +45,7 @@ source install/setup.bash
 source ardupilot_gazebo_env.sh   # ArduPilot SITL env, incl. mavproxy.py on PATH
 ```
 
-Package quick reference — see `history.txt` (local-only) for full launch
+Package quick reference — see `history_main.md` (local-only) for full launch
 sequences, driving commands, and verification steps for each:
 
 | Package | What |
@@ -65,7 +67,7 @@ sleep 15
 ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
 ```
 
-### Phase 2: BlueROV2 sonar + current + SIC-SLAM + DCS (flooded section)
+### Phase 2: BlueROV2 sonar + Current Factor + SIC-SLAM + DCS (flooded section)
 
 ```bash
 gz sim -r -v2 src/cavex_slam_nav/worlds/cavex_world.world &
@@ -126,48 +128,6 @@ src/cavex_slam_nav/scripts/run_ate_current.sh without 10 current_test 2.0 0.4
 src/cavex_slam_nav/scripts/run_ate_current.sh without 10 current_test_dcs 2.0 0.4 dcs
 src/cavex_slam_nav/scripts/run_ate_current.sh with    25 heavy_turbidity25 2.0 3.0
 ```
-
-## Known limitations (sim-to-real gap)
-
-**The acoustic sonar model is not calibrated against real hardware.**
-`cavex_sonar`'s transmission-loss, backscatter, and speckle parameters
-(`sonar_acoustics.hpp`'s `AcousticParams`) are physically motivated
-(spherical spreading + absorption, Lambertian backscatter, Rayleigh
-speckle) but their specific values were chosen to be plausible for a
-~1 MHz short-range imaging sonar in fresh water, not fit to any real
-sensor's measured response.
-
-**No multi-path/reverberation modeling.** Every simulated beam is a
-single direct ray-cast (one range, one echo level) — there is no
-secondary-reflection or reverberation physics. In a confined, high-clutter
-underwater space this is a real simplification: a real sonar in that kind
-of environment sees genuine multi-path returns that a single-bounce model
-cannot produce, and that could degrade real scan registration in ways this
-simulation cannot currently exercise or catch.
-
-**Partially addressed:** `sonar_node`'s `clutter_probability` parameter
-(default `0.0`, off) injects spurious short-range false detections on
-any beam that would otherwise report a real dropout (including a beam
-with zero valid rays at all, the most realistic case) — a first-order
-model of turbidity-driven false returns (suspended-particle scattering),
-not true multi-path physics. Clutter range also drifts with the real
-current (`current_drift_range_m` in `AcousticParams`, driven by
-`sonar_node`'s subscription to `/ocean_current`): beams looking upstream
-get closer clutter over time, downstream beams get farther, both
-saturating at `clutter_max_range_m`/`min_range_m`. `sonar_node` also
-populates `LaserScan`'s standard `time_increment`/`scan_time` fields
-(`scan_duration_s` parameter, default 1.0s) — informational only, since
-the underlying `gpu_lidar` source samples every ray at one simulated
-instant, so there's no real per-beam motion distortion in the data to
-correct for; this just gives a consumer the field a real sensor driver
-would provide.
-
-**Scan registration is classical, not learned.** `cavex_sic_slam`'s
-keyframe-to-keyframe registration (`scan_registration.cpp`) is a
-plain ICP-style SVD rigid-transform fit — there is no neural network or
-learned feature extractor anywhere in this pipeline. Any claim about a
-"neural feature extractor" being affected by sonar noise does not apply
-to this codebase as implemented.
 
 ## Third-party assets
 
