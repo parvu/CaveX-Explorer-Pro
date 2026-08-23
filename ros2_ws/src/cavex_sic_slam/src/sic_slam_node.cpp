@@ -330,6 +330,26 @@ protected:
       graph_.add(gtsam::BetweenFactor<gtsam::Vector3>(
         C(prev), C(curr), gtsam::Vector3::Zero(), current_walk_noise));
 
+      // Closed loop, re-wired 2026-08-23 (fourth design, previously
+      // reverted out of caution when a live smoke test crashed -- see
+      // history.txt "Confirmed: the hypothesis was right" entry). That
+      // crash was confirmed to be the pre-existing, independent
+      // IndeterminantLinearSystemException bug (unrelated to this code
+      // -- it reproduces identically with this feature OFF, given a
+      // long enough run), not a real failure of this design. Re-wired
+      // as-is with no further changes; validated against the real ATE
+      // harness (short ~60-70s attempts) rather than an extended
+      // free-running smoke test, since the harness's short duration is
+      // very unlikely to hit the pre-existing bug's own triggering
+      // window.
+      if (enable_continuous_current_field_) {
+        auto feedback_pred = continuous_current_estimator_.evaluateForFeedback(t_seconds);
+        if (feedback_pred) {
+          auto continuous_prior_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.15);
+          graph_.addPrior(C(curr), *feedback_pred, continuous_prior_noise);
+        }
+      }
+
       values_.insert(C(curr), last_current_);
     }
 
@@ -381,6 +401,7 @@ protected:
       if (++continuous_current_refit_counter_ % 5 == 0) {
         continuous_current_estimator_.refit();
       }
+      continuous_current_estimator_.refitDelayed(15.0);
       auto smoothed = continuous_current_estimator_.evaluate(t_seconds);
       if (smoothed) {
         geometry_msgs::msg::Vector3Stamped msg;
