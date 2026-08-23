@@ -14,8 +14,34 @@
     <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
       <render_engine>ogre2</render_engine>
     </plugin>
-    <plugin filename="gz-sim-hydrodynamics-system" name="gz::sim::systems::Hydrodynamics" />
-    <plugin filename="gz-sim-thruster-system" name="gz::sim::systems::Thruster" />
+    <!-- Hydrodynamics and Thruster are NOT declared here: unlike the
+         world-required default systems above (Physics/UserCommands/
+         SceneBroadcaster/Sensors), they were never part of gz-sim's implicit
+         default set, so they don't need a bare world-level stanza to
+         "enable" them -- bluerov2_sim/model.sdf already carries its own
+         correctly-configured instances (link_name, joint_name, etc. per
+         thruster). An earlier version of this file also declared them here,
+         empty -- redundant AND broken (each empty declaration spawns its own
+         separate, unconfigured System instance that spams "You must specify
+         a <link_name>" / "Missing <joint_name>" every physics step and never
+         actually does anything) -- confirmed against cavex_world.world
+         (main branch), which declares neither at world level for the same
+         reason. This is why the vehicle looked like it wasn't running: the
+         underlying "no linear vel" spam is otherwise easy to miss among
+         normal launch output. -->
+    <!-- Buoyancy: the bluerov2_sim model has no Buoyancy plugin of its own
+         (real upstream structure -- see model.sdf's collision-volume comment),
+         it's a world-level plugin. Whole tank is flooded, so a single uniform
+         density (no graded_buoyancy) is enough, unlike cavex_world.world's
+         partial-flood cave. <enable> must match the spawn-time entity name
+         ("bluerov2", see sim_launch.py's `create` node), not just the model's
+         internal <model name> -- a mismatch silently no-ops (vehicle sinks to
+         the floor as if unbuoyant, no error) -- see cavex_world.world's own
+         Buoyancy comment for how that was found the hard way. -->
+    <plugin filename="gz-sim-buoyancy-system" name="gz::sim::systems::Buoyancy">
+      <uniform_fluid_density>1000</uniform_fluid_density>
+      <enable>bluerov2</enable>
+    </plugin>
 
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>

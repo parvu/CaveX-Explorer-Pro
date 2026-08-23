@@ -1,12 +1,19 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    headless_arg = DeclareLaunchArgument(
+        'headless', default_value='false',
+        description='true = server only (-s), no GUI window')
+    gz_flag = PythonExpression(
+        ['"-r -s" if "', LaunchConfiguration('headless'), '" == "true" else "-r"'])
+
     pkg_share = get_package_share_directory('sic_slam')
     # bluerov2_sim's model.sdf lives here (an ArduPilot-plugin-free copy of
     # cavex_tracked_vehicle's own bluerov2/model.sdf -- thrusters driven
@@ -30,7 +37,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={'gz_args': f'-r {world_file}'}.items(),
+        launch_arguments={'gz_args': [gz_flag, ' ', world_file]}.items(),
     )
 
     spawn_bluerov2 = Node(
@@ -78,6 +85,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        headless_arg,
         gz_resource_path,
         gz_sim,
         spawn_bluerov2,
