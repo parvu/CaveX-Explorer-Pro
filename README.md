@@ -2,15 +2,15 @@
 
 A cave-exploration robot dashboard: a React/Express web frontend, and a ROS 2
 Jazzy / Gazebo Harmonic simulation stack (`ros2_ws/`). Design rationale,
-verification results, and historical notes live in `history.txt`, not here —
+verification results, and historical notes live in `history_main.md`, not here —
 this file is build/run instructions only.
 
 **'PX4-rover-SITL' branch :** (in construction)
 
 **`perception` branch :** porting a standalone SIC-SLAM
 prototype (real GTSAM ISAM2 backend, PyTorch acoustic perception bridge,
-simulated Ping360 sonar) into this repo. Status and plan in `history.md`
-(local-only, not shipped, same convention as `history.txt`).
+simulated Ping360 sonar) into this repo. Status and plan in `history_perception.md`
+(local-only, not shipped, same convention as `history_main.md`).
 
 ## Web frontend
 
