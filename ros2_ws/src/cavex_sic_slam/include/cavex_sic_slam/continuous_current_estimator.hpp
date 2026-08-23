@@ -11,6 +11,7 @@
 #include <deque>
 #include <optional>
 #include <utility>
+#include <vector>
 
 namespace cavex_sic_slam
 {
@@ -35,19 +36,14 @@ public:
   // pair for a realistic ~3s keyframe cadence.
   //
   // Retention (how long a sample is kept before being pruned) is
-  // deliberately 2x window_seconds_, not 1x -- see evaluateSettled()'s
-  // own comment. At 1x retention, the fit's domain [domain_a_, domain_b_]
-  // is always approximately [now-window, now], so the "settled" region
-  // evaluateSettled() requires (t <= domain_b_-window_seconds_) collapses
-  // to zero width once the buffer reaches steady state -- confirmed live
-  // by this class's own test suite (EvaluateSettledRefusesDataNewerThan-
-  // OneWindow failed until this was fixed). With 2x retention, the fit's
-  // domain genuinely spans two windows: a settled (old) half and a live
-  // (recent) half, each about window_seconds_ wide. Sample density (and
-  // therefore the N-vs-sample-count stability ratio validated for this
-  // estimator) is unaffected -- doubling the time span at the same
-  // sample rate doubles the sample count too, so the oversampling ratio
-  // stays the same or improves.
+  // deliberately 2x window_seconds_, not 1x -- refitDelayed() needs
+  // samples older than (newest - lag_seconds) to still be present, and
+  // 1x retention alone would leave too little margin as lag_seconds
+  // approaches window_seconds_. Sample density (and therefore the
+  // N-vs-sample-count stability ratio validated for this estimator) is
+  // unaffected -- doubling the time span at the same sample rate doubles
+  // the sample count too, so the oversampling ratio stays the same or
+  // improves.
   ContinuousCurrentEstimator(double window_seconds, size_t basis_degree)
   : window_seconds_(window_seconds), N_(basis_degree) {}
 
@@ -130,34 +126,90 @@ public:
     return f(*fitted_);
   }
 
-  // Like evaluate(), but only returns a value if `t` is at least one full
-  // window_seconds_ older than this fit's own most recent contributing
-  // sample -- i.e. only ever touches the "settled" half of what the fit
-  // has seen, never the live/recent edge.
+  // Builds a SEPARATE fit (fitted_delayed_) using only samples strictly
+  // older than (newest_sample_time - lag_seconds) -- deliberately
+  // withholding the most recent lag_seconds of data. Returns false
+  // (leaving any prior delayed fit untouched) if fewer than N_*3 such
+  // samples exist.
   //
-  // Use this method (never evaluate()) at any call site that feeds this
-  // estimator's prediction BACK into the same system that produced its
-  // samples. A prior attempt used evaluate() for that (2026-08-23): even
-  // though evaluate()'s samples are all chronologically past, the FIT
-  // ITSELF is not independent evidence of the chain it was fed back
-  // into -- it's a smoothed echo of that chain's own recent output. That
-  // caused a real regression: a 10/10-valid ATE condition
-  // (turbidity=3.0, current=2.0 m/s) went to 3/3 diverged, with a
-  // feedback-oscillation signature in the raw trajectory (see
-  // history.txt for the full writeup). This method exists so a feedback
-  // call site can't make that mistake again just by picking the wrong
-  // (but reasonable-looking) method name.
-  std::optional<gtsam::Vector3> evaluateSettled(double t) const
+  // This exists specifically so evaluateForFeedback() can be queried at
+  // t=now via forward extrapolation of a fit built from data that's at
+  // least lag_seconds old -- a forecast, not a lookup. Two earlier
+  // attempts at feeding this estimator's prediction back into the
+  // discrete graph as a C(curr) prior both failed (see history.txt,
+  // 2026-08-23): feeding evaluate()'s raw value back double-counted
+  // information (its fit isn't independent evidence of the chain it fed
+  // into), and gating the QUERY time instead of the fit's input data
+  // (evaluateSettled(), removed) was structurally unsatisfiable -- it
+  // was always called with t=now, so requiring t to be old could never
+  // pass. This method is the third, correctly-shaped attempt: gate the
+  // fit's OWN data, then extrapolate forward to now.
+  bool refitDelayed(double lag_seconds)
   {
-    if (!fitted_) {
+    if (samples_.empty()) {
+      return false;
+    }
+    // Bounded to window_seconds_ wide, same as refit() -- NOT "all
+    // retained history up to the cutoff". Real bug found via this
+    // class's own test suite: an unbounded truncated window grows
+    // without limit as samples accumulate (up to 2x window_seconds_,
+    // double the width validated stable for this basis degree), causing
+    // a real, growing extrapolation error (not just noise -- it tracked
+    // the refit cadence exactly, worse right before each refit).
+    double cutoff = samples_.back().first - lag_seconds;
+    double window_start = cutoff - window_seconds_;
+    std::vector<std::pair<double, gtsam::Vector3>> truncated;
+    for (const auto & sample : samples_) {
+      if (sample.first <= cutoff && sample.first >= window_start) {
+        truncated.push_back(sample);
+      }
+    }
+    if (truncated.size() < N_ * 3) {
+      return false;
+    }
+    double a = truncated.front().first;
+    double b = truncated.back().first;
+    if (b <= a) {
+      return false;
+    }
+
+    gtsam::NonlinearFactorGraph graph;
+    const gtsam::Key key = gtsam::Symbol('r', 0);
+    auto sample_model = gtsam::noiseModel::Isotropic::Sigma(3, 0.15);
+    for (const auto & sample : truncated) {
+      graph.emplace_shared<gtsam::VectorEvaluationFactor<gtsam::Chebyshev2, 3>>(
+        key, sample.second, sample_model, N_, sample.first, a, b);
+    }
+    auto smooth_model = gtsam::noiseModel::Isotropic::Sigma(3, 0.02);
+    for (double t = a; t <= b; t += 1.0) {
+      graph.emplace_shared<gtsam::VectorDerivativeFactor<gtsam::Chebyshev2, 3>>(
+        key, gtsam::Vector3::Zero(), smooth_model, N_, t, a, b);
+    }
+
+    gtsam::Values initial;
+    initial.insert(key, gtsam::ParameterMatrix<3>(N_));
+    gtsam::LevenbergMarquardtParams params;
+    params.setVerbosityLM("SILENT");
+    gtsam::Values result = gtsam::LevenbergMarquardtOptimizer(graph, initial, params).optimize();
+
+    fitted_delayed_ = result.at<gtsam::ParameterMatrix<3>>(key);
+    domain_a_delayed_ = a;
+    domain_b_delayed_ = b;
+    return true;
+  }
+
+  // Queries the delayed (deliberately-stale) fit, with the same
+  // forward-extrapolation allowance evaluate() uses relative to its own
+  // domain. This is the method to call for feeding a prediction back
+  // into the same system that produced this estimator's samples --
+  // never evaluate() (see refitDelayed()'s comment for why).
+  std::optional<gtsam::Vector3> evaluateForFeedback(double t) const
+  {
+    if (!fitted_delayed_ || t < domain_a_delayed_ || t > domain_b_delayed_ + window_seconds_) {
       return std::nullopt;
     }
-    double settled_cutoff = domain_b_ - window_seconds_;
-    if (t < domain_a_ || t > settled_cutoff) {
-      return std::nullopt;
-    }
-    gtsam::Chebyshev2::VectorEvaluationFunctor<3> f(N_, t, domain_a_, domain_b_);
-    return f(*fitted_);
+    gtsam::Chebyshev2::VectorEvaluationFunctor<3> f(N_, t, domain_a_delayed_, domain_b_delayed_);
+    return f(*fitted_delayed_);
   }
 
 private:
@@ -166,6 +218,8 @@ private:
   std::deque<std::pair<double, gtsam::Vector3>> samples_;
   std::optional<gtsam::ParameterMatrix<3>> fitted_;
   double domain_a_ = 0.0, domain_b_ = 0.0;
+  std::optional<gtsam::ParameterMatrix<3>> fitted_delayed_;
+  double domain_a_delayed_ = 0.0, domain_b_delayed_ = 0.0;
 };
 
 }  // namespace cavex_sic_slam
