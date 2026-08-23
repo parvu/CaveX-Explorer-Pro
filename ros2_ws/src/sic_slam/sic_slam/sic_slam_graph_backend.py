@@ -10,7 +10,24 @@ from gtsam import Point3
 
 from sic_slam.current_factor import make_current_factor
 
-IMU_DT_S = 0.04  # matches the pre-existing imu_callback accel-integration scaling
+# Real bug found and fixed 2026-08-23 (8-leg/25-run ATE ablation matrix,
+# real request): CurrentFactor used to be given this HARDCODED dt for
+# every graph step, regardless of which callback actually triggered it or
+# how much real time had passed. Measured against real log timestamps
+# from a completed ablation run: 100% of steps had real dt more than 0.02s
+# off from this constant (median real dt 0.10s -- 2.5x this value; min
+# 0.003s, max 0.40s). CurrentFactor's residual is
+# (X_cur-X_prev) - (v_pred+C)*dt -- a wrong-by-up-to-10x dt means it
+# asserts a physically wrong displacement almost every step, forcing a
+# spurious correction into C (and, through it, into the shared pose
+# estimate). This is why the with-CurrentFactor "nocurrent/clear" leg of
+# that matrix came out clearly worse than without (0.535m +/- 0.163 vs
+# 0.489m +/- 0.020) despite being the cleanest, easiest condition.
+# Kept only as a fallback for the very first graph step, where there is
+# no previous real timestamp yet to measure from.
+FALLBACK_DT_S = 0.04
+MIN_DT_S = 0.001   # guards a possible near-zero dt on a duplicate/racing callback
+MAX_DT_S = 0.5     # guards a possible large gap (e.g. right after node startup)
 
 
 class GtsamISAM2Optimizer:
@@ -68,7 +85,7 @@ class GtsamISAM2Optimizer:
     def _key(i):
         return gtsam.symbol('x', i)
 
-    def update_graph(self, imu_delta, thrust_n, landmark_vector=None):
+    def update_graph(self, imu_delta, thrust_n, dt=FALLBACK_DT_S, landmark_vector=None):
         prev_key = self._key(self.step)
         self.step += 1
         cur_key = self._key(self.step)
@@ -99,7 +116,7 @@ class GtsamISAM2Optimizer:
         values.insert(cur_key, Point3(*predicted))
         if self.enable_current_factor:
             graph.add(make_current_factor(
-                prev_key, cur_key, self.current_key, thrust_n, IMU_DT_S, self.current_factor_noise))
+                prev_key, cur_key, self.current_key, thrust_n, dt, self.current_factor_noise))
 
         if landmark_vector is not None:
             graph.add(gtsam.PriorFactorPoint3(
@@ -123,6 +140,7 @@ class SicSlamGraphBackendNode(Node):
         self.optimizer = GtsamISAM2Optimizer(enable_current_factor=enable_current_factor)
         self.last_imu_reading = np.zeros(3)
         self.last_thrust = [0.0] * 6
+        self.last_step_time = None
 
         for i in range(6):
             self.create_subscription(
@@ -158,6 +176,18 @@ class SicSlamGraphBackendNode(Node):
             self.last_thrust[idx] = msg.data
         return cb
 
+    def _measure_dt(self):
+        """Real elapsed time since the last graph step, not a hardcoded
+        constant -- see FALLBACK_DT_S's own comment for why this matters."""
+        now = self.get_clock().now()
+        if self.last_step_time is None:
+            dt = FALLBACK_DT_S
+        else:
+            dt = (now - self.last_step_time).nanoseconds * 1e-9
+            dt = min(max(dt, MIN_DT_S), MAX_DT_S)
+        self.last_step_time = now
+        return dt
+
     def imu_callback(self, msg):
         self.last_imu_reading = np.array([
             msg.linear_acceleration.x * 0.04,
@@ -166,14 +196,14 @@ class SicSlamGraphBackendNode(Node):
         ])
 
         optimized_pose, _ = self.optimizer.update_graph(
-            self.last_imu_reading, self.last_thrust, landmark_vector=None)
+            self.last_imu_reading, self.last_thrust, self._measure_dt(), landmark_vector=None)
         self.publish_corrected_pose(optimized_pose)
 
     def landmark_callback(self, msg):
         landmark_vector = np.array([msg.point.x, msg.point.y, msg.point.z])
 
         optimized_pose, current_field = self.optimizer.update_graph(
-            self.last_imu_reading, self.last_thrust, landmark_vector)
+            self.last_imu_reading, self.last_thrust, self._measure_dt(), landmark_vector)
 
         self.get_logger().info(
             f'[ISAM2 Update] Optimized Pose: {optimized_pose} | Latent Current Vector: {current_field}'
