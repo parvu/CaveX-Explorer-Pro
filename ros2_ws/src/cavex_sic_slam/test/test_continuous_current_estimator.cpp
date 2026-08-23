@@ -153,6 +153,71 @@ TEST(ContinuousCurrentEstimator, EvaluateForFeedbackWorksAtNowDuringLiveIncremen
     << iterations;
 }
 
+TEST(ContinuousCurrentEstimator, EvaluateForFeedbackRefusesDuringWarmUpGracePeriod) {
+  // Regression test for the real crash that killed attempt 3: live
+  // smoke testing found evaluateForFeedback()'s predictions right after
+  // first activation were inaccurate enough (up to ~0.30 m/s error,
+  // confirmed in EvaluateForFeedbackWorksAtNowDuringLiveIncrementalUse's
+  // own warm-up transient) to trigger gtsam::IndeterminantLinearSystem-
+  // Exception when fed into the discrete graph as a C(curr) prior at an
+  // already-fragile (sonar-starved) keyframe -- reproducible across two
+  // different sonar seeds (see history.txt, "Third attempt"). This test
+  // verifies the gate itself: no value at all during the grace period,
+  // even though the underlying fit exists and evaluate()-style logic
+  // would happily return one.
+  std::mt19937 rng(6);
+  std::normal_distribution<double> noise(0.0, 0.05);
+  ContinuousCurrentEstimator est(90.0, 6);
+  const double lag_seconds = 15.0;
+  const double grace_seconds = 15.0;
+
+  // Track the RAW fit's own first success (refitDelayed()'s return
+  // value) separately from evaluateForFeedback()'s first non-null
+  // result -- once the gate works, these two are NOT the same moment:
+  // evaluateForFeedback()'s first success is already gated, so there is
+  // no further "still within grace" window to observe AFTER it. The
+  // real thing to verify is the GAP between the two.
+  double first_refit_success_t = -1.0;
+  double first_feedback_success_t = -1.0;
+  for (int i = 0; i < 60; ++i) {
+    double t = i * 3.0;
+    est.addSample(t, trueCurrent(t) + Vector3(noise(rng), noise(rng), noise(rng)));
+    if (i > 0) {
+      bool refit_ok = est.refitDelayed(lag_seconds);
+      if (refit_ok && first_refit_success_t < 0.0) {
+        first_refit_success_t = t;
+      }
+    }
+    auto fed = est.evaluateForFeedback(t);
+    if (fed.has_value() && first_feedback_success_t < 0.0) {
+      first_feedback_success_t = t;
+    }
+    if (first_refit_success_t >= 0.0 && t < first_refit_success_t + grace_seconds) {
+      EXPECT_FALSE(fed.has_value())
+        << "at t=" << t << ", the raw fit succeeded at " << first_refit_success_t
+        << " but we're still within its grace period -- the gate should refuse this";
+    }
+  }
+  ASSERT_GE(first_refit_success_t, 0.0) << "refitDelayed() never succeeded at all";
+  ASSERT_GE(first_feedback_success_t, 0.0) << "evaluateForFeedback() never activated at all";
+  EXPECT_GE(first_feedback_success_t, first_refit_success_t + grace_seconds - 3.0)
+    << "evaluateForFeedback() activated too soon after the raw fit's own first "
+    << "success (raw=" << first_refit_success_t << ", feedback=" << first_feedback_success_t
+    << ") -- the gate should have delayed it by roughly grace_seconds";
+
+  // After the grace period, it should be producing values again (the
+  // gate isn't a permanent lockout, just a warm-up delay).
+  bool any_value_after_grace = false;
+  for (double t = first_feedback_success_t; t <= 177.0; t += 3.0) {
+    if (est.evaluateForFeedback(t).has_value()) {
+      any_value_after_grace = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(any_value_after_grace)
+    << "evaluateForFeedback() never produced a value after activating once";
+}
+
 TEST(ContinuousCurrentEstimator, RefitDelayedExcludesTheMostRecentLagSeconds) {
   std::mt19937 rng(7);
   std::normal_distribution<double> noise(0.0, 0.05);
@@ -173,7 +238,12 @@ TEST(ContinuousCurrentEstimator, RefitDelayedExcludesTheMostRecentLagSeconds) {
   // data, where the live fit has real data the delayed fit doesn't.
   est.refit();  // build the live fit too, for comparison
   auto live = est.evaluate(117.0);
-  auto delayed = est.evaluateForFeedback(117.0);
+  // grace_seconds=0.0: this test is checking the DELAYED FIT'S DATA is
+  // genuinely different from the live fit's, not the maturity gate
+  // (covered separately by EvaluateForFeedbackRefusesDuringWarmUpGrace-
+  // Period) -- a single fit-then-query-the-past call like this one would
+  // otherwise always land inside the default 15s grace window.
+  auto delayed = est.evaluateForFeedback(117.0, 0.0);
   ASSERT_TRUE(live.has_value());
   ASSERT_TRUE(delayed.has_value());
   // Both should still be reasonably close to ground truth (current is

@@ -195,17 +195,43 @@ public:
     fitted_delayed_ = result.at<gtsam::ParameterMatrix<3>>(key);
     domain_a_delayed_ = a;
     domain_b_delayed_ = b;
+    if (!first_delayed_success_time_) {
+      // Real bug caught by this class's own test suite: using `b` (the
+      // truncated fit's own newest sample) here instead of the actual
+      // "now" reference made the grace period cancel out whenever
+      // grace_seconds == lag_seconds (b is already lag_seconds behind
+      // "now" by construction, so first_delayed_success_time_ + grace
+      // collapsed back to exactly "now", gating nothing). Use the raw,
+      // untruncated newest sample instead -- the real "now" at the
+      // moment this first success happened.
+      first_delayed_success_time_ = samples_.back().first;
+    }
     return true;
   }
 
   // Queries the delayed (deliberately-stale) fit, with the same
   // forward-extrapolation allowance evaluate() uses relative to its own
-  // domain. This is the method to call for feeding a prediction back
-  // into the same system that produced this estimator's samples --
-  // never evaluate() (see refitDelayed()'s comment for why).
-  std::optional<gtsam::Vector3> evaluateForFeedback(double t) const
+  // domain -- but ALSO refuses to return a value until at least
+  // grace_seconds have passed since refitDelayed() first succeeded.
+  //
+  // Real bug found via live-node testing (attempt 3, 2026-08-23): right
+  // after the delayed fit first becomes available, its predictions are
+  // measurably less accurate (a confirmed warm-up transient, up to
+  // ~0.30 m/s error -- see EvaluateForFeedbackWorksAtNowDuringLive-
+  // IncrementalUse's own comment). Feeding that straight into the
+  // discrete graph as a C(curr) prior with no grace period caused a
+  // reproducible hard crash (gtsam::IndeterminantLinearSystemException,
+  // confirmed across two different sonar seeds) at a sonar-starved
+  // keyframe within 1-2 keyframes of first activation. This gate lives
+  // INSIDE the estimator specifically so no future caller can forget it
+  // the way the wiring did the first time.
+  std::optional<gtsam::Vector3> evaluateForFeedback(
+    double t, double grace_seconds = 15.0) const
   {
     if (!fitted_delayed_ || t < domain_a_delayed_ || t > domain_b_delayed_ + window_seconds_) {
+      return std::nullopt;
+    }
+    if (!first_delayed_success_time_ || t < *first_delayed_success_time_ + grace_seconds) {
       return std::nullopt;
     }
     gtsam::Chebyshev2::VectorEvaluationFunctor<3> f(N_, t, domain_a_delayed_, domain_b_delayed_);
@@ -220,6 +246,7 @@ private:
   double domain_a_ = 0.0, domain_b_ = 0.0;
   std::optional<gtsam::ParameterMatrix<3>> fitted_delayed_;
   double domain_a_delayed_ = 0.0, domain_b_delayed_ = 0.0;
+  std::optional<double> first_delayed_success_time_;
 };
 
 }  // namespace cavex_sic_slam
