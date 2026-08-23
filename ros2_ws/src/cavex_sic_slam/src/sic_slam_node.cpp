@@ -362,7 +362,19 @@ protected:
             this->get_logger(), "kf %zu: %s cond=%.3e min_eig=%.3e max_eig=%.3e",
             curr, name, cond, min_eig, max_eig);
         };
-      log_condition("X", diag_marginals.marginalCovariance(X(curr)));
+      gtsam::Matrix x_cov = diag_marginals.marginalCovariance(X(curr));
+      log_condition("X", x_cov);
+      // TEMP diagnostic, 2026-08-23: split X's 6x6 covariance into its
+      // rotation block (GTSAM Pose3 tangent space: rows/cols 0-2) and
+      // translation block (rows/cols 3-5) to determine whether a
+      // divergence event is a yaw/attitude degeneracy or a position
+      // degeneracy -- the combined 6x6 condition number alone can't
+      // distinguish these, and they'd call for different fixes (yaw has
+      // no magnetometer/compass reference in this system, only sonar
+      // dyaw and IMU gyro integration; position has sonar dx/dy, IMU
+      // accel integration, and CurrentFactor when enabled).
+      log_condition("X_rot", x_cov.block<3, 3>(0, 0));
+      log_condition("X_trans", x_cov.block<3, 3>(3, 3));
       log_condition("V", diag_marginals.marginalCovariance(V(curr)));
       if (enable_current_factor_) {
         log_condition("C", diag_marginals.marginalCovariance(C(curr)));
