@@ -32,3 +32,8 @@ PX4-Autopilot/
 
 # History/runbook: full historical notes, design rationale (kept locally, not shipped)
 history.txt
+
+# Local-only, machine-specific: MCP server config with local paths
+.mcp.json
+# Generated ArduPilot param dump, not source
+ros2_ws/mav_0_1.parm
