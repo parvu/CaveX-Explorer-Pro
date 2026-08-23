@@ -1,0 +1,69 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="sic_slam_tank">
+    <physics name="4ms" type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- Explicit plugin list required: adding any <plugin> disables gz-sim's
+         implicit default set, so everything needed must be listed here. -->
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-hydrodynamics-system" name="gz::sim::systems::Hydrodynamics" />
+    <plugin filename="gz-sim-thruster-system" name="gz::sim::systems::Thruster" />
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="tank_floor">
+      <static>true</static>
+      <pose>0 0 -5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+          <material><ambient>0.3 0.3 0.35 1</ambient><diffuse>0.3 0.3 0.35 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- A simple two-wall "corridor" ahead of the spawn point, close enough
+         (2 m gap) to guarantee the gpu_lidar-based sonar stand-in gets a
+         non-infinite return to convert into an acoustic intensity row. -->
+    <model name="wall_left">
+      <static>true</static>
+      <pose>5 1 -3 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>10 0.3 4</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>10 0.3 4</size></box></geometry>
+          <material><ambient>0.5 0.5 0.55 1</ambient><diffuse>0.5 0.5 0.55 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_right">
+      <static>true</static>
+      <pose>5 -1 -3 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>10 0.3 4</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>10 0.3 4</size></box></geometry>
+          <material><ambient>0.5 0.5 0.55 1</ambient><diffuse>0.5 0.5 0.55 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>
