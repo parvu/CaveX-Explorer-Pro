@@ -29,32 +29,40 @@ class GtsamISAM2Optimizer:
     every other variable.
     """
 
-    def __init__(self):
+    def __init__(self, enable_current_factor=True):
+        # Matches cavex_sic_slam's own convention (sic_slam_node.cpp): when
+        # disabled, there is no C(i) variable, no CurrentFactor, no current
+        # modeling at all -- not "CurrentFactor present but unconstrained".
+        self.enable_current_factor = enable_current_factor
+
         self.isam = gtsam.ISAM2(gtsam.ISAM2Params())
         self.step = 0
         self.pose = np.zeros(3)
-        self.current_key = gtsam.symbol('c', 0)
 
         self.odom_noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.05, 0.05, 0.05]))
         self.landmark_noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.2, 0.2, 0.2]))
-        # Loose, not tight: unlike the pose prior below (which anchors a
-        # known spawn point), the initial current guess is genuinely
-        # unknown -- a tight prior here would fight every CurrentFactor
-        # residual instead of letting ISAM2 actually solve for it.
-        self.current_prior_noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([5.0, 5.0, 5.0]))
-        # Matches cavex_sic_slam's own CurrentFactor noise exactly
-        # (sic_slam_node.cpp: gtsam::noiseModel::Isotropic::Sigma(3, 0.15)).
-        self.current_factor_noise = gtsam.noiseModel.Isotropic.Sigma(3, 0.15)
         prior_noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([1e-3, 1e-3, 1e-3]))
 
         graph = gtsam.NonlinearFactorGraph()
         values = gtsam.Values()
         graph.add(gtsam.PriorFactorPoint3(self._key(0), Point3(0.0, 0.0, 0.0), prior_noise))
         values.insert(self._key(0), Point3(0.0, 0.0, 0.0))
-        graph.add(gtsam.PriorFactorVector(self.current_key, np.zeros(3), self.current_prior_noise))
-        values.insert(self.current_key, np.zeros(3))
-        self.isam.update(graph, values)
+
         self.estimated_current = np.zeros(3)
+        if self.enable_current_factor:
+            self.current_key = gtsam.symbol('c', 0)
+            # Loose, not tight: unlike the pose prior above (which anchors a
+            # known spawn point), the initial current guess is genuinely
+            # unknown -- a tight prior here would fight every CurrentFactor
+            # residual instead of letting ISAM2 actually solve for it.
+            self.current_prior_noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([5.0, 5.0, 5.0]))
+            # Matches cavex_sic_slam's own CurrentFactor noise exactly
+            # (sic_slam_node.cpp: gtsam::noiseModel::Isotropic::Sigma(3, 0.15)).
+            self.current_factor_noise = gtsam.noiseModel.Isotropic.Sigma(3, 0.15)
+            graph.add(gtsam.PriorFactorVector(self.current_key, np.zeros(3), self.current_prior_noise))
+            values.insert(self.current_key, np.zeros(3))
+
+        self.isam.update(graph, values)
 
     @staticmethod
     def _key(i):
@@ -65,16 +73,33 @@ class GtsamISAM2Optimizer:
         self.step += 1
         cur_key = self._key(self.step)
 
-        raw_displacement = imu_delta + self.estimated_current * 0.2
-        predicted = self.pose + raw_displacement
+        # Real bug found and fixed 2026-08-23: this used to fold
+        # self.estimated_current back into the BetweenFactor's own fixed
+        # MEASUREMENT (raw_displacement = imu_delta + estimated_current *
+        # 0.2), which was fine for the old heuristic (current only ever
+        # driven by landmark residuals, an independent source) but becomes
+        # a real positive-feedback loop now that CurrentFactor also feeds
+        # off this same BetweenFactor: current estimate grows ->
+        # raw_displacement grows -> BetweenFactor pins X_cur-X_prev to that
+        # larger value -> CurrentFactor's residual pulls current higher
+        # still. Live-verified runaway (current_x: 11 -> 461 within ~1s of
+        # sim time, at rest with zero thrust). Same "information
+        # double-counting" failure class as the five failed continuous-
+        # current-field feedback attempts documented in history_main.md.
+        # Fix: the odometry measurement is IMU-only now (matches real IMU
+        # preintegration, which never incorporates a current estimate);
+        # current correction happens ONLY through CurrentFactor's own
+        # separate residual against this same displacement.
+        predicted = self.pose + imu_delta
 
         graph = gtsam.NonlinearFactorGraph()
         values = gtsam.Values()
         graph.add(gtsam.BetweenFactorPoint3(
-            prev_key, cur_key, Point3(*raw_displacement), self.odom_noise))
+            prev_key, cur_key, Point3(*imu_delta), self.odom_noise))
         values.insert(cur_key, Point3(*predicted))
-        graph.add(make_current_factor(
-            prev_key, cur_key, self.current_key, thrust_n, IMU_DT_S, self.current_factor_noise))
+        if self.enable_current_factor:
+            graph.add(make_current_factor(
+                prev_key, cur_key, self.current_key, thrust_n, IMU_DT_S, self.current_factor_noise))
 
         if landmark_vector is not None:
             graph.add(gtsam.PriorFactorPoint3(
@@ -83,7 +108,8 @@ class GtsamISAM2Optimizer:
         self.isam.update(graph, values)
         estimate = self.isam.calculateEstimate()
         self.pose = estimate.atPoint3(cur_key)
-        self.estimated_current = estimate.atVector(self.current_key)
+        if self.enable_current_factor:
+            self.estimated_current = estimate.atVector(self.current_key)
 
         return self.pose, self.estimated_current
 
@@ -92,7 +118,9 @@ class SicSlamGraphBackendNode(Node):
     def __init__(self):
         super().__init__('sic_slam_graph_backend')
 
-        self.optimizer = GtsamISAM2Optimizer()
+        self.declare_parameter('enable_current_factor', True)
+        enable_current_factor = self.get_parameter('enable_current_factor').get_parameter_value().bool_value
+        self.optimizer = GtsamISAM2Optimizer(enable_current_factor=enable_current_factor)
         self.last_imu_reading = np.zeros(3)
         self.last_thrust = [0.0] * 6
 

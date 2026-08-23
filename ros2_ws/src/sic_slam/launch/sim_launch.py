@@ -27,6 +27,8 @@ def generate_launch_description():
     log_training_data_arg = DeclareLaunchArgument('log_training_data', default_value='false')
     training_data_path_arg = DeclareLaunchArgument(
         'training_data_path', default_value='sic_slam_training_data.csv')
+    enable_current_factor_arg = DeclareLaunchArgument(
+        'enable_current_factor', default_value='true')
 
     pkg_share = get_package_share_directory('sic_slam')
     # bluerov2_sim's model.sdf lives here (an ArduPilot-plugin-free copy of
@@ -127,6 +129,9 @@ def generate_launch_description():
         executable='sic_slam_graph_backend.py',
         name='sic_slam_graph_backend',
         output='screen',
+        parameters=[{
+            'enable_current_factor': ParameterValue(LaunchConfiguration('enable_current_factor'), value_type=bool),
+        }],
     )
 
     flight_logger = Node(
@@ -144,6 +149,7 @@ def generate_launch_description():
         beam_count_arg,
         log_training_data_arg,
         training_data_path_arg,
+        enable_current_factor_arg,
         gz_resource_path,
         gz_sim,
         spawn_bluerov2,
