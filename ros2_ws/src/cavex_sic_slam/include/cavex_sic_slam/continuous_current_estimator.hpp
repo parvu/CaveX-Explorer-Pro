@@ -33,13 +33,28 @@ public:
   // of samples the window will hold at the caller's sample rate -- see
   // this plan's Global Constraints for the validated (window, degree)
   // pair for a realistic ~3s keyframe cadence.
+  //
+  // Retention (how long a sample is kept before being pruned) is
+  // deliberately 2x window_seconds_, not 1x -- see evaluateSettled()'s
+  // own comment. At 1x retention, the fit's domain [domain_a_, domain_b_]
+  // is always approximately [now-window, now], so the "settled" region
+  // evaluateSettled() requires (t <= domain_b_-window_seconds_) collapses
+  // to zero width once the buffer reaches steady state -- confirmed live
+  // by this class's own test suite (EvaluateSettledRefusesDataNewerThan-
+  // OneWindow failed until this was fixed). With 2x retention, the fit's
+  // domain genuinely spans two windows: a settled (old) half and a live
+  // (recent) half, each about window_seconds_ wide. Sample density (and
+  // therefore the N-vs-sample-count stability ratio validated for this
+  // estimator) is unaffected -- doubling the time span at the same
+  // sample rate doubles the sample count too, so the oversampling ratio
+  // stays the same or improves.
   ContinuousCurrentEstimator(double window_seconds, size_t basis_degree)
   : window_seconds_(window_seconds), N_(basis_degree) {}
 
   void addSample(double t, const gtsam::Vector3 & current)
   {
     samples_.emplace_back(t, current);
-    while (!samples_.empty() && t - samples_.front().first > window_seconds_) {
+    while (!samples_.empty() && t - samples_.front().first > 2.0 * window_seconds_) {
       samples_.pop_front();
     }
   }
@@ -109,6 +124,36 @@ public:
   std::optional<gtsam::Vector3> evaluate(double t) const
   {
     if (!fitted_ || t < domain_a_ || t > domain_b_ + window_seconds_) {
+      return std::nullopt;
+    }
+    gtsam::Chebyshev2::VectorEvaluationFunctor<3> f(N_, t, domain_a_, domain_b_);
+    return f(*fitted_);
+  }
+
+  // Like evaluate(), but only returns a value if `t` is at least one full
+  // window_seconds_ older than this fit's own most recent contributing
+  // sample -- i.e. only ever touches the "settled" half of what the fit
+  // has seen, never the live/recent edge.
+  //
+  // Use this method (never evaluate()) at any call site that feeds this
+  // estimator's prediction BACK into the same system that produced its
+  // samples. A prior attempt used evaluate() for that (2026-08-23): even
+  // though evaluate()'s samples are all chronologically past, the FIT
+  // ITSELF is not independent evidence of the chain it was fed back
+  // into -- it's a smoothed echo of that chain's own recent output. That
+  // caused a real regression: a 10/10-valid ATE condition
+  // (turbidity=3.0, current=2.0 m/s) went to 3/3 diverged, with a
+  // feedback-oscillation signature in the raw trajectory (see
+  // history.txt for the full writeup). This method exists so a feedback
+  // call site can't make that mistake again just by picking the wrong
+  // (but reasonable-looking) method name.
+  std::optional<gtsam::Vector3> evaluateSettled(double t) const
+  {
+    if (!fitted_) {
+      return std::nullopt;
+    }
+    double settled_cutoff = domain_b_ - window_seconds_;
+    if (t < domain_a_ || t > settled_cutoff) {
       return std::nullopt;
     }
     gtsam::Chebyshev2::VectorEvaluationFunctor<3> f(N_, t, domain_a_, domain_b_);
