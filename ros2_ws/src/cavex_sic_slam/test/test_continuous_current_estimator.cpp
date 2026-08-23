@@ -92,3 +92,62 @@ TEST(ContinuousCurrentEstimator, EvaluateReturnsNulloptOutsideFitDomain) {
   ASSERT_TRUE(est.refit());
   EXPECT_FALSE(est.evaluate(10000.0).has_value());
 }
+
+TEST(ContinuousCurrentEstimator, EvaluateSettledRefusesDataNewerThanOneWindow) {
+  // Regression test for the real closed-loop feedback bug found and
+  // reverted 2026-08-23 (see history.txt): feeding evaluate()'s
+  // prediction back as a prior on the SAME discrete chain that produced
+  // its samples double-counts information and caused a 10/10-valid ATE
+  // condition to regress to 3/3 diverged. evaluateSettled() exists so
+  // feedback call sites structurally cannot repeat that mistake --
+  // it must refuse anything within one window_seconds_ of "now".
+  std::mt19937 rng(9);
+  std::normal_distribution<double> noise(0.0, 0.05);
+  ContinuousCurrentEstimator est(90.0, 6);
+
+  // ~3s keyframe cadence, 120 samples => spans 0..357s, well past 2x the
+  // 90s window, so a genuinely "settled" region exists.
+  for (int i = 0; i < 120; ++i) {
+    double t = i * 3.0;
+    est.addSample(t, trueCurrent(t) + Vector3(noise(rng), noise(rng), noise(rng)));
+    if (i > 0 && i % 5 == 0) {
+      est.refit();
+    }
+  }
+  ASSERT_TRUE(est.evaluate(350.0).has_value())
+    << "sanity check: evaluate() should still work near 'now'";
+
+  // Too close to "now" (the fit's own most recent sample) -- must refuse,
+  // even though evaluate() itself would happily return a value here.
+  EXPECT_FALSE(est.evaluateSettled(340.0).has_value());
+  EXPECT_FALSE(est.evaluateSettled(300.0).has_value());
+
+  // Old enough (more than one window_seconds_=90 before the most recent
+  // sample) -- must succeed, and match ground truth within the same
+  // tolerance already established for evaluate() in this file's other
+  // tests.
+  auto settled = est.evaluateSettled(200.0);
+  ASSERT_TRUE(settled.has_value());
+  EXPECT_LT((*settled - trueCurrent(200.0)).norm(), 0.15);
+
+  // Before any data at all -- must refuse (same as evaluate()).
+  EXPECT_FALSE(est.evaluateSettled(-50.0).has_value());
+}
+
+TEST(ContinuousCurrentEstimator, EvaluateSettledRefusesEverythingBeforeTwoWindowsOfHistory) {
+  // Before the fit has accumulated at least 2*window_seconds_ of span,
+  // there is no data old enough to be "settled" yet -- every query must
+  // refuse, not just ones near the edge.
+  std::mt19937 rng(4);
+  std::normal_distribution<double> noise(0.0, 0.05);
+  ContinuousCurrentEstimator est(90.0, 6);
+  for (int i = 0; i < 20; ++i) {
+    double t = i * 3.0;  // spans 0..57s -- well under 2*90=180s
+    est.addSample(t, trueCurrent(t) + Vector3(noise(rng), noise(rng), noise(rng)));
+  }
+  ASSERT_TRUE(est.refit());
+  EXPECT_TRUE(est.evaluate(0.0).has_value())
+    << "sanity check: evaluate() works fine on this short a fit";
+  EXPECT_FALSE(est.evaluateSettled(0.0).has_value());
+  EXPECT_FALSE(est.evaluateSettled(57.0).has_value());
+}

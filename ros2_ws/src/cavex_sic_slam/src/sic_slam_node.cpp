@@ -233,6 +233,7 @@ protected:
   {
     std::size_t prev = keyframe_index_;
     std::size_t curr = keyframe_index_ + 1;
+    double t_seconds = rclcpp::Time(stamp).seconds();
 
     gtsam::CombinedImuFactor imu_factor(
       X(prev), V(prev), X(curr), V(curr), B(prev), B(curr), *preint_);
@@ -376,7 +377,6 @@ protected:
     }
 
     if (enable_current_factor_ && enable_continuous_current_field_) {
-      double t_seconds = rclcpp::Time(stamp).seconds();
       continuous_current_estimator_.addSample(t_seconds, last_current_);
       if (++continuous_current_refit_counter_ % 5 == 0) {
         continuous_current_estimator_.refit();
