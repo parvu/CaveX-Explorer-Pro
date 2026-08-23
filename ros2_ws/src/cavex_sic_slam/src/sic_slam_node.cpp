@@ -20,6 +20,7 @@
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/slam/BetweenFactor.h>
+#include <gtsam/slam/PoseTranslationPrior.h>
 #include <gtsam/linear/LossFunctions.h>
 
 #include "cavex_sic_slam/scan_registration.hpp"
@@ -254,6 +255,34 @@ protected:
         latest_scan_->intensities.begin(), latest_scan_->intensities.end());
       curr_scan_points = cavex_sic_slam::laserScanToPoints(
         ranges, intensities, latest_scan_->angle_min, latest_scan_->angle_increment);
+    }
+
+    if (curr_scan_points.empty()) {
+      ++consecutive_scan_starved_keyframes_;
+    } else {
+      consecutive_scan_starved_keyframes_ = 0;
+    }
+
+    // Real fix, 2026-08-23, for the long-standing IndeterminantLinear-
+    // SystemException divergence bug (previously paused -- see project
+    // memory sic-slam-divergence-bug-paused.md). Diagnostic (this file's
+    // existing X_rot/X_trans condition-number split) confirmed the real
+    // mechanism: during a scan-starved streak, ROTATION stays perfectly
+    // well-conditioned (nothing here touches it), but TRANSLATION's
+    // marginal covariance grows unboundedly (observed: thousands -> 1e14+
+    // over ~10 consecutive starved keyframes) because the only thing
+    // constraining position during a gap is IMU accelerometer double-
+    // integration, which is inherently weak. This promotes the
+    // already-computed IMU-preintegration prediction (`predicted`,
+    // already trusted enough to seed the optimizer's initial guess just
+    // above) into an actual bounded FACTOR once a streak gets long
+    // enough to matter, capping how far position uncertainty can grow
+    // without fighting real sonar-based updates when sonar is healthy.
+    if (consecutive_scan_starved_keyframes_ >= 2) {
+      auto position_regularizer_noise = gtsam::noiseModel::Isotropic::Sigma(3, 2.0);
+      graph_.add(
+        gtsam::PoseTranslationPrior<gtsam::Pose3>(
+          X(curr), predicted.pose().translation(), position_regularizer_noise));
     }
 
     // TEMP diagnostic, 2026-08-22: investigating a recurring
@@ -527,6 +556,7 @@ protected:
   gtsam::Values values_;
 
   std::size_t keyframe_index_;
+  size_t consecutive_scan_starved_keyframes_ = 0;
   bool enable_current_factor_;
   bool enable_continuous_current_field_;
   cavex_sic_slam::ContinuousCurrentEstimator continuous_current_estimator_{90.0, 6};
