@@ -14,6 +14,18 @@
     <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
       <render_engine>ogre2</render_engine>
     </plugin>
+    <!-- IMU sensors are NOT handled by gz-sim-sensors-system above -- that
+         one drives rendering-backed sensors (camera, gpu_lidar) via ogre2.
+         IMU needs its own dedicated system, gz-sim-imu-system, which was
+         missing entirely here (real bug, found 2026-08-25): bluerov2_sim's
+         imu_sensor was declared in the SDF and showed up in gz-transport's
+         topic registry (implying it existed), but had genuinely zero
+         publishers -- no System instance was ever processing it. Confirmed
+         by isolating from a red-herring WSL2/D3D12 GPU-driver crash
+         investigated first: gpu_lidar (sonar) kept working fine throughout
+         via the Sensors system above, proving this wasn't a GPU/rendering
+         problem, just a missing plugin declaration. -->
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
     <!-- Hydrodynamics and Thruster are NOT declared here: unlike the
          world-required default systems above (Physics/UserCommands/
          SceneBroadcaster/Sensors), they were never part of gz-sim's implicit
