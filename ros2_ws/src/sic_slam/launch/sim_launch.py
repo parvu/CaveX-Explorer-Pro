@@ -72,7 +72,16 @@ def generate_launch_description():
         PythonExpression(["'gz_bridge' + ('_cave_water' if '",
                            LaunchConfiguration('world'),
                            "' == 'sic_slam_cave_water' else '') + '.yaml'"])])
-    checkpoint_path = os.path.join(pkg_share, 'models', 'uuv_controller.pth')
+    # Real fix, 2026-08-25: this used to be one hardcoded path shared by
+    # both worlds -- deploying a cave-water-trained checkpoint would have
+    # silently changed what every tank-world ATE run (this project's whole
+    # history of recorded results) tests against. Selected per world now,
+    # same pattern as bridge_yaml above.
+    checkpoint_path = PathJoinSubstitution([
+        pkg_share, 'models',
+        PythonExpression(["'uuv_controller' + ('_cavewater' if '",
+                           LaunchConfiguration('world'),
+                           "' == 'sic_slam_cave_water' else '') + '.pth'"])])
 
     gz_resource_path = SetEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
@@ -170,7 +179,13 @@ def generate_launch_description():
         executable='training_data_logger.py',
         name='training_data_logger',
         output='screen',
-        parameters=[{'output_csv_path': LaunchConfiguration('training_data_path')}],
+        parameters=[{
+            'output_csv_path': LaunchConfiguration('training_data_path'),
+            'world': LaunchConfiguration('world'),
+            'spawn_x': ParameterValue(LaunchConfiguration('spawn_x'), value_type=float),
+            'spawn_y': ParameterValue(LaunchConfiguration('spawn_y'), value_type=float),
+            'spawn_z': ParameterValue(LaunchConfiguration('spawn_z'), value_type=float),
+        }],
         condition=IfCondition(LaunchConfiguration('log_training_data')),
     )
 

@@ -18,8 +18,19 @@ One CSV row per incoming /ping360_sonar/scan_image frame: that frame's
 beam_count intensity samples (0-255) plus (gt_x, gt_y, gt_z) -- the
 bluerov2 model's ground-truth position at that instant, read directly via
 gz-transport (same pattern as corridor_walk_demo.py/ate_baseline_demo.py),
-relative to spawn (0, 0, -2) so it starts at (0, 0, 0) like the graph
-backend's own internal frame.
+relative to spawn so it starts at (0, 0, 0) like the graph backend's own
+internal frame.
+
+Real bug found and fixed 2026-08-25 (before collecting any cave-water
+data): both the gz-transport pose topic ("/world/sic_slam_tank/pose/info")
+and the spawn offset used for the relative-position label were hardcoded
+to the tank world's own values. In sic_slam_cave_water.world (spawn
+(25,0,6.9), not (0,0,-2)) the pose topic doesn't even exist under that
+name, so ground truth would never arrive -- every sonar frame would be
+silently skipped, a total silent failure, not just a wrong-offset one.
+`world`/`spawn_x`/`spawn_y`/`spawn_z` are now ROS parameters, wired from
+sim_launch.py's own same-named launch args so they can never drift out of
+sync with what the vehicle actually spawned at.
 """
 import csv
 import os
@@ -31,8 +42,6 @@ import numpy as np
 
 from gz.transport13 import Node as GzNode
 from gz.msgs10.pose_v_pb2 import Pose_V
-
-SPAWN_XYZ = (0.0, 0.0, -2.0)  # matches sim_launch.py's -x 0 -y 0 -z -2
 
 _latest_gt = {"pos": None}
 
@@ -48,11 +57,21 @@ class TrainingDataLoggerNode(Node):
         super().__init__('training_data_logger')
 
         self.declare_parameter('output_csv_path', 'sic_slam_training_data.csv')
+        self.declare_parameter('world', 'sic_slam_tank')
+        self.declare_parameter('spawn_x', 0.0)
+        self.declare_parameter('spawn_y', 0.0)
+        self.declare_parameter('spawn_z', -2.0)
         csv_path = self.get_parameter('output_csv_path').get_parameter_value().string_value
         self.csv_path = os.path.expanduser(csv_path)
+        world = self.get_parameter('world').get_parameter_value().string_value
+        self.spawn_xyz = (
+            self.get_parameter('spawn_x').get_parameter_value().double_value,
+            self.get_parameter('spawn_y').get_parameter_value().double_value,
+            self.get_parameter('spawn_z').get_parameter_value().double_value,
+        )
 
         self.gz_node = GzNode()
-        self.gz_node.subscribe(Pose_V, "/world/sic_slam_tank/pose/info", _pose_cb)
+        self.gz_node.subscribe(Pose_V, f"/world/{world}/pose/info", _pose_cb)
 
         self.sonar_sub = self.create_subscription(
             Image, '/ping360_sonar/scan_image', self.on_sonar, 10)
@@ -84,7 +103,7 @@ class TrainingDataLoggerNode(Node):
         self.csv_writer.writerow(
             [msg.header.stamp.sec, msg.header.stamp.nanosec]
             + row.tolist()
-            + [gx - SPAWN_XYZ[0], gy - SPAWN_XYZ[1], gz - SPAWN_XYZ[2]]
+            + [gx - self.spawn_xyz[0], gy - self.spawn_xyz[1], gz - self.spawn_xyz[2]]
         )
         self._row_count += 1
         if self._row_count % 50 == 0:
