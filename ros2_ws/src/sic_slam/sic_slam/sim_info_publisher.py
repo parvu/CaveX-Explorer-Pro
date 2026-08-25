@@ -45,10 +45,18 @@ GRID_X = [18, 22, 25, 28, 32]
 GRID_Y = [-8, -4, 0, 4, 8]
 GRID_Z = [6.2, 6.9, 7.6]
 # Scales arrow length per m/s of current -- at ~0.3 m/s (the range used
-# elsewhere in this project) arrows read as a clearly visible ~1.5m, but
+# elsewhere in this project) arrows read as a clearly visible ~1.8m, but
 # don't overrun the grid spacing (~3-4m in x/y) at higher speeds.
-LENGTH_PER_MPS = 5.0
-MIN_VISIBLE_LEN = 0.05  # a near-zero-length arrow still renders as a dot
+LENGTH_PER_MPS = 6.0
+# Real request: "make velocity field more visible" -- 0.05m (the original
+# value) rendered as a near-invisible dot at zero/low current, and 0.25
+# shaft thickness read as a thin line against the cave's own rock texture
+# and the water plane's tint. Raised the floor length so the grid pattern
+# itself stays legible even with no current (still short relative to the
+# ~3-4m grid spacing, so it doesn't read as false current), and thickened
+# the shaft/head (ARROW's shaft+head radius scale with scale.y/scale.z).
+MIN_VISIBLE_LEN = 0.8
+ARROW_THICKNESS = 0.45
 
 
 class SimInfoPublisher(Node):
@@ -146,16 +154,28 @@ class SimInfoPublisher(Node):
                     m.pose.orientation.z = qz
                     m.pose.orientation.w = qw
                     m.scale.x = length
-                    m.scale.y = 0.25
-                    m.scale.z = 0.25
-                    m.material.ambient.r = 0.9
-                    m.material.ambient.g = 0.9
-                    m.material.ambient.b = 0.1
-                    m.material.ambient.a = 0.9
-                    m.material.diffuse.r = 0.9
-                    m.material.diffuse.g = 0.9
-                    m.material.diffuse.b = 0.1
-                    m.material.diffuse.a = 0.9
+                    m.scale.y = ARROW_THICKNESS
+                    m.scale.z = ARROW_THICKNESS
+                    # Orange, not yellow -- more contrast against the
+                    # water's own blue tint and the cave's grey/brown rock
+                    # texture. Emissive (self-illuminating, ignores scene
+                    # lighting) added on top of ambient/diffuse -- real
+                    # request ("more visible"): at ambient_light=0.4 (see
+                    # this world's <gui> section), a purely lit material
+                    # reads dim/washed out; emissive keeps it bright
+                    # regardless of the scene's own light level.
+                    m.material.ambient.r = 1.0
+                    m.material.ambient.g = 0.5
+                    m.material.ambient.b = 0.0
+                    m.material.ambient.a = 1.0
+                    m.material.diffuse.r = 1.0
+                    m.material.diffuse.g = 0.5
+                    m.material.diffuse.b = 0.0
+                    m.material.diffuse.a = 1.0
+                    m.material.emissive.r = 0.6
+                    m.material.emissive.g = 0.3
+                    m.material.emissive.b = 0.0
+                    m.material.emissive.a = 1.0
                     self.marker_pub.publish(m)
                     marker_id += 1
 
