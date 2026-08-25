@@ -4,7 +4,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -34,6 +34,16 @@ def generate_launch_description():
         description='false = no perception bridge at all (not just untrained) -- '
                     'graph backend gets zero landmark corrections, pure IMU+CurrentFactor '
                     'dead-reckoning, for a true no-CNN baseline')
+    world_arg = DeclareLaunchArgument(
+        'world', default_value='sic_slam_tank',
+        description="World name (also the world file's basename and its <world name>): "
+                    "'sic_slam_tank' (small enclosed corridor tank, default) or "
+                    "'sic_slam_cave_water' (real cave mesh's flooded water section, "
+                    'reused from cavex_world.world -- see that world file for the '
+                    'circle-trajectory ATE setup, ate_circle_demo.py)')
+    spawn_x_arg = DeclareLaunchArgument('spawn_x', default_value='0')
+    spawn_y_arg = DeclareLaunchArgument('spawn_y', default_value='0')
+    spawn_z_arg = DeclareLaunchArgument('spawn_z', default_value='-2')
 
     pkg_share = get_package_share_directory('sic_slam')
     # bluerov2_sim's model.sdf lives here (an ArduPilot-plugin-free copy of
@@ -44,15 +54,31 @@ def generate_launch_description():
     # mesh directory via GZ_SIM_RESOURCE_PATH below, so the ~17 MB of
     # meshes isn't duplicated a second time in this package.
     cavex_vehicle_share = get_package_share_directory('cavex_tracked_vehicle')
-    world_file = os.path.join(pkg_share, 'worlds', 'sic_slam_tank.world')
+    # sic_slam_cave_water.world's model://cave_world include resolves against
+    # cavex_slam_nav's own vendored cave mesh+textures (~17 MB) the same way
+    # -- reused, not duplicated. Harmless to always add even when the tank
+    # world (which has no such include) is selected.
+    cavex_slam_nav_share = get_package_share_directory('cavex_slam_nav')
+    world_file = PathJoinSubstitution([
+        pkg_share, 'worlds',
+        PythonExpression(["'", LaunchConfiguration('world'), "' + '.world'"])])
     model_file = os.path.join(pkg_share, 'models', 'bluerov2_sim', 'model.sdf')
-    bridge_yaml = os.path.join(pkg_share, 'config', 'gz_bridge.yaml')
+    # The IMU bridge entry embeds the world name in its gz-side topic path
+    # (/world/<world>/model/...), so each world needs its own bridge config
+    # -- see gz_bridge_cave_water.yaml's own comment for the real bug this
+    # avoids (a smoke-test-caught silent IMU-bridge mismatch, not a guess).
+    bridge_yaml = PathJoinSubstitution([
+        pkg_share, 'config',
+        PythonExpression(["'gz_bridge' + ('_cave_water' if '",
+                           LaunchConfiguration('world'),
+                           "' == 'sic_slam_cave_water' else '') + '.yaml'"])])
     checkpoint_path = os.path.join(pkg_share, 'models', 'uuv_controller.pth')
 
     gz_resource_path = SetEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
         os.path.join(pkg_share, 'models') + ':' +
-        os.path.join(cavex_vehicle_share, 'models'))
+        os.path.join(cavex_vehicle_share, 'models') + ':' +
+        os.path.join(cavex_slam_nav_share, 'models'))
 
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -64,8 +90,11 @@ def generate_launch_description():
     spawn_bluerov2 = Node(
         package='ros_gz_sim',
         executable='create',
-        arguments=['-world', 'sic_slam_tank', '-name', 'bluerov2',
-                   '-file', model_file, '-x', '0', '-y', '0', '-z', '-2'],
+        arguments=['-world', LaunchConfiguration('world'), '-name', 'bluerov2',
+                   '-file', model_file,
+                   '-x', LaunchConfiguration('spawn_x'),
+                   '-y', LaunchConfiguration('spawn_y'),
+                   '-z', LaunchConfiguration('spawn_z')],
         output='screen',
     )
 
@@ -157,6 +186,10 @@ def generate_launch_description():
         training_data_path_arg,
         enable_current_factor_arg,
         enable_perception_arg,
+        world_arg,
+        spawn_x_arg,
+        spawn_y_arg,
+        spawn_z_arg,
         gz_resource_path,
         gz_sim,
         spawn_bluerov2,

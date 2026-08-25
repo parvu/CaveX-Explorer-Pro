@@ -1,0 +1,165 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="sic_slam_cave_water">
+    <physics name="4ms" type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- Same explicit plugin list as sic_slam_tank.world -- see that file's
+         own comments for why each one is required (in particular
+         gz-sim-imu-system, missing from this project for its whole first
+         session; see history_perception.md, "IMU sensor never publishing"). -->
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
+
+    <!-- Graded buoyancy, vendored verbatim from cavex_world.world (main
+         branch): above_depth=7.9 matches this world's own water surface
+         (CAVE_FLOOR_Z=5.9 + 2.0m partial flood, see cave_floor_patch/
+         water_surface below, ported unchanged from that file's own
+         real-mesh-derived values). <enable> must match the spawn-time
+         entity name, not the model's internal <model name> -- see
+         cavex_world.world's own Buoyancy comment for how a mismatch here
+         silently no-ops (vehicle sinks as if unbuoyant, no error). -->
+    <plugin filename="gz-sim-buoyancy-system" name="gz::sim::systems::Buoyancy">
+      <graded_buoyancy>
+        <default_density>1000</default_density>
+        <density_change>
+          <above_depth>7.9</above_depth>
+          <density>1</density>
+        </density_change>
+      </graded_buoyancy>
+      <enable>bluerov2</enable>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Safety-net plane, far below all real geometry -- see
+         cavex_world.world's own ground_plane comment: earlier versions of
+         that file left this at z=0 and several "resting on the cave
+         floor" checks turned out to actually be resting on this plane
+         instead of real mesh collision. Kept far away here for the same
+         reason. -->
+    <model name="ground_plane">
+      <static>true</static>
+      <pose>0 0 -200 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>1000 1000</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>1000 1000</size></plane></geometry>
+          <material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Real cave geometry, same vendored mesh + pose + 2x scale as
+         cavex_world.world (main branch) -- resolved via model://cave_world
+         against cavex_slam_nav's own models dir, added to
+         GZ_SIM_RESOURCE_PATH by sim_launch.py rather than duplicating the
+         ~17MB mesh+texture set into this package. Not re-derived here:
+         pose/scale are copied verbatim from the main-branch world file
+         that already validated them against the real OBJ vertices. -->
+    <include>
+      <uri>model://cave_world</uri>
+      <name>cave_world</name>
+      <pose>18.7830 31.4050 5.9826 1.5708 0.0000 1.5708</pose>
+    </include>
+
+    <!-- Supplementary floor collision under the water region only --
+         cave_floor_patch from cavex_world.world, x[-40,70] y[-12,12]
+         (this world only needs the water-covering slice of it; the
+         cave_floor_patch_scaled/_bridge patches from that file cover the
+         far dry-section corridor, which this water-only world has no use
+         for). Same real-mesh-vertex-derived z=5.9 top surface. -->
+    <model name="cave_floor_patch">
+      <static>true</static>
+      <pose>15 0 5.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>110 24 1</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>110 24 1</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Shoreline ramp, vendored verbatim: blocks drift into the x<15
+         dry-section boundary (entirely outside the water region's own
+         x[15,35] navigable volume, per cavex_world.world's own live-tested
+         placement). -->
+    <model name="shoreline_ramp">
+      <static>true</static>
+      <pose>10.3481 6.5 6.2597 0 -0.1974 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>8.668 37 1</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>8.668 37 1</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Cosmetic water surface plane, vendored verbatim -- purely visual,
+         buoyancy gates on Z depth only (see plugin above), not this
+         plane's own extent. -->
+    <model name="water_surface">
+      <static>true</static>
+      <pose>25 6.5 7.9 0 0 0</pose>
+      <link name="surface">
+        <visual name="water_visual">
+          <geometry><plane><size>20 37</size></plane></geometry>
+          <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- North boundary wall, vendored verbatim -- distant backstop only
+         (y=25); the circle trajectory used for ATE runs here (see
+         ate_circle_demo.py, radius=6 around center (25,0)) stays well
+         inside the validated y[-12,12] floor coverage, so this wall is
+         not expected to ever be reached, just kept as the same safety net
+         main branch relies on. -->
+    <model name="north_boundary_wall">
+      <static>true</static>
+      <pose>25 25 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>20 1 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>20 1 3</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>

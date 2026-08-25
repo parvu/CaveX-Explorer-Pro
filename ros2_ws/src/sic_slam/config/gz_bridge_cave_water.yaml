@@ -1,0 +1,68 @@
+# Same as gz_bridge.yaml, for the sic_slam_cave_water world -- the only
+# difference is the IMU topic's gz-side path, which embeds the world name
+# (/world/<world_name>/model/...). parameter_bridge takes a static config
+# file, so this world's own copy is needed rather than parameterizing one
+# file at launch time -- see sim_launch.py's bridge_yaml selection (keyed
+# off the same `world` launch argument as the world file itself).
+#
+# Real bug this avoids: without this file, launching world:=sic_slam_cave_water
+# with gz_bridge.yaml still bridged the OLD /world/sic_slam_tank/... IMU
+# topic, which does not exist in this world -- IMU would have silently
+# never reached ROS again, the same failure mode as the missing
+# gz-sim-imu-system plugin bug (see sic_slam_tank.world's own comment),
+# just from a different cause. Caught via a real smoke-test launch, not
+# guessed.
+
+- topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/bluerov2/sonar_rays"
+  gz_topic_name: "/bluerov2/sonar_rays"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/ocean_current"
+  gz_topic_name: "/ocean_current"
+  ros_type_name: "geometry_msgs/msg/Vector3"
+  gz_type_name: "gz.msgs.Vector3d"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/imu/data"
+  gz_topic_name: "/world/sic_slam_cave_water/model/bluerov2/link/base_link/sensor/imu_sensor/imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/bluerov2/thruster1/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster1_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+- ros_topic_name: "/bluerov2/thruster2/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster2_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+- ros_topic_name: "/bluerov2/thruster3/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster3_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+- ros_topic_name: "/bluerov2/thruster4/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster4_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+- ros_topic_name: "/bluerov2/thruster5/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster5_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ
+- ros_topic_name: "/bluerov2/thruster6/cmd_thrust"
+  gz_topic_name: "/model/bluerov2/joint/thruster6_joint/cmd_thrust"
+  ros_type_name: "std_msgs/msg/Float64"
+  gz_type_name: "gz.msgs.Double"
+  direction: ROS_TO_GZ

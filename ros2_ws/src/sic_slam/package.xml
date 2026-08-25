@@ -22,6 +22,10 @@
        current_field_node, reused unmodified instead of duplicating them --
        see ping360_sim_node.py's docstring. -->
   <exec_depend>cavex_sonar</exec_depend>
+  <!-- sic_slam_cave_water.world reuses cavex_slam_nav's real vendored cave
+       mesh (model://cave_world) instead of duplicating the ~17MB mesh+
+       texture set here -- see sim_launch.py's GZ_SIM_RESOURCE_PATH setup. -->
+  <exec_depend>cavex_slam_nav</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
