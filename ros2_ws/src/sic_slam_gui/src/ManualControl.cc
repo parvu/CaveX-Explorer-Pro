@@ -13,11 +13,23 @@ ManualControl::ManualControl() : gz::gui::Plugin()
 
 ManualControl::~ManualControl() = default;
 
-void ManualControl::LoadConfig(const tinyxml2::XMLElement *)
+void ManualControl::LoadConfig(const tinyxml2::XMLElement * _pluginElem)
 {
   if (this->title.empty()) {
     this->title = "Manual control";
   }
+  if (_pluginElem) {
+    if (auto elem = _pluginElem->FirstChildElement("mode")) {
+      if (elem->GetText()) {
+        this->mode = elem->GetText();
+      }
+    }
+  }
+}
+
+QString ManualControl::Mode() const
+{
+  return this->mode;
 }
 
 void ManualControl::SendCommand(const QString & _cmd)

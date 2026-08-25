@@ -108,6 +108,16 @@
            bottom-left/bottom-right. -->
       <plugin filename="InfoLabel" name="Current speed">
         <gz-gui>
+          <!-- Real bug found and fixed: without an explicit <title> here,
+               this plugin's registered title fell back to InfoLabel's own
+               generic default ("Info"), so Turbidity's own
+               `anchors target="Current speed"` below could never resolve
+               to anything -- title strings are what gz-gui's anchor
+               system actually matches against (confirmed by "World
+               control"/"World stats" anchors working -- both those
+               built-in plugins declare real <title> elements -- while
+               this one, silently missing its own, didn't). -->
+          <title>Current speed</title>
           <property type="bool" key="showTitleBar">false</property>
           <property type="bool" key="resizable">false</property>
           <property type="double" key="z">1</property>
@@ -134,14 +144,16 @@
         </gz-gui>
         <topic>/sic_slam/turbidity_label</topic>
       </plugin>
-      <!-- Manual drive: D-pad (left/top/right/down + center stop) for XY,
-           a separate up/down pair for depth, and a Manual toggle -- real
-           request. Publishes to /sic_slam/manual_cmd; only actually moves
-           the vehicle while manual_control_node.py (sic_slam/scripts,
-           run separately -- same standalone-script convention as
-           ate_circle_demo.py/corridor_walk_demo.py, not auto-launched)
-           is running AND the Manual toggle is on. Top-left: the only free
-           corner (bottom two are the InfoLabels + World control/stats). -->
+      <!-- Manual drive, two instances of the same ManualControl plugin
+           class (see <mode> below and ManualControl.qml) -- real request.
+           Publishes to /sic_slam/manual_cmd; only actually moves the
+           vehicle while manual_control_node.py (sic_slam/scripts, run
+           separately -- same standalone-script convention as
+           ate_circle_demo.py/corridor_walk_demo.py, not auto-launched) is
+           running AND the Manual toggle is on. -->
+      <!-- D-pad (left/fwd/right/rev + center stop) for XY -- top-left,
+           the only free corner (bottom two are the InfoLabels + World
+           control/stats). -->
       <plugin filename="ManualControl" name="Manual control">
         <gz-gui>
           <property type="bool" key="showTitleBar">false</property>
@@ -153,6 +165,23 @@
             <line own="top" target="top"/>
           </anchors>
         </gz-gui>
+        <mode>dpad</mode>
+      </plugin>
+      <!-- Depth (up/down) + the Manual toggle -- moved to top-right, per
+           real request (previously part of the same top-left panel as
+           the D-pad above). -->
+      <plugin filename="ManualControl" name="Manual depth control">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="right" target="right"/>
+            <line own="top" target="top"/>
+          </anchors>
+        </gz-gui>
+        <mode>depth</mode>
       </plugin>
     </gui>
     <physics name="4ms" type="ode">
