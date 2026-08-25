@@ -29,6 +29,11 @@ def generate_launch_description():
         'training_data_path', default_value='sic_slam_training_data.csv')
     enable_current_factor_arg = DeclareLaunchArgument(
         'enable_current_factor', default_value='true')
+    enable_perception_arg = DeclareLaunchArgument(
+        'enable_perception', default_value='true',
+        description='false = no perception bridge at all (not just untrained) -- '
+                    'graph backend gets zero landmark corrections, pure IMU+CurrentFactor '
+                    'dead-reckoning, for a true no-CNN baseline')
 
     pkg_share = get_package_share_directory('sic_slam')
     # bluerov2_sim's model.sdf lives here (an ArduPilot-plugin-free copy of
@@ -113,6 +118,7 @@ def generate_launch_description():
             'checkpoint_path': checkpoint_path,
             'num_samples': ParameterValue(LaunchConfiguration('beam_count'), value_type=int),
         }],
+        condition=IfCondition(LaunchConfiguration('enable_perception')),
     )
 
     training_data_logger = Node(
@@ -150,6 +156,7 @@ def generate_launch_description():
         log_training_data_arg,
         training_data_path_arg,
         enable_current_factor_arg,
+        enable_perception_arg,
         gz_resource_path,
         gz_sim,
         spawn_bluerov2,
