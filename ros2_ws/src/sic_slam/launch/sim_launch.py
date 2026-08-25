@@ -1,5 +1,5 @@
 import os
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.conditions import IfCondition
@@ -79,6 +79,12 @@ def generate_launch_description():
         os.path.join(pkg_share, 'models') + ':' +
         os.path.join(cavex_vehicle_share, 'models') + ':' +
         os.path.join(cavex_slam_nav_share, 'models'))
+    # InfoLabel.so (current-speed/turbidity corner readouts) -- see
+    # sic_slam_gui, a separate ament_cmake package since sic_slam itself
+    # is ament_python and can't also compile a Qt/gz-gui C++ plugin.
+    gz_gui_plugin_path = SetEnvironmentVariable(
+        'GZ_GUI_PLUGIN_PATH',
+        os.path.join(get_package_prefix('sic_slam_gui'), 'lib', 'sic_slam_gui'))
 
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -176,6 +182,23 @@ def generate_launch_description():
         output='screen',
     )
 
+    # GUI corner readouts (current speed, turbidity) + current-vector-field
+    # markers -- see sim_info_publisher.py. Only sic_slam_cave_water.world
+    # has the matching TopicEcho/marker GUI plugins, but this is harmless
+    # to always launch (small idle publisher against the tank world).
+    sim_info_publisher = Node(
+        package='sic_slam',
+        executable='sim_info_publisher.py',
+        name='sim_info_publisher',
+        output='screen',
+        parameters=[{
+            'current_speed_mps':
+                ParameterValue(LaunchConfiguration('current_vx'), value_type=float),
+            'turbidity_absorption_db_per_m':
+                ParameterValue(LaunchConfiguration('absorption_db_per_m'), value_type=float),
+        }],
+    )
+
     return LaunchDescription([
         headless_arg,
         current_vx_arg,
@@ -191,6 +214,7 @@ def generate_launch_description():
         spawn_y_arg,
         spawn_z_arg,
         gz_resource_path,
+        gz_gui_plugin_path,
         gz_sim,
         spawn_bluerov2,
         gz_bridge,
@@ -201,4 +225,5 @@ def generate_launch_description():
         graph_backend,
         flight_logger,
         training_data_logger,
+        sim_info_publisher,
     ])

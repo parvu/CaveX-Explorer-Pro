@@ -1,6 +1,138 @@
 <?xml version="1.0" ?>
 <sdf version="1.9">
   <world name="sic_slam_cave_water">
+    <!-- Pared-down GUI plugin set, ported verbatim from cavex_world.world
+         (main branch) -- see that file's own comment for why: the gz-sim
+         default GUI config crowds the window with floating toolbars
+         (Shapes, Lights, TransformControl, EntityTree, etc.) nobody here
+         uses. Same 6 plugins kept: MinimalScene (3D view, with a
+         camera_pose aimed at this world's own spawn point instead of
+         main's), GzSceneManager (required, syncs entities into the render
+         scene), InteractiveViewControl (mouse camera control),
+         CameraTracking (needed for /gui/follow), WorldControl (play/
+         pause), WorldStats (sim-time readout). TopicEcho x2 added on top,
+         anchored to the two remaining free corners, showing live current
+         speed and static turbidity -- see sim_info_publisher.py (real
+         request: readouts, not just the trimmed toolbar set). -->
+    <gui fullscreen="false">
+      <plugin filename="MinimalScene" name="3D View">
+        <gz-gui>
+          <title>3D View</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="string" key="state">docked</property>
+        </gz-gui>
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <ambient_light>0.4 0.4 0.4</ambient_light>
+        <background_color>0.8 0.8 0.8</background_color>
+        <!-- Looking at the water-center spawn (25, 0, 6.9) from a raised,
+             offset vantage point so the vehicle and the flooded chamber
+             around it are both in frame at t=0. -->
+        <camera_pose>10 -14 15 0 0.45 0.9</camera_pose>
+      </plugin>
+      <plugin filename="GzSceneManager" name="Scene Manager">
+        <gz-gui>
+          <property key="resizable" type="bool">false</property>
+          <property key="width" type="double">5</property>
+          <property key="height" type="double">5</property>
+          <property key="state" type="string">floating</property>
+          <property key="showTitleBar" type="bool">false</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="InteractiveViewControl" name="Interactive view control">
+        <gz-gui>
+          <property key="resizable" type="bool">false</property>
+          <property key="width" type="double">5</property>
+          <property key="height" type="double">5</property>
+          <property key="state" type="string">floating</property>
+          <property key="showTitleBar" type="bool">false</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="CameraTracking" name="Camera Tracking">
+        <gz-gui>
+          <property key="resizable" type="bool">false</property>
+          <property key="width" type="double">5</property>
+          <property key="height" type="double">5</property>
+          <property key="state" type="string">floating</property>
+          <property key="showTitleBar" type="bool">false</property>
+        </gz-gui>
+      </plugin>
+      <plugin filename="WorldControl" name="World control">
+        <gz-gui>
+          <title>World control</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">72</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="left" target="left"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+        <play_pause>true</play_pause>
+        <step>true</step>
+        <start_paused>false</start_paused>
+        <use_event>true</use_event>
+      </plugin>
+      <plugin filename="WorldStats" name="World stats">
+        <gz-gui>
+          <title>World stats</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="height">110</property>
+          <property type="double" key="width">290</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="right" target="right"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+        <sim_time>true</sim_time>
+        <real_time>true</real_time>
+        <real_time_factor>true</real_time_factor>
+        <iterations>true</iterations>
+      </plugin>
+      <!-- Current speed and turbidity, bottom-left/bottom-right -- small
+           transparent constant-readout rectangles (real request: not
+           TopicEcho's scrollable debug console, which has no transparency/
+           font-size/color controls -- see sic_slam_gui/src/InfoLabel.{hh,cc,qml},
+           a purpose-built minimal gz-gui plugin). Both values are static
+           launch parameters for the whole run (sim_info_publisher.py). -->
+      <!-- Anchored to World control's/World stats' own top edge (not
+           straight to "3D View" bottom) -- both those panels already sit
+           flush in the bottom corners, so anchoring InfoLabel to the same
+           corner would stack directly on top of them. Chaining off their
+           edges instead stacks these just above, still reading as
+           bottom-left/bottom-right. -->
+      <plugin filename="InfoLabel" name="Current speed">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="World control">
+            <line own="left" target="left"/>
+            <line own="bottom" target="top"/>
+          </anchors>
+        </gz-gui>
+        <topic>/sic_slam/current_speed_label</topic>
+      </plugin>
+      <plugin filename="InfoLabel" name="Turbidity">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="World stats">
+            <line own="right" target="right"/>
+            <line own="bottom" target="top"/>
+          </anchors>
+        </gz-gui>
+        <topic>/sic_slam/turbidity_label</topic>
+      </plugin>
+    </gui>
     <physics name="4ms" type="ode">
       <max_step_size>0.004</max_step_size>
       <real_time_factor>1.0</real_time_factor>
@@ -133,7 +265,10 @@
       <link name="surface">
         <visual name="water_visual">
           <geometry><plane><size>20 37</size></plane></geometry>
-          <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
+          <!-- Alpha lowered 0.6 -> 0.25 (real request): more transparent,
+               so the cave floor/vehicle stay visible through the surface
+               from above instead of the water plane reading as opaque. -->
+          <material><diffuse>0.1 0.3 0.6 0.25</diffuse><ambient>0.1 0.3 0.6 0.25</ambient></material>
         </visual>
       </link>
     </model>

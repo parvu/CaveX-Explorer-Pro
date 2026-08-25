@@ -14,6 +14,23 @@ directly from cavex_slam_nav.ate_metrics, not duplicated) -- see that
 script's own docstring for why a baseline number here isn't a tracking-
 accuracy claim, just what training/CurrentFactor should be measured
 against.
+
+Yaw control (real request, 2026-08-25: "moving sideways" during a live GUI
+demo). cavex_slam_nav's ate_thrust_excitation.py already tried this exact
+fix and found it corrupts /sic_slam/odometry into incoherent noise on
+main branch, at both full gain (KYAW=1.5) and a 10x-reduced gain (0.15) --
+real, live-tested, because active yaw jitter breaks that system's ICP
+scan-to-scan registration. sic_slam's own correction mechanism is a CNN
+(AcousticUUVController), not ICP, so the specific failure mode doesn't
+directly transfer, but the CNN was only ever trained on straight-line
+runs -- an actively-yawing trajectory is out-of-distribution for it, a
+different real risk of the same kind. KYAW/MAX_TORQUE below start at
+main's own 10x-reduced, still-corrupting gain as a conservative ceiling,
+enabled here for this visual demo; ENABLE_YAW_CONTROL=False reproduces
+the old torque-free behavior used for actual ATE measurement runs (this
+script also produces those numbers -- see history_perception.md) --
+flip it back to False before trusting any ATE stats collected while it's
+on, same caveat main branch gives its own version.
 """
 import math
 import sys
@@ -43,6 +60,11 @@ K, KZ = 90.0, 20.0
 MAX_FORCE = 113.0
 CONTROL_PERIOD_S = 0.1
 DURATION_S = float(sys.argv[1]) if len(sys.argv) > 1 else 80.0
+
+ENABLE_YAW_CONTROL = True
+KYAW = 0.15
+MAX_TORQUE = 0.3
+TORQUE_ARM = 0.232  # matches ate_thrust_excitation.py / dynamics_model.cpp
 
 KD_GEOM = math.sqrt(2.0) / 2.0
 
@@ -86,14 +108,24 @@ def world_to_body(R, fx, fy, fz):
     )
 
 
-def allocate_thrust(fx_body, fy_body, fz_body):
+def allocate_thrust(fx_body, fy_body, fz_body, torque_z=0.0):
     t1 = -0.5 * KD_GEOM * (fx_body + fy_body)
     t2 = 0.5 * KD_GEOM * (fy_body - fx_body)
     t3 = 0.5 * KD_GEOM * (fx_body - fy_body)
     t4 = 0.5 * KD_GEOM * (fx_body + fy_body)
     t5 = -fz_body / 2.0
     t6 = -fz_body / 2.0
+    k = torque_z / (4.0 * KD_GEOM * TORQUE_ARM)
+    t1, t2, t3, t4 = t1 - k, t2 + k, t3 + k, t4 - k
     return [t1, t2, t3, t4, t5, t6]
+
+
+def yaw_from_quat(x, y, z, w):
+    return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
+def wrap_angle(a):
+    return (a + math.pi) % (2 * math.pi) - math.pi
 
 
 def main():
@@ -118,6 +150,7 @@ def main():
         sys.exit(1)
 
     gt_samples, est_samples = [], []
+    prev_xy = None
     t0 = time.time()
     while time.time() - t0 < DURATION_S:
         t = time.time() - t0
@@ -141,9 +174,21 @@ def main():
             scale = MAX_FORCE / mag
             fx, fy, fz = fx * scale, fy * scale, fz * scale
 
+        torque_z = 0.0
+        if ENABLE_YAW_CONTROL:
+            current_yaw = yaw_from_quat(*quat)
+            if prev_xy is not None:
+                dx, dy = px - prev_xy[0], py - prev_xy[1]
+                desired_yaw = math.atan2(dy, dx) if math.hypot(dx, dy) > 0.02 else current_yaw
+            else:
+                desired_yaw = current_yaw
+            prev_xy = (px, py)
+            torque_z = max(-MAX_TORQUE, min(MAX_TORQUE,
+                            KYAW * wrap_angle(desired_yaw - current_yaw)))
+
         R = quat_to_rot_matrix(*quat)
         fx_b, fy_b, fz_b = world_to_body(R, fx, fy, fz)
-        thrusts = allocate_thrust(fx_b, fy_b, fz_b)
+        thrusts = allocate_thrust(fx_b, fy_b, fz_b, torque_z)
 
         for pub, val in zip(pubs, thrusts):
             msg = Double()

@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sic_slam_gui</name>
+  <version>0.1.0</version>
+  <description>InfoLabel: a minimal gz-gui plugin showing one live gz-transport
+    StringMsg value in a small, transparent, corner-anchored rectangle --
+    built because no shipped gz-gui8 plugin does a plain corner readout
+    (TopicEcho is a scrollable debug console, not a label; confirmed by
+    checking the actual installed plugin set, not guessed). Used by
+    sic_slam_cave_water.world for the current-speed/turbidity overlays.</description>
+  <maintainer email="parvu@example.org">Parvu</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

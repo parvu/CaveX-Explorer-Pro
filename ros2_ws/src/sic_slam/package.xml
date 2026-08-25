@@ -10,6 +10,7 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-gtsam</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
@@ -26,6 +27,10 @@
        mesh (model://cave_world) instead of duplicating the ~17MB mesh+
        texture set here -- see sim_launch.py's GZ_SIM_RESOURCE_PATH setup. -->
   <exec_depend>cavex_slam_nav</exec_depend>
+  <!-- InfoLabel.so (current-speed/turbidity corner readouts, see
+       worlds/sic_slam_cave_water.world's <gui> section) -- separate
+       ament_cmake package since sic_slam is ament_python. -->
+  <exec_depend>sic_slam_gui</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

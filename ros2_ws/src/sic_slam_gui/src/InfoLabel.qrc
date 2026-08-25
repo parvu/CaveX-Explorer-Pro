@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/InfoLabel">
+    <file alias="InfoLabel.qml">InfoLabel.qml</file>
+  </qresource>
+</RCC>
