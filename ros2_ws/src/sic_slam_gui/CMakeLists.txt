@@ -32,9 +32,25 @@ target_link_libraries(InfoLabel PRIVATE
   Qt5::QuickControls2
 )
 
+qt5_add_resources(MANUALCONTROL_RESOURCES src/ManualControl.qrc)
+
+add_library(ManualControl SHARED
+  src/ManualControl.cc
+  src/ManualControl.hh
+  ${MANUALCONTROL_RESOURCES}
+)
+target_link_libraries(ManualControl PRIVATE
+  gz-gui8::gz-gui8
+  gz-transport13::gz-transport13
+  gz-msgs10::gz-msgs10
+  Qt5::Core
+  Qt5::Quick
+  Qt5::QuickControls2
+)
+
 # Installed flat into lib/sic_slam_gui, added to GZ_GUI_PLUGIN_PATH by
 # sic_slam's sim_launch.py (the actual consumer -- this package only
 # builds the plugin, sic_slam wires it into a world's <gui> section).
-install(TARGETS InfoLabel DESTINATION lib/${PROJECT_NAME})
+install(TARGETS InfoLabel ManualControl DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

@@ -119,18 +119,40 @@
         </gz-gui>
         <topic>/sic_slam/current_speed_label</topic>
       </plugin>
+      <!-- Stacked directly below the "Current speed" InfoLabel above, per
+           real request, rather than in its own bottom-right corner. -->
       <plugin filename="InfoLabel" name="Turbidity">
         <gz-gui>
           <property type="bool" key="showTitleBar">false</property>
           <property type="bool" key="resizable">false</property>
           <property type="double" key="z">1</property>
           <property type="string" key="state">floating</property>
-          <anchors target="World stats">
-            <line own="right" target="right"/>
-            <line own="bottom" target="top"/>
+          <anchors target="Current speed">
+            <line own="left" target="left"/>
+            <line own="top" target="bottom"/>
           </anchors>
         </gz-gui>
         <topic>/sic_slam/turbidity_label</topic>
+      </plugin>
+      <!-- Manual drive: D-pad (left/top/right/down + center stop) for XY,
+           a separate up/down pair for depth, and a Manual toggle -- real
+           request. Publishes to /sic_slam/manual_cmd; only actually moves
+           the vehicle while manual_control_node.py (sic_slam/scripts,
+           run separately -- same standalone-script convention as
+           ate_circle_demo.py/corridor_walk_demo.py, not auto-launched)
+           is running AND the Manual toggle is on. Top-left: the only free
+           corner (bottom two are the InfoLabels + World control/stats). -->
+      <plugin filename="ManualControl" name="Manual control">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="left" target="left"/>
+            <line own="top" target="top"/>
+          </anchors>
+        </gz-gui>
       </plugin>
     </gui>
     <physics name="4ms" type="ode">
