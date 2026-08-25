@@ -66,6 +66,9 @@ class SimInfoPublisher(Node):
         self.declare_parameter('current_heading_rad', 0.0)
         self.declare_parameter('turbidity_absorption_db_per_m', 0.0)
         self.declare_parameter('own_ocean_current', False)
+        self.declare_parameter('home_x', 0.0)
+        self.declare_parameter('home_y', 0.0)
+        self.declare_parameter('home_z', 0.0)
         self.speed = self.get_parameter(
             'current_speed_mps').get_parameter_value().double_value
         self.heading = self.get_parameter(
@@ -74,6 +77,11 @@ class SimInfoPublisher(Node):
             'turbidity_absorption_db_per_m').get_parameter_value().double_value
         self.own_ocean_current = self.get_parameter(
             'own_ocean_current').get_parameter_value().bool_value
+        self.home = (
+            self.get_parameter('home_x').get_parameter_value().double_value,
+            self.get_parameter('home_y').get_parameter_value().double_value,
+            self.get_parameter('home_z').get_parameter_value().double_value,
+        )
 
         self.gz_node = GzNode()
         self.speed_label_pub = self.gz_node.advertise(
@@ -95,13 +103,15 @@ class SimInfoPublisher(Node):
         self._publish_labels()
         self._publish_markers()
         self._publish_turbidity_to_sonar()
+        self._publish_home_marker()
         self.get_logger().info(
             f'sim_info_publisher ready: current_speed_mps={self.speed} '
             f'(own_ocean_current={self.own_ocean_current}), '
             f'turbidity_absorption_db_per_m={self.turbidity}, both live-editable '
             f'via /sic_slam/current_speed_set and /sic_slam/turbidity_set, '
             f'{len(GRID_X) * len(GRID_Y) * len(GRID_Z)} current-vector markers '
-            f'across the full water volume -> /marker')
+            f'across the full water volume -> /marker, "Home" marker at '
+            f'{self.home} (the actual spawn point)')
 
     def _speed_set_cb(self, msg: StringMsg):
         try:
@@ -122,6 +132,63 @@ class SimInfoPublisher(Node):
 
     def _publish_turbidity_to_sonar(self):
         self.turbidity_ros_pub.publish(Float64(data=self.turbidity))
+
+    def _publish_home_marker(self):
+        """Marks the actual spawn point as "Home" (real request) -- a
+        small sphere right at the spawn coordinates plus floating "Home"
+        text just above it, both green/emissive for visibility against
+        the cave/water scene. Published once (static reference point, not
+        something that needs a live refresh loop like the current field)."""
+        hx, hy, hz = self.home
+
+        sphere = Marker()
+        sphere.ns = 'home'
+        sphere.id = 1
+        sphere.action = Marker.ADD_MODIFY
+        sphere.type = Marker.SPHERE
+        sphere.visibility = Marker.GUI
+        sphere.pose.position.x = hx
+        sphere.pose.position.y = hy
+        sphere.pose.position.z = hz
+        sphere.scale.x = sphere.scale.y = sphere.scale.z = 0.4
+        sphere.material.ambient.r = 0.1
+        sphere.material.ambient.g = 1.0
+        sphere.material.ambient.b = 0.1
+        sphere.material.ambient.a = 1.0
+        sphere.material.diffuse.r = 0.1
+        sphere.material.diffuse.g = 1.0
+        sphere.material.diffuse.b = 0.1
+        sphere.material.diffuse.a = 1.0
+        sphere.material.emissive.r = 0.0
+        sphere.material.emissive.g = 0.5
+        sphere.material.emissive.b = 0.0
+        sphere.material.emissive.a = 1.0
+        self.marker_pub.publish(sphere)
+
+        label = Marker()
+        label.ns = 'home'
+        label.id = 2
+        label.action = Marker.ADD_MODIFY
+        label.type = Marker.TEXT
+        label.visibility = Marker.GUI
+        label.text = 'Home'
+        label.pose.position.x = hx
+        label.pose.position.y = hy
+        label.pose.position.z = hz + 0.8
+        label.scale.x = label.scale.y = label.scale.z = 0.8
+        label.material.ambient.r = 0.1
+        label.material.ambient.g = 1.0
+        label.material.ambient.b = 0.1
+        label.material.ambient.a = 1.0
+        label.material.diffuse.r = 0.1
+        label.material.diffuse.g = 1.0
+        label.material.diffuse.b = 0.1
+        label.material.diffuse.a = 1.0
+        label.material.emissive.r = 0.0
+        label.material.emissive.g = 0.5
+        label.material.emissive.b = 0.0
+        label.material.emissive.a = 1.0
+        self.marker_pub.publish(label)
 
     def _publish_ocean_current(self):
         vx = self.speed * math.cos(self.heading)

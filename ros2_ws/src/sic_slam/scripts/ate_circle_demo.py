@@ -53,7 +53,11 @@ from cavex_slam_nav.ate_metrics import compute_ate
 # cavex_world.world). TARGET_Z=6.9 is mid-depth: 1m below the water
 # surface (z=7.9) and 1m above the real-mesh-derived floor (z=5.9).
 CENTER_X, CENTER_Y, TARGET_Z = 25.0, 0.0, 6.9
-RADIUS = 6.0
+# RADIUS is CLI-overridable (2nd arg) -- see the module docstring's own
+# margin analysis for RADIUS=6.0 (the default); a smaller radius only
+# widens that margin further, so any RADIUS <= 6.0 stays safely clear of
+# every wall without needing to redo that math.
+RADIUS = float(sys.argv[2]) if len(sys.argv) > 2 else 6.0
 SPEED_MPS = 0.25
 OMEGA = SPEED_MPS / RADIUS
 K, KZ = 90.0, 20.0

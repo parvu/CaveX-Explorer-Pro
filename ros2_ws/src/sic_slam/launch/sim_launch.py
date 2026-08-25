@@ -210,6 +210,9 @@ def generate_launch_description():
                     PythonExpression(["'true' if '", LaunchConfiguration('world'),
                                        "' == 'sic_slam_cave_water' else 'false'"]),
                     value_type=bool),
+            'home_x': ParameterValue(LaunchConfiguration('spawn_x'), value_type=float),
+            'home_y': ParameterValue(LaunchConfiguration('spawn_y'), value_type=float),
+            'home_z': ParameterValue(LaunchConfiguration('spawn_z'), value_type=float),
         }],
     )
 
