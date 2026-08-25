@@ -12,6 +12,7 @@ find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 # Host-agnostic acoustic physics. Deliberately has NO ROS and NO Gazebo
 # dependencies so it can be unit-tested off-simulator and relocated into a
@@ -28,7 +29,7 @@ install(DIRECTORY include/ DESTINATION include)
 
 add_executable(sonar_node src/sonar_node.cpp)
 target_link_libraries(sonar_node sonar_acoustics)
-ament_target_dependencies(sonar_node rclcpp sensor_msgs)
+ament_target_dependencies(sonar_node rclcpp sensor_msgs geometry_msgs std_msgs)
 
 install(TARGETS sonar_node DESTINATION lib/${PROJECT_NAME})
 

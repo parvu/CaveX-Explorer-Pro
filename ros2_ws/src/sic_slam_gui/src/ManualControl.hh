@@ -23,7 +23,15 @@ namespace sic_slam_gui
 class ManualControl : public gz::gui::Plugin
 {
   Q_OBJECT
-  Q_PROPERTY(QString mode READ Mode CONSTANT)
+  // Not CONSTANT: two instances of this class share one compiled QML
+  // resource (":/ManualControl/ManualControl.qml"), and CONSTANT is a
+  // hint that lets the QML engine cache/inline a property's value
+  // aggressively -- real risk of that caching crossing instance
+  // boundaries and one instance's QML reading the other's (or a stale
+  // pre-LoadConfig default) mode. A real NOTIFY signal costs nothing
+  // here (mode never actually changes post-construction) and removes
+  // that whole class of risk.
+  Q_PROPERTY(QString mode READ Mode NOTIFY ModeChanged)
 
 public:
   ManualControl();
@@ -33,6 +41,9 @@ public:
 
   QString Mode() const;
   Q_INVOKABLE void SendCommand(const QString & _cmd);
+
+signals:
+  void ModeChanged();
 
 private:
   gz::transport::Node node;

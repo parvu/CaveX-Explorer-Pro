@@ -25,6 +25,7 @@ void ManualControl::LoadConfig(const tinyxml2::XMLElement * _pluginElem)
       }
     }
   }
+  this->ModeChanged();
 }
 
 QString ManualControl::Mode() const

@@ -5,15 +5,18 @@
          (main branch) -- see that file's own comment for why: the gz-sim
          default GUI config crowds the window with floating toolbars
          (Shapes, Lights, TransformControl, EntityTree, etc.) nobody here
-         uses. Same 6 plugins kept: MinimalScene (3D view, with a
-         camera_pose aimed at this world's own spawn point instead of
-         main's), GzSceneManager (required, syncs entities into the render
-         scene), InteractiveViewControl (mouse camera control),
-         CameraTracking (needed for /gui/follow), WorldControl (play/
-         pause), WorldStats (sim-time readout). TopicEcho x2 added on top,
-         anchored to the two remaining free corners, showing live current
-         speed and static turbidity -- see sim_info_publisher.py (real
-         request: readouts, not just the trimmed toolbar set). -->
+         uses. MinimalScene (3D view), GzSceneManager (required, syncs
+         entities into the render scene), InteractiveViewControl (mouse
+         zoom/rotate/pan/scroll -- unrelated to and unaffected by removing
+         WorldControl below, they're independent plugins), CameraTracking
+         (needed for /gui/follow), WorldStats (sim-time readout).
+         WorldControl (the play/pause/step buttons) removed per real
+         request -- the sim already starts unpaused (start_paused was
+         already false), so nothing needed it running by default; this
+         just means there's no in-GUI way to pause/step anymore. InfoLabel
+         x2 (current speed, turbidity, now editable input fields, not just
+         readouts) and ManualControl x2 (D-pad, depth+Manual) added on top
+         -- see sim_info_publisher.py / their own comments below. -->
     <gui fullscreen="false">
       <plugin filename="MinimalScene" name="3D View">
         <gz-gui>
@@ -25,10 +28,12 @@
         <scene>scene</scene>
         <ambient_light>0.4 0.4 0.4</ambient_light>
         <background_color>0.8 0.8 0.8</background_color>
-        <!-- Looking at the water-center spawn (25, 0, 6.9) from a raised,
-             offset vantage point so the vehicle and the flooded chamber
-             around it are both in frame at t=0. -->
-        <camera_pose>10 -14 15 0 0.45 0.9</camera_pose>
+        <!-- Looking straight down at the water-center spawn (25, 0, 6.9),
+             real request -- position directly above at z=20 (well above
+             the water surface, z=7.9), pitch=pi/2 (nose-down) so the
+             camera's forward axis points along -Z with no lateral offset,
+             yaw=0 (arbitrary for a pure top-down view). -->
+        <camera_pose>25 0 20 0 1.5708 0</camera_pose>
       </plugin>
       <plugin filename="GzSceneManager" name="Scene Manager">
         <gz-gui>
@@ -57,24 +62,6 @@
           <property key="showTitleBar" type="bool">false</property>
         </gz-gui>
       </plugin>
-      <plugin filename="WorldControl" name="World control">
-        <gz-gui>
-          <title>World control</title>
-          <property type="bool" key="showTitleBar">false</property>
-          <property type="bool" key="resizable">false</property>
-          <property type="double" key="height">72</property>
-          <property type="double" key="z">1</property>
-          <property type="string" key="state">floating</property>
-          <anchors target="3D View">
-            <line own="left" target="left"/>
-            <line own="bottom" target="bottom"/>
-          </anchors>
-        </gz-gui>
-        <play_pause>true</play_pause>
-        <step>true</step>
-        <start_paused>false</start_paused>
-        <use_event>true</use_event>
-      </plugin>
       <plugin filename="WorldStats" name="World stats">
         <gz-gui>
           <title>World stats</title>
@@ -94,43 +81,39 @@
         <real_time_factor>true</real_time_factor>
         <iterations>true</iterations>
       </plugin>
-      <!-- Current speed and turbidity, bottom-left/bottom-right -- small
-           transparent constant-readout rectangles (real request: not
+      <!-- Current speed and turbidity, same line, bottom-left -- small
+           transparent EDITABLE input fields (real request: not
            TopicEcho's scrollable debug console, which has no transparency/
-           font-size/color controls -- see sic_slam_gui/src/InfoLabel.{hh,cc,qml},
-           a purpose-built minimal gz-gui plugin). Both values are static
-           launch parameters for the whole run (sim_info_publisher.py). -->
-      <!-- Anchored to World control's/World stats' own top edge (not
-           straight to "3D View" bottom) -- both those panels already sit
-           flush in the bottom corners, so anchoring InfoLabel to the same
-           corner would stack directly on top of them. Chaining off their
-           edges instead stacks these just above, still reading as
-           bottom-left/bottom-right. -->
+           font-size/color/input controls -- see
+           sic_slam_gui/src/InfoLabel.{hh,cc,qml}, a purpose-built minimal
+           gz-gui plugin). Editing a field and pressing Enter publishes to
+           <control_topic>, live, during the run -- see
+           sim_info_publisher.py for what actually consumes each one. -->
       <plugin filename="InfoLabel" name="Current speed">
         <gz-gui>
-          <!-- Real bug found and fixed: without an explicit <title> here,
-               this plugin's registered title fell back to InfoLabel's own
-               generic default ("Info"), so Turbidity's own
-               `anchors target="Current speed"` below could never resolve
-               to anything -- title strings are what gz-gui's anchor
-               system actually matches against (confirmed by "World
-               control"/"World stats" anchors working -- both those
-               built-in plugins declare real <title> elements -- while
-               this one, silently missing its own, didn't). -->
+          <!-- Real bug found and fixed previously: without an explicit
+               <title> here, this plugin's registered title fell back to
+               InfoLabel's own generic default ("Info"), so Turbidity's
+               own `anchors target="Current speed"` below could never
+               resolve to anything -- title strings are what gz-gui's
+               anchor system actually matches against. -->
           <title>Current speed</title>
           <property type="bool" key="showTitleBar">false</property>
           <property type="bool" key="resizable">false</property>
           <property type="double" key="z">1</property>
           <property type="string" key="state">floating</property>
-          <anchors target="World control">
+          <anchors target="3D View">
             <line own="left" target="left"/>
-            <line own="bottom" target="top"/>
+            <line own="bottom" target="bottom"/>
           </anchors>
         </gz-gui>
         <topic>/sic_slam/current_speed_label</topic>
+        <control_topic>/sic_slam/current_speed_set</control_topic>
+        <label>Current speed</label>
+        <unit>m/s</unit>
       </plugin>
-      <!-- Stacked directly below the "Current speed" InfoLabel above, per
-           real request, rather than in its own bottom-right corner. -->
+      <!-- Same line as "Current speed" above (real request), not stacked
+           below it -- anchored to its right edge. -->
       <plugin filename="InfoLabel" name="Turbidity">
         <gz-gui>
           <property type="bool" key="showTitleBar">false</property>
@@ -138,11 +121,14 @@
           <property type="double" key="z">1</property>
           <property type="string" key="state">floating</property>
           <anchors target="Current speed">
-            <line own="left" target="left"/>
-            <line own="top" target="bottom"/>
+            <line own="left" target="right"/>
+            <line own="bottom" target="bottom"/>
           </anchors>
         </gz-gui>
         <topic>/sic_slam/turbidity_label</topic>
+        <control_topic>/sic_slam/turbidity_set</control_topic>
+        <label>Turbidity</label>
+        <unit>dB/m</unit>
       </plugin>
       <!-- Manual drive, two instances of the same ManualControl plugin
            class (see <mode> below and ManualControl.qml) -- real request.

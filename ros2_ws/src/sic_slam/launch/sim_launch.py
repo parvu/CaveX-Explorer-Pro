@@ -126,6 +126,13 @@ def generate_launch_description():
         }],
     )
 
+    # Not launched for sic_slam_cave_water: that world's current speed is
+    # live-editable from the GUI (see sim_info_publisher.py's own
+    # /ocean_current publishing below), and current_field_node.py only
+    # ever reads its `vx` parameter once at startup (cavex_sonar, reused
+    # unmodified -- no live-reconfigure support), so it can't respond to
+    # an in-sim edit anyway; running both would just fight over the same
+    # topic. sic_slam_tank keeps this exactly as before.
     current_field = Node(
         package='cavex_sonar',
         executable='current_field_node.py',
@@ -135,6 +142,8 @@ def generate_launch_description():
             'profile': 'constant',
             'vx': ParameterValue(LaunchConfiguration('current_vx'), value_type=float),
         }],
+        condition=IfCondition(
+            PythonExpression(["'", LaunchConfiguration('world'), "' != 'sic_slam_cave_water'"])),
     )
 
     ping360_sim = Node(
@@ -196,6 +205,11 @@ def generate_launch_description():
                 ParameterValue(LaunchConfiguration('current_vx'), value_type=float),
             'turbidity_absorption_db_per_m':
                 ParameterValue(LaunchConfiguration('absorption_db_per_m'), value_type=float),
+            'own_ocean_current':
+                ParameterValue(
+                    PythonExpression(["'true' if '", LaunchConfiguration('world'),
+                                       "' == 'sic_slam_cave_water' else 'false'"]),
+                    value_type=bool),
         }],
     )
 

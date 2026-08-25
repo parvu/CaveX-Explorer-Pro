@@ -23,6 +23,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <std_msgs/msg/float64.hpp>
 
 #include "cavex_sonar/beam_former.hpp"
 
@@ -81,6 +82,18 @@ public:
       [this](geometry_msgs::msg::Vector3::SharedPtr msg) {
         current_vx_ = msg->x;
         current_vy_ = msg->y;
+      });
+    // Live turbidity control (real request, 2026-08-25: "change them during
+    // simulation" -- absorption_db_per_m was declare_parameter-only, read
+    // once at startup like every other param here, so a `ros2 param set`
+    // would update the stored parameter but never reach params_, silently
+    // no-op'ing at runtime). Same live-update mechanism as current_sub_
+    // just above, not a new pattern -- this file already had exactly this
+    // precedent for current_vx_/current_vy_.
+    turbidity_sub_ = this->create_subscription<std_msgs::msg::Float64>(
+      "/sic_slam/turbidity_absorption_db_per_m", 10,
+      [this](std_msgs::msg::Float64::SharedPtr msg) {
+        params_.absorption_db_per_m = msg->data;
       });
     start_time_ = this->now();
 
@@ -184,6 +197,7 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr current_sub_;
   double current_vx_ = 0.0;
   double current_vy_ = 0.0;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr turbidity_sub_;
   rclcpp::Time start_time_;
   double scan_duration_s_ = 1.0;
 };
