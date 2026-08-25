@@ -100,10 +100,23 @@
           <title>Current speed</title>
           <property type="bool" key="showTitleBar">false</property>
           <property type="bool" key="resizable">false</property>
+          <!-- Explicit width/height, matching WorldStats'/WorldControl's
+               own convention (both of which always worked) -- real
+               hypothesis fix for the overlap/invisibility reports: this
+               plugin never declared a card size before, relying purely on
+               the inner QML Rectangle's own intrinsic sizing, but
+               anchor-based floating-panel placement is done using the
+               CARD's own stored width/height, not by measuring the QML
+               content at runtime -- an unset size very plausibly explains
+               both the wrong positioning and (for ManualControl below)
+               two same-defaulted-size cards landing on top of each other. -->
+          <property type="double" key="width">170</property>
+          <property type="double" key="height">34</property>
           <property type="double" key="z">1</property>
           <property type="string" key="state">floating</property>
+          <!-- Bottom-CENTER (real request), not bottom-left. -->
           <anchors target="3D View">
-            <line own="left" target="left"/>
+            <line own="horizontalCenter" target="horizontalCenter"/>
             <line own="bottom" target="bottom"/>
           </anchors>
         </gz-gui>
@@ -118,6 +131,8 @@
         <gz-gui>
           <property type="bool" key="showTitleBar">false</property>
           <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">160</property>
+          <property type="double" key="height">34</property>
           <property type="double" key="z">1</property>
           <property type="string" key="state">floating</property>
           <anchors target="Current speed">
@@ -144,6 +159,11 @@
         <gz-gui>
           <property type="bool" key="showTitleBar">false</property>
           <property type="bool" key="resizable">false</property>
+          <!-- Explicit size -- see Current speed's own comment above for
+               why (real hypothesis fix for the two ManualControl
+               instances rendering "supraposed" on top of each other). -->
+          <property type="double" key="width">150</property>
+          <property type="double" key="height">96</property>
           <property type="double" key="z">1</property>
           <property type="string" key="state">floating</property>
           <anchors target="3D View">
@@ -160,6 +180,8 @@
         <gz-gui>
           <property type="bool" key="showTitleBar">false</property>
           <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">100</property>
+          <property type="double" key="height">96</property>
           <property type="double" key="z">1</property>
           <property type="string" key="state">floating</property>
           <anchors target="3D View">
