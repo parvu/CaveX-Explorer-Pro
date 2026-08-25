@@ -213,6 +213,19 @@ def generate_launch_description():
         }],
     )
 
+    # Drives real thrust from ManualControl.qml's button presses (real fix,
+    # 2026-08-25: this used to be a standalone scripts/ file the operator
+    # had to remember to start separately -- clicking the GUI's buttons did
+    # nothing until it was running). Publishes NOTHING while the Manual
+    # toggle is off (see manual_control_node.py's own comment), so this is
+    # safe to always launch alongside any autonomous script.
+    manual_control_node = Node(
+        package='sic_slam',
+        executable='manual_control_node.py',
+        name='manual_control_node',
+        output='screen',
+    )
+
     return LaunchDescription([
         headless_arg,
         current_vx_arg,
@@ -240,4 +253,5 @@ def generate_launch_description():
         flight_logger,
         training_data_logger,
         sim_info_publisher,
+        manual_control_node,
     ])

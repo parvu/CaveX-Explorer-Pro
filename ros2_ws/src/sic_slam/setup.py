@@ -46,6 +46,7 @@ setup(
             'ping360_sim_node.py = sic_slam.ping360_sim_node:main',
             'training_data_logger.py = sic_slam.training_data_logger:main',
             'sim_info_publisher.py = sic_slam.sim_info_publisher:main',
+            'manual_control_node.py = sic_slam.manual_control_node:main',
         ],
     },
 )
