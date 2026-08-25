@@ -65,7 +65,7 @@ MAX_FORCE = 113.0
 CONTROL_PERIOD_S = 0.1
 DURATION_S = float(sys.argv[1]) if len(sys.argv) > 1 else 80.0
 
-ENABLE_YAW_CONTROL = True
+ENABLE_YAW_CONTROL = False
 KYAW = 0.15
 MAX_TORQUE = 0.3
 TORQUE_ARM = 0.232  # matches ate_thrust_excitation.py / dynamics_model.cpp
