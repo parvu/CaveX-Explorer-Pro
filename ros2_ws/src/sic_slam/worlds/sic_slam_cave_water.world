@@ -356,39 +356,69 @@
       </link>
     </model>
 
-    <!-- ONE boat at Home (real request, corrected: previously had a
-         separate plain blueboat + a separate cave-floor tracked variant +
-         two standalone helipad/x500 props, none of it matching main's own
-         layout) -- the tracked BlueBoat variant, floating at the water
-         surface (z=7.9, Home's own x/y), tracks retracted (1.4 rad,
-         confirmed by the user; see models/blueboat_tracked_static's own
-         header for how that's baked in and why <axis><initial_position>
-         didn't work). This variant already carries its own helipad_link
-         (fixed to the hull at x=0.3, per model.sdf.tracked's real,
-         main-branch design -- "helipad, x500 not on boat as in main" was
-         a real bug in the previous layout, not a request for new
-         geometry) -- no separate helipad model needed at all.
-         <static>true</static>: same "keep it stationary" reasoning as
-         throughout this file. -->
+    <!-- Real request: a surface support boat at Home (see
+         sim_info_publisher.py's own Home marker -- same x/y, (25, 0)),
+         at the water surface (z=7.9) rather than the ROV's own home
+         depth (6.9) since a boat floats, it doesn't submerge. Reused
+         unmodified from cavex_tracked_vehicle/models/blueboat (real
+         Blue Robotics BlueBoat model, already on GZ_SIM_RESOURCE_PATH
+         via sim_launch.py -- see that file's own comment for why
+         cavex_tracked_vehicle's models dir is already on the path).
+         <static>true</static> override: the model's own SDF has real
+         revolute motor joints + thruster plugins (needs actual cmd_thrust
+         commands to move, none are ever sent here), but it's NOT
+         static by default -- "keep it stationary" (real request) means
+         freezing it outright rather than relying on zero commands plus
+         physics/gravity/buoyancy interactions never nudging it. -->
     <include>
-      <uri>model://blueboat_tracked_static</uri>
-      <name>blueboat_tracked</name>
+      <uri>model://blueboat</uri>
+      <name>blueboat</name>
       <pose>25 0 7.9 0 0 0</pose>
       <static>true</static>
     </include>
 
-    <!-- x500 on the boat's own built-in helipad -- main branch's version
-         carries it via a live DetachableJoint (stripped here along with
-         every other control-stack plugin, see blueboat_tracked_static's
-         own header); since everything here is static anyway, a plain
-         placement at the helipad_link's own known offset (0.3, 0, 0.005
-         relative to the boat's base_link, from model.sdf.tracked itself)
-         gets the same visual result without needing that plugin's
-         runtime attach mechanics. -->
+    <!-- Floating helipad + parked x500 drone, real request -- offset 5m
+         in +y from the boat/Home so the two models don't overlap. Both
+         reused unmodified: helipad copied from PX4-Autopilot's own
+         Tools/simulation/gz/models/helipad (small, 28KB, into
+         cavex_tracked_vehicle/models alongside the other vehicle models
+         already used here, rather than adding a whole new
+         GZ_SIM_RESOURCE_PATH entry into the PX4-Autopilot submodule for
+         one 3-file model); x500 was already vendored there
+         (cavex_tracked_vehicle/models/x500). Both forced static for the
+         same "keep it stationary" reason as the boat -- x500 has real
+         rotor joints/gravity by default (<static>false</static> in its
+         own SDF), helipad is already static in its own SDF (kept
+         explicit here anyway for clarity). -->
+    <include>
+      <uri>model://helipad</uri>
+      <name>helipad</name>
+      <pose>25 5 7.9 0 0 0</pose>
+      <static>true</static>
+    </include>
     <include>
       <uri>model://x500</uri>
       <name>x500</name>
-      <pose>25.3 0 7.94 0 0 0</pose>
+      <pose>25 5 7.9 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <!-- Tracked BlueBoat variant, real request ("boat tracks in retracted
+         position") -- resting on the cave floor near Home (offset 5m in
+         -y), not the water surface: unlike the regular blueboat above,
+         this variant is this project's own design specifically for
+         cave-floor locomotion (retractable track assemblies replacing
+         the props -- see models/blueboat_tracked_static/model.sdf's own
+         header, a stripped/forced-static copy of
+         models/blueboat/model.sdf.tracked with both track-retract joints
+         set to initial_position=1.4 rad, confirmed retracted per the
+         user). z=6.0: just above the real-mesh-derived floor (5.9) to
+         avoid z-fighting, matching this world's own floor/wall placement
+         convention elsewhere. -->
+    <include>
+      <uri>model://blueboat_tracked_static</uri>
+      <name>blueboat_tracked</name>
+      <pose>25 -5 6.0 0 0 0</pose>
       <static>true</static>
     </include>
   </world>
