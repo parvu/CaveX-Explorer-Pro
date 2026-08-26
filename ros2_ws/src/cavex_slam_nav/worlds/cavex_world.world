@@ -160,29 +160,12 @@
         <button2_cmd>deployed</button2_cmd>
         <topic>/cavex/track_cmd</topic>
       </plugin>
-      <!-- Same line as "Track control" above, anchored to its right
-           edge -- same convention as perception's Current speed/
-           Turbidity pair. -->
-      <plugin filename="ActionButtons" name="Rover lock control">
-        <gz-gui>
-          <property type="bool" key="showTitleBar">false</property>
-          <property type="bool" key="resizable">false</property>
-          <property type="double" key="width">170</property>
-          <property type="double" key="height">34</property>
-          <property type="double" key="z">1</property>
-          <property type="string" key="state">floating</property>
-          <anchors target="Track control">
-            <line own="left" target="right"/>
-            <line own="bottom" target="bottom"/>
-          </anchors>
-        </gz-gui>
-        <label>Rover</label>
-        <button1_label>Lock</button1_label>
-        <button1_cmd>lock</button1_cmd>
-        <button2_label>Unlock</button2_label>
-        <button2_cmd>unlock</button2_cmd>
-        <topic>/cavex/rov_lock_cmd</topic>
-      </plugin>
+      <!-- Real request, 2026-08-26: the "Rover lock control" ActionButtons
+           panel (Lock/Unlock) that used to sit here was removed -- there
+           is no longer a separate BlueROV2 entity to lock/unlock,
+           bluerov2 is now a fixed child link of this same boat model.
+           See perception branch for the full, functional, lockable
+           BlueROV2. -->
       <!-- Manual drive D-pad (left/fwd/right/rev + center stop) --
            top-left, the only free corner (bottom two are the
            ActionButtons + World control/stats). Publishes to

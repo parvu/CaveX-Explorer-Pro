@@ -22,21 +22,25 @@ the other end of both control topics:
   publishes NOTHING at all on cmd_vel, so an autonomous script keeps sole
   control of the vehicle.
 
-- /cavex/track_cmd and /cavex/rov_lock_cmd (the two ActionButtons
-  instances): single-shot commands, not held. Republished as the real
-  ROS2 messages vehicle_switch_node.py / track_retract_control.py already
-  consume (/cavex/tracks/command String, /cavex/rov_lock/attach and
-  /cavex/rov_lock/detach Empty) -- this is a manual OVERRIDE of what
-  vehicle_switch_node.py normally does automatically based on odometry;
-  running both at once is not guarded against, same as the ROV's
-  manual/autonomous overlap.
+- /cavex/track_cmd (the Track ActionButtons instance): single-shot
+  commands, not held. Republished as the real ROS2 message
+  track_retract_control.py already consumes (/cavex/tracks/command
+  String) -- this is a manual OVERRIDE of what vehicle_switch_node.py
+  normally does automatically based on odometry; running both at once
+  is not guarded against.
+
+Real request, 2026-08-26: the Rover lock/unlock ActionButtons panel
+this node used to also bridge (/cavex/rov_lock_cmd ->
+/cavex/rov_lock/attach|detach) was removed along with its GUI panel --
+bluerov2 is now a fixed child link of the boat's own model, so there is
+no longer a separate ROV entity to lock or unlock.
 """
 import threading
 import time
 
 import rclpy
 from rclpy.node import Node as RclpyNode
-from std_msgs.msg import String, Empty
+from std_msgs.msg import String
 
 from gz.transport13 import Node as GzNode
 from gz.msgs10.twist_pb2 import Twist
@@ -75,8 +79,6 @@ class RosBridge(RclpyNode):
     def __init__(self):
         super().__init__('manual_gui_bridge')
         self.track_pub = self.create_publisher(String, '/cavex/tracks/command', 10)
-        self.rov_lock_pub = self.create_publisher(Empty, '/cavex/rov_lock/attach', 10)
-        self.rov_unlock_pub = self.create_publisher(Empty, '/cavex/rov_lock/detach', 10)
 
     def track_cmd_cb(self, msg: StringMsg):
         # ActionButtons sends the exact command strings track_retract_control.py
@@ -84,12 +86,6 @@ class RosBridge(RclpyNode):
         # <button1_cmd>/<button2_cmd> config in cavex_world.world.
         if msg.data in ('deployed', 'retracted'):
             self.track_pub.publish(String(data=msg.data))
-
-    def rov_lock_cmd_cb(self, msg: StringMsg):
-        if msg.data == 'lock':
-            self.rov_lock_pub.publish(Empty())
-        elif msg.data == 'unlock':
-            self.rov_unlock_pub.publish(Empty())
 
 
 def main():
@@ -103,7 +99,6 @@ def main():
     # callbacks), so wiring these gz-transport callbacks straight to
     # ros_bridge's methods is safe without a queued-connection-style hop.
     gz_node.subscribe(StringMsg, "/cavex/track_cmd", ros_bridge.track_cmd_cb)
-    gz_node.subscribe(StringMsg, "/cavex/rov_lock_cmd", ros_bridge.rov_lock_cmd_cb)
 
     cmd_vel_pub = gz_node.advertise("/model/cavex_tracked_blueboat/cmd_vel", Twist)
 
@@ -112,8 +107,7 @@ def main():
 
     print("manual_gui_bridge ready: /cavex/manual_cmd -> "
           "/model/cavex_tracked_blueboat/cmd_vel (while Manual is on); "
-          "/cavex/track_cmd -> /cavex/tracks/command; "
-          "/cavex/rov_lock_cmd -> /cavex/rov_lock/attach|detach")
+          "/cavex/track_cmd -> /cavex/tracks/command")
 
     try:
         while rclpy.ok():

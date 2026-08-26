@@ -1377,7 +1377,13 @@
          (the cage's own support surfaces ended up embedded inside the
          hull's own solid collision, unreachable) made it settle
          unpredictably rather than reliably, not worth the added
-         complexity for now. -->
+         complexity for now.
+
+         Real request, 2026-08-26: motorized_tether_control.py and the
+         separate bluerov2 entity it computed a tether force against are
+         both gone (bluerov2 is now a fixed child link of this same
+         model -- see bluerov2_link below). This link is now purely a
+         decorative cleat/spool visual with no live consumer. -->
     <link name="tether_anchor_link">
       <pose relative_to="base_link">-0.2 0 0.05 0 0 0</pose>
       <inertial>
@@ -1395,6 +1401,88 @@
     <joint name="tether_anchor_joint" type="fixed">
       <parent>base_link</parent>
       <child>tether_anchor_link</child>
+    </joint>
+
+    <!-- Real request, 2026-08-26: "make bluerov2 static in reference with
+         blueboat not the world" -- bluerov2 used to be a separate spawned
+         model (its own now-forced-static model.sdf, see that file's own
+         header) held to the hull by a DetachableJoint + tether. A static
+         body ignores every force and joint constraint a physics engine
+         can apply, including DetachableJoint and the tether's own
+         ApplyLinkWrench -- so once static, that separate ROV entity
+         would sit frozen at its world-frame spawn pose while the boat
+         drove away from it, not "static relative to the boat" at all.
+         Real fix: fuse it into THIS model as a fixed child link instead
+         (same mechanism as tether_anchor_link/helipad_link above), so it
+         is genuinely part of the boat's own rigid body and moves with it
+         by construction, not by any force/constraint that a static body
+         could ignore. Pose is the boat's real Home-spawn-relative offset
+         to bluerov2's own former independent spawn point
+         (boat: -88.78 -31.4 6.65, rov: -88.88 -31.4 6.4755, both yaw=0,
+         see gazebo_tracked_vehicle.launch.py's git history) --
+         (-0.10, 0, -0.1745), close to and consistent with
+         tether_anchor_link's own x=-0.2 above (that link's comment
+         already noted the ROV settles near there).
+
+         This removes the separate bluerov2 spawn, the DetachableJoint
+         rov_lock/unlock mechanic, and the tether-release behavior
+         entirely -- there is no longer an independent ROV entity to
+         lock, unlock, or release. See perception branch for the full,
+         functional, independently-swimming BlueROV2. -->
+    <link name="bluerov2_link">
+      <pose relative_to="base_link">-0.10 0 -0.1745 0 0 0</pose>
+      <inertial>
+        <mass>10.05</mass>
+        <inertia><ixx>0.099</ixx><iyy>0.178</iyy><izz>0.269</izz></inertia>
+      </inertial>
+      <visual name="bluerov2_hull_visual">
+        <geometry>
+          <mesh>
+            <uri>model://bluerov2/meshes/bluerov2.dae</uri>
+            <scale>0.025 0.025 0.025</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name="bluerov2_thruster1_visual">
+        <pose>0.14 -0.092 0.0 -1.571 1.571 -0.785</pose>
+        <geometry>
+          <mesh><uri>model://bluerov2/meshes/t200_ccw_prop.dae</uri></mesh>
+        </geometry>
+      </visual>
+      <visual name="bluerov2_thruster2_visual">
+        <pose>0.14 0.092 0.0 -1.571 1.571 -2.356</pose>
+        <geometry>
+          <mesh><uri>model://bluerov2/meshes/t200_ccw_prop.dae</uri></mesh>
+        </geometry>
+      </visual>
+      <visual name="bluerov2_thruster3_visual">
+        <pose>-0.14 -0.092 0.0 1.571 1.571 0.785</pose>
+        <geometry>
+          <mesh><uri>model://bluerov2/meshes/t200_cw_prop.dae</uri></mesh>
+        </geometry>
+      </visual>
+      <visual name="bluerov2_thruster4_visual">
+        <pose>-0.14 0.092 0.0 1.571 1.571 2.356</pose>
+        <geometry>
+          <mesh><uri>model://bluerov2/meshes/t200_cw_prop.dae</uri></mesh>
+        </geometry>
+      </visual>
+      <visual name="bluerov2_thruster5_visual">
+        <pose>0.0 -0.109 0.077 -1.571 0 1.571</pose>
+        <geometry>
+          <mesh><uri>model://bluerov2/meshes/t200_ccw_prop.dae</uri></mesh>
+        </geometry>
+      </visual>
+      <visual name="bluerov2_thruster6_visual">
+        <pose>0.0 0.109 0.077 1.571 0 1.571</pose>
+        <geometry>
+          <mesh><uri>model://bluerov2/meshes/t200_cw_prop.dae</uri></mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name="bluerov2_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>bluerov2_link</child>
     </joint>
 
     <!-- Helipad, front (bow, +x) of the hull -- placed at x=0.3 (inboard of the
@@ -1443,37 +1531,6 @@
       <child_model>x500</child_model>
       <child_link>base_link</child_link>
       <detach_topic>/cavex/x500_release/detach</detach_topic>
-    </plugin>
-
-    <!-- ROV lock/unlock (real request): while in the dry cave section, the
-         BlueROV2 is now RIGIDLY LOCKED to the hull -- not just held by
-         tether tension (see the tether comment above; the tether stays
-         active in parallel, and becomes the operative restraint again
-         once unlocked, mimicking a real ROV's tether/umbilical staying
-         connected even once it's released to operate). Real mechanism:
-         the same gz-sim-detachable-joint-system plugin x500 already uses
-         above, but with a real <attach_topic> too (confirmed via
-         `strings` on the installed .so during an earlier session, same
-         verification discipline as every other plugin in this project) --
-         x500's own block never needed one because it spawns BEFORE the
-         boat, so Configure() finds it and auto-attaches; bluerov2 spawns
-         AFTER the boat (see the spawn-order comment in
-         gazebo_tracked_vehicle.launch.py), so Configure() runs with no
-         bluerov2 to find, and vehicle_switch_node.py has to explicitly
-         publish to attach_topic once bluerov2 actually exists to
-         establish the initial lock. Real release condition (per this
-         session's request): vehicle_switch_node.py only unlocks once the
-         boat has BOTH crossed the water boundary AND is genuinely afloat
-         (not just past an x threshold) -- see that node's own comment for
-         how "afloat" is determined, a real empirical finding, not
-         assumed. -->
-    <plugin filename="gz-sim-detachable-joint-system"
-            name="gz::sim::systems::DetachableJoint">
-      <parent_link>base_link</parent_link>
-      <child_model>bluerov2</child_model>
-      <child_link>base_link</child_link>
-      <attach_topic>/cavex/rov_lock/attach</attach_topic>
-      <detach_topic>/cavex/rov_lock/detach</detach_topic>
     </plugin>
 
   </model>

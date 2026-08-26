@@ -84,23 +84,7 @@
   gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
 
-# motorized_tether_control.py's real force-based tether constraint: the
-# real gz-sim-apply-link-wrench-system world plugin (cavex_world.world)
-# subscribes gz.msgs.EntityWrench on this pure gz-transport topic (confirmed
-# via `strings` on the installed .so -- same verification discipline as
-# every other topic in this file). ros_gz_interfaces/msg/EntityWrench is the
-# real, matching ROS2 bridge type (confirmed present:
-# `ros2 interface show ros_gz_interfaces/msg/EntityWrench`). Same
-# bridge-not-direct-publish pattern already used for the detach topics
-# below -- a plain rclpy node can't publish gz-transport directly without
-# a bridge entry.
-- ros_topic_name: "cavex/tether/wrench"
-  gz_topic_name: "/world/cavex_world/wrench"
-  ros_type_name: "ros_gz_interfaces/msg/EntityWrench"
-  gz_type_name: "gz.msgs.EntityWrench"
-  direction: ROS_TO_GZ
-
-# Same bridging requirement as the tether wrench topic above, for the carried
+# Same bridging requirement as the detach topic below, for the carried
 # x500's own DetachableJoint (model.sdf.tracked) -- placeholder release path
 # for future flight-control integration, not wired to any automatic trigger yet.
 - ros_topic_name: "cavex/x500_release/detach"
@@ -109,91 +93,22 @@
   gz_type_name: "gz.msgs.Empty"
   direction: ROS_TO_GZ
 
-# ROV lock/unlock (real request): model.sdf.tracked's bluerov2
-# DetachableJoint plugin's real attach_topic/detach_topic, both
-# gz.msgs.Empty (confirmed via `strings` -- OnDetachRequest's real,
-# demangled signature takes gz::msgs::Empty; attach_topic's own default
-# name string, /detachable_joint/attach, follows the same convention).
-# vehicle_switch_node.py publishes attach once at startup to establish
-# the initial dry-section lock (bluerov2 spawns after the boat, so
-# Configure()-time auto-attach can't apply here the way it does for
-# x500), then detach once the real release condition is met.
-- ros_topic_name: "cavex/rov_lock/attach"
-  gz_topic_name: "/cavex/rov_lock/attach"
-  ros_type_name: "std_msgs/msg/Empty"
-  gz_type_name: "gz.msgs.Empty"
-  direction: ROS_TO_GZ
+# Real request, 2026-08-26: bluerov2 is now a fixed child link of the
+# boat's own model (model.sdf.tracked's bluerov2_link), not a separate
+# spawned entity -- the tether wrench (motorized_tether_control.py,
+# cavex/tether/wrench -> /world/cavex_world/wrench) and ROV lock/unlock
+# (cavex/rov_lock/attach|detach, vehicle_switch_node.py) bridge entries
+# that used to relay a boat<->separate-ROV constraint were removed:
+# there is no longer a separate ROV entity to tether or lock/unlock.
+# See perception branch for the full, functional, independently-tethered
+# BlueROV2.
 
-- ros_topic_name: "cavex/rov_lock/detach"
-  gz_topic_name: "/cavex/rov_lock/detach"
-  ros_type_name: "std_msgs/msg/Empty"
-  gz_type_name: "gz.msgs.Empty"
-  direction: ROS_TO_GZ
-
-# Task 6: dense gpu_lidar ray engine standing in for the BlueROV2's sonar
-# (Gazebo Harmonic has no sonar sensor type). Geometry only -- acoustic
-# physics used to be applied downstream by cavex_sonar (Task 7), removed
-# from this branch 2026-08-26 (see perception branch); this bridge entry
-# is left in place (harmless) but currently has no real consumer.
-- ros_topic_name: "/bluerov2/sonar_rays"
-  gz_topic_name: "/bluerov2/sonar_rays"
-  ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "gz.msgs.LaserScan"
-  direction: GZ_TO_ROS
-
-# Task 8: current_field_node.py's ocean current, relayed onto the real
-# gz-transport topic the stock Hydrodynamics plugin already listens on. A
-# plain rclpy node can't publish gz-transport directly, so this bridges it
-# rather than shelling out to `gz topic` per tick (confirmed both types
-# present via `strings` on the installed libros_gz_bridge.so).
-- ros_topic_name: "/ocean_current"
-  gz_topic_name: "/ocean_current"
-  ros_type_name: "geometry_msgs/msg/Vector3"
-  gz_type_name: "gz.msgs.Vector3d"
-  direction: ROS_TO_GZ
-
-# Task 4 (cavex_gtsam_slam): BlueROV2's own IMU sensor, for gtsam_slam_node's
-# IMU-only preintegration graph. Distinct from the /imu entry above, which
-# is cavex_tracked_blueboat's IMU, a different model/link entirely.
-- ros_topic_name: "/bluerov2/imu"
-  gz_topic_name: "/world/cavex_world/model/bluerov2/link/base_link/sensor/imu_sensor/imu"
-  ros_type_name: "sensor_msgs/msg/Imu"
-  gz_type_name: "gz.msgs.IMU"
-  direction: GZ_TO_ROS
-
-# Task 6 (cavex_gtsam_slam): BlueROV2's six real thruster commands, relayed
-# GZ->ROS for gtsam_slam_node's CurrentFactor (needs the actual commanded
-# thrust per thruster to predict through-water body velocity). gz_topic_name
-# matches model.sdf's own <cmd_topic> for each gz-sim-thruster-system plugin
-# exactly (confirmed by reading model.sdf; live-verified empirically per
-# this project's convention -- see task-6-report.md).
-- ros_topic_name: "/bluerov2/thruster1/cmd_thrust"
-  gz_topic_name: "/model/bluerov2/joint/thruster1_joint/cmd_thrust"
-  ros_type_name: "std_msgs/msg/Float64"
-  gz_type_name: "gz.msgs.Double"
-  direction: GZ_TO_ROS
-- ros_topic_name: "/bluerov2/thruster2/cmd_thrust"
-  gz_topic_name: "/model/bluerov2/joint/thruster2_joint/cmd_thrust"
-  ros_type_name: "std_msgs/msg/Float64"
-  gz_type_name: "gz.msgs.Double"
-  direction: GZ_TO_ROS
-- ros_topic_name: "/bluerov2/thruster3/cmd_thrust"
-  gz_topic_name: "/model/bluerov2/joint/thruster3_joint/cmd_thrust"
-  ros_type_name: "std_msgs/msg/Float64"
-  gz_type_name: "gz.msgs.Double"
-  direction: GZ_TO_ROS
-- ros_topic_name: "/bluerov2/thruster4/cmd_thrust"
-  gz_topic_name: "/model/bluerov2/joint/thruster4_joint/cmd_thrust"
-  ros_type_name: "std_msgs/msg/Float64"
-  gz_type_name: "gz.msgs.Double"
-  direction: GZ_TO_ROS
-- ros_topic_name: "/bluerov2/thruster5/cmd_thrust"
-  gz_topic_name: "/model/bluerov2/joint/thruster5_joint/cmd_thrust"
-  ros_type_name: "std_msgs/msg/Float64"
-  gz_type_name: "gz.msgs.Double"
-  direction: GZ_TO_ROS
-- ros_topic_name: "/bluerov2/thruster6/cmd_thrust"
-  gz_topic_name: "/model/bluerov2/joint/thruster6_joint/cmd_thrust"
-  ros_type_name: "std_msgs/msg/Float64"
-  gz_type_name: "gz.msgs.Double"
-  direction: GZ_TO_ROS
+# Real request, 2026-08-26: bluerov2 is now a forced-static decorative
+# prop on this branch (see its model.sdf's own header) -- imu_sensor,
+# sonar_ray_engine, the 6 Thruster plugins, and Hydrodynamics were all
+# removed from the model, so the bridge entries that used to relay
+# their topics (bluerov2/sonar_rays, /ocean_current, bluerov2/imu,
+# bluerov2/thrusterN/cmd_thrust) were removed too -- none of those
+# gz-side topics exist any more, bridging them would just be dead
+# configuration. See perception branch for the full, functional
+# BlueROV2.

@@ -1,6 +1,15 @@
 <?xml version='1.0' encoding='UTF-8'?>
+<!-- CaveX-Explorer-Pro: BlueROV2 template. NOTE: unreferenced by any
+     script in this project (confirmed 2026-08-26: model.sdf, the
+     literal generated copy, is what every real spawn path actually
+     uses; nothing here performs @variable substitution on this file).
+     Kept in sync with model.sdf's own forced-static decorative
+     treatment anyway, for consistency: sensors and all control-stack
+     plugins stripped, matching blueboat_tracked_static's pattern. See
+     model.sdf's own header for the fuller rationale. -->
 <sdf version="1.6">
   <model name=@model_name>
+    <static>true</static>
     <pose>0 0 0 0 0 0</pose>
 
     <!-- BlueROV2 thruster reference: http://www.ardusub.com/introduction/features.html -->
@@ -28,7 +37,6 @@
         </geometry>
       </visual>
 
-      <!-- Collision volume * fluid_density == displaced mass, used by BuoyancyPlugin -->
       <collision name="base_link_collision">
         <pose>@center_of_volume_x @center_of_volume_y @center_of_volume_z 0 0 0</pose>
         <geometry>
@@ -38,84 +46,7 @@
         </geometry>
       </collision>
 
-      <!-- IMU sensor gyro and accel data will be sent to ArduSub -->
-      <sensor name="imu_sensor" type="imu">
-        <!-- Transform from the Gazebo body frame (x-forward, y-left, z-up)
-             to the ArduPilot body frame (x-forward, y-right, z-down) -->
-        <pose>0 0 0 @d180 0 0</pose>
-        <always_on>1</always_on>
-        <update_rate>1000.0</update_rate>
-      </sensor>
-
-      <!-- Dense ray engine for the simulated acoustic sonar.
-           Gazebo Harmonic ships no sonar sensor type, and gz-sim8's Sensors
-           system will not instantiate a custom rendering sensor (the same
-           reason gz::sensors::DopplerVelocityLog is unusable here). So this
-           gpu_lidar supplies geometrically correct ranges only; all acoustic
-           physics -- beam spread, transmission loss, incidence backscatter,
-           speckle, dropout -- used to live in cavex_sonar and be applied downstream (removed from this branch 2026-08-26, see perception branch).
-           Do not treat this topic as sonar output. -->
-      <sensor name="sonar_ray_engine" type="gpu_lidar">
-        <pose>0.15 0 0 0 0 0</pose>
-        <always_on>1</always_on>
-        <update_rate>10</update_rate>
-        <topic>bluerov2/sonar_rays</topic>
-        <lidar>
-          <scan>
-            <horizontal>
-              <samples>512</samples>
-              <resolution>1</resolution>
-              <min_angle>-1.0472</min_angle>
-              <max_angle>1.0472</max_angle>
-            </horizontal>
-            <vertical>
-              <samples>1</samples>
-              <min_angle>0</min_angle>
-              <max_angle>0</max_angle>
-            </vertical>
-          </scan>
-          <range>
-            <min>0.2</min>
-            <max>30.0</max>
-            <resolution>0.01</resolution>
-          </range>
-        </lidar>
-      </sensor>
-
     </link>
-
-    <!-- Hydrodynamics plugin -->
-    <plugin
-        filename="gz-sim-hydrodynamics-system"
-        name="gz::sim::systems::Hydrodynamics">
-      <link_name>base_link</link_name>
-      <water_density>@fluid_density</water_density>
-      <!-- Baseline water current. Overridden at runtime by current_field_node
-           publishing to the /ocean_current topic this plugin already listens
-           on -- current support is stock upstream Gazebo, not added here. -->
-      <default_current>0 0 0</default_current>
-      <!-- Added mass: -->
-      <xDotU>@xDotU</xDotU>
-      <yDotV>@yDotV</yDotV>
-      <zDotW>@zDotW</zDotW>
-      <kDotP>@kDotP</kDotP>
-      <mDotQ>@mDotQ</mDotQ>
-      <nDotR>@nDotR</nDotR>
-      <!-- First order stability derivative: -->
-      <xU>@xU</xU>
-      <yV>@yV</yV>
-      <zW>@zW</zW>
-      <kP>@kP</kP>
-      <mQ>@mQ</mQ>
-      <nR>@nR</nR>
-      <!-- Second order stability derivative: -->
-      <xUabsU>@xUabsU</xUabsU>
-      <yVabsV>@yVabsV</yVabsV>
-      <zWabsW>@zWabsW</zWabsW>
-      <kPabsP>@kPabsP</kPabsP>
-      <mQabsQ>@mQabsQ</mQabsQ>
-      <nRabsR>@nRabsR</nRabsR>
-    </plugin>
 
     <link name="thruster1">
       <pose>@thruster1_x @thruster1_y @thruster1_z -@d90 @d90 -@d45</pose>
@@ -302,157 +233,6 @@
         <xyz>0 0 -1</xyz>
       </axis>
     </joint>
-
-    <plugin
-        filename="gz-sim-thruster-system"
-        name="gz::sim::systems::Thruster">
-      <namespace>bluerov2</namespace>
-      <joint_name>thruster1_joint</joint_name>
-      <thrust_coefficient>@thrust_coefficient</thrust_coefficient>
-      <fluid_density>@fluid_density</fluid_density>
-      <propeller_diameter>@propeller_diameter</propeller_diameter>
-      <velocity_control>true</velocity_control>
-      <use_angvel_cmd>@use_angvel_cmd</use_angvel_cmd>
-    </plugin>
-
-    <plugin
-        filename="gz-sim-thruster-system"
-        name="gz::sim::systems::Thruster">
-      <namespace>bluerov2</namespace>
-      <joint_name>thruster2_joint</joint_name>
-      <thrust_coefficient>@thrust_coefficient</thrust_coefficient>
-      <fluid_density>@fluid_density</fluid_density>
-      <propeller_diameter>@propeller_diameter</propeller_diameter>
-      <velocity_control>true</velocity_control>
-      <use_angvel_cmd>@use_angvel_cmd</use_angvel_cmd>
-    </plugin>
-
-    <plugin
-        filename="gz-sim-thruster-system"
-        name="gz::sim::systems::Thruster">
-      <namespace>bluerov2</namespace>
-      <joint_name>thruster3_joint</joint_name>
-      <!-- Reverse spin to balance torque -->
-      <thrust_coefficient>-@thrust_coefficient</thrust_coefficient>
-      <fluid_density>@fluid_density</fluid_density>
-      <propeller_diameter>@propeller_diameter</propeller_diameter>
-      <velocity_control>true</velocity_control>
-      <use_angvel_cmd>@use_angvel_cmd</use_angvel_cmd>
-    </plugin>
-
-    <plugin
-        filename="gz-sim-thruster-system"
-        name="gz::sim::systems::Thruster">
-      <namespace>bluerov2</namespace>
-      <joint_name>thruster4_joint</joint_name>
-      <!-- Reverse spin to balance torque -->
-      <thrust_coefficient>-@thrust_coefficient</thrust_coefficient>
-      <fluid_density>@fluid_density</fluid_density>
-      <propeller_diameter>@propeller_diameter</propeller_diameter>
-      <velocity_control>true</velocity_control>
-      <use_angvel_cmd>@use_angvel_cmd</use_angvel_cmd>
-    </plugin>
-
-    <plugin
-        filename="gz-sim-thruster-system"
-        name="gz::sim::systems::Thruster">
-      <namespace>bluerov2</namespace>
-      <joint_name>thruster5_joint</joint_name>
-      <thrust_coefficient>@thrust_coefficient</thrust_coefficient>
-      <fluid_density>@fluid_density</fluid_density>
-      <propeller_diameter>@propeller_diameter</propeller_diameter>
-      <velocity_control>true</velocity_control>
-      <use_angvel_cmd>@use_angvel_cmd</use_angvel_cmd>
-    </plugin>
-
-    <plugin
-        filename="gz-sim-thruster-system"
-        name="gz::sim::systems::Thruster">
-      <namespace>bluerov2</namespace>
-      <joint_name>thruster6_joint</joint_name>
-      <!-- Reverse spin to balance torque -->
-      <thrust_coefficient>-@thrust_coefficient</thrust_coefficient>
-      <fluid_density>@fluid_density</fluid_density>
-      <propeller_diameter>@propeller_diameter</propeller_diameter>
-      <velocity_control>true</velocity_control>
-      <use_angvel_cmd>@use_angvel_cmd</use_angvel_cmd>
-    </plugin>
-
-    <plugin name="ArduPilotPlugin" filename="libArduPilotPlugin.so">
-      <!-- Port settings -->
-      <fdm_addr>127.0.0.1</fdm_addr>
-      <fdm_port_in>9002</fdm_port_in>
-      <connectionTimeoutMaxCount>5</connectionTimeoutMaxCount>
-      <lock_step>1</lock_step>
-
-      <!-- Transform from the Gazebo body frame (x-forward, y-left, z-up)
-           to the ArduPilot body frame (x-forward, y-right, z-down) -->
-      <modelXYZToAirplaneXForwardZDown>0 0 0 @d180 0 0</modelXYZToAirplaneXForwardZDown>
-
-      <!-- Transform from the Gazebo world frame (ENU)
-           to the ArduPilot world frame (NED) -->
-      <gazeboXYZToNED>0 0 0 @d180 0 @d90</gazeboXYZToNED>
-
-      <!-- Sensors -->
-      <imuName>imu_sensor</imuName>
-
-      <!-- Thrusters -->
-      <control channel="0">
-        <jointName>thruster1_joint</jointName>
-        <servo_min>@servo_min</servo_min>
-        <servo_max>@servo_max</servo_max>
-        <type>COMMAND</type>
-        <cmd_topic>@thruster1_topic</cmd_topic>
-        <offset>@control_offset</offset>
-        <multiplier>@ccw_control_multiplier</multiplier>
-      </control>
-      <control channel="1">
-        <jointName>thruster2_joint</jointName>
-        <servo_min>@servo_min</servo_min>
-        <servo_max>@servo_max</servo_max>
-        <type>COMMAND</type>
-        <cmd_topic>@thruster2_topic</cmd_topic>
-        <offset>@control_offset</offset>
-        <multiplier>@ccw_control_multiplier</multiplier>
-      </control>
-      <control channel="2">
-        <jointName>thruster3_joint</jointName>
-        <servo_min>@servo_min</servo_min>
-        <servo_max>@servo_max</servo_max>
-        <type>COMMAND</type>
-        <cmd_topic>@thruster3_topic</cmd_topic>
-        <offset>@control_offset</offset>
-        <multiplier>@cw_control_multiplier</multiplier>
-      </control>
-      <control channel="3">
-        <jointName>thruster4_joint</jointName>
-        <servo_min>@servo_min</servo_min>
-        <servo_max>@servo_max</servo_max>
-        <type>COMMAND</type>
-        <cmd_topic>@thruster4_topic</cmd_topic>
-        <offset>@control_offset</offset>
-        <multiplier>@cw_control_multiplier</multiplier>
-      </control>
-      <control channel="4">
-        <jointName>thruster5_joint</jointName>
-        <servo_min>@servo_min</servo_min>
-        <servo_max>@servo_max</servo_max>
-        <type>COMMAND</type>
-        <cmd_topic>@thruster5_topic</cmd_topic>
-        <offset>@control_offset</offset>
-        <multiplier>@ccw_control_multiplier</multiplier>
-      </control>
-      <control channel="5">
-        <jointName>thruster6_joint</jointName>
-        <servo_min>@servo_min</servo_min>
-        <servo_max>@servo_max</servo_max>
-        <type>COMMAND</type>
-        <cmd_topic>@thruster6_topic</cmd_topic>
-        <offset>@control_offset</offset>
-        <multiplier>@cw_control_multiplier</multiplier>
-      </control>
-
-    </plugin>
 
   </model>
 </sdf>

@@ -106,8 +106,10 @@ public:
 
     RCLCPP_INFO(
       this->get_logger(),
-      "gtsam_slam_node ready: /bluerov2/imu + /bluerov2/sonar -> /gtsam_slam/odometry "
-      "(IMU+sonar, no CurrentFactor -- removed from this branch, see perception branch).");
+      "gtsam_slam_node ready: subscribed to /bluerov2/imu + /bluerov2/sonar -> "
+      "/gtsam_slam/odometry, but bluerov2 is a forced-static decorative prop with no "
+      "sensors on this branch (real request, 2026-08-26) -- expect no real odometry, "
+      "see perception branch for the functional version.");
   }
 
 protected:
