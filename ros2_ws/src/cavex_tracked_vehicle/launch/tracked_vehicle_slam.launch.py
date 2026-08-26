@@ -65,7 +65,7 @@ def generate_launch_description():
     # base_link -- zero rotation), but model.sdf.tracked's camera sensor now
     # reports its image header's frame_id as camera_link_optical (REP
     # 103/145 optical convention: z-forward, x-right, y-down), which is what
-    # image_geometry::PinholeCameraModel::project3dToPixel (sic_slam_node.cpp)
+    # image_geometry::PinholeCameraModel::project3dToPixel (instance_clustering_node.cpp)
     # actually requires. Zero-translation, pure-rotation static TF -- the
     # standard body-to-optical rotation, same convention every ROS camera
     # driver publishes.
@@ -407,28 +407,28 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
-    # Task 4 (SIC-SLAM RGB-D + lidar fusion): colorizes the lidar cloud via
+    # Task 4 (Instance-clustering RGB-D + lidar fusion): colorizes the lidar cloud via
     # the live camera projection, clusters it into instances, tracks ids
-    # frame-to-frame, and publishes /sic_slam/instances + /sic_slam/colored_points
+    # frame-to-frame, and publishes /instance_clustering/instances + /instance_clustering/colored_points
     # for Task 5. Needs map -> lidar_link TF (rtabmap above) and camera_link TF
     # (camera_static_tf above), so it's safe to start alongside everything else --
     # it just skips frames until those are live, same pattern as icp_odometry.
     #
     # DISABLED (real request): rtabmap's own subscribe_depth/subscribe_rgb/
     # subscribe_scan_cloud (all True above) already fuse the RGB-D + lidar
-    # data directly for real SLAM mapping -- sic_slam_node was always a
+    # data directly for real SLAM mapping -- instance_clustering_node was always a
     # separate, additional consumer of those same raw topics for instance
     # clustering (dead_end_backtrack_node's survey-penalty feature), not
     # part of the core SLAM path, so disabling it doesn't change what
     # rtabmap sees or does. dead_end_backtrack_node degrades gracefully with
-    # no /sic_slam/instances publisher (its own _instance_centroids stays
+    # no /instance_clustering/instances publisher (its own _instance_centroids stays
     # [], instance_penalty always returns 0 -- by design, see its own
     # module docstring). cavex_perception package/build left intact; only
     # the launch entry is removed, easy to re-enable.
-    # sic_slam_node = Node(
+    # instance_clustering_node = Node(
     #     package='cavex_perception',
-    #     executable='sic_slam_node',
-    #     name='sic_slam_node',
+    #     executable='instance_clustering_node',
+    #     name='instance_clustering_node',
     #     output='screen',
     #     parameters=[{'use_sim_time': use_sim_time}],
     # )

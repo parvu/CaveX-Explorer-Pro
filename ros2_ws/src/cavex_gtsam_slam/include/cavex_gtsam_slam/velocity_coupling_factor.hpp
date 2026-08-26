@@ -1,11 +1,11 @@
-#ifndef CAVEX_SIC_SLAM__VELOCITY_COUPLING_FACTOR_HPP_
-#define CAVEX_SIC_SLAM__VELOCITY_COUPLING_FACTOR_HPP_
+#ifndef CAVEX_GTSAM_SLAM__VELOCITY_COUPLING_FACTOR_HPP_
+#define CAVEX_GTSAM_SLAM__VELOCITY_COUPLING_FACTOR_HPP_
 
 #include <gtsam/basis/BasisFactors.h>
 #include <gtsam/basis/Chebyshev2.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
 
-namespace cavex_sic_slam
+namespace cavex_gtsam_slam
 {
 
 // Couples a continuous-time position trajectory (Chebyshev2 basis,
@@ -53,6 +53,6 @@ public:
   }
 };
 
-}  // namespace cavex_sic_slam
+}  // namespace cavex_gtsam_slam
 
-#endif  // CAVEX_SIC_SLAM__VELOCITY_COUPLING_FACTOR_HPP_
+#endif  // CAVEX_GTSAM_SLAM__VELOCITY_COUPLING_FACTOR_HPP_

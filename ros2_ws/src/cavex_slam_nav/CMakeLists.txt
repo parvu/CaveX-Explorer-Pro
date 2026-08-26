@@ -33,7 +33,7 @@ install(PROGRAMS
   cavex_slam_nav/analyze_ate_runs.py
   cavex_slam_nav/odom_tf_broadcaster.py
   cavex_slam_nav/slam_pose_publisher.py
-  cavex_slam_nav/sic_slam_node.py
+  cavex_slam_nav/dead_reckoning_prototype_node.py
   cavex_slam_nav/web_telemetry_bridge.py
   cavex_slam_nav/waypoint_follower.py
   cavex_slam_nav/drive_fixed_trajectory.py

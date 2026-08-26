@@ -17,17 +17,17 @@ find_package(image_geometry REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common search kdtree segmentation filters)
 
-add_executable(sic_slam_node
-  src/sic_slam_node.cpp
+add_executable(instance_clustering_node
+  src/instance_clustering_node.cpp
   src/instance_clustering.cpp
 )
-target_include_directories(sic_slam_node PRIVATE ${PCL_INCLUDE_DIRS})
-target_link_libraries(sic_slam_node ${PCL_LIBRARIES})
-ament_target_dependencies(sic_slam_node
+target_include_directories(instance_clustering_node PRIVATE ${PCL_INCLUDE_DIRS})
+target_link_libraries(instance_clustering_node ${PCL_LIBRARIES})
+ament_target_dependencies(instance_clustering_node
   rclcpp sensor_msgs vision_msgs geometry_msgs tf2_ros tf2_eigen
   cv_bridge image_geometry pcl_conversions)
 
-install(TARGETS sic_slam_node
+install(TARGETS instance_clustering_node
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)

@@ -1,9 +1,9 @@
-#ifndef CAVEX_SIC_SLAM__SCAN_REGISTRATION_HPP_
-#define CAVEX_SIC_SLAM__SCAN_REGISTRATION_HPP_
+#ifndef CAVEX_GTSAM_SLAM__SCAN_REGISTRATION_HPP_
+#define CAVEX_GTSAM_SLAM__SCAN_REGISTRATION_HPP_
 
 #include <vector>
 
-namespace cavex_sic_slam
+namespace cavex_gtsam_slam
 {
 
 struct ScanPoint
@@ -47,6 +47,6 @@ RegistrationResult registerScans(
   double max_correspondence_dist,
   int max_iterations);
 
-}  // namespace cavex_sic_slam
+}  // namespace cavex_gtsam_slam
 
-#endif  // CAVEX_SIC_SLAM__SCAN_REGISTRATION_HPP_
+#endif  // CAVEX_GTSAM_SLAM__SCAN_REGISTRATION_HPP_

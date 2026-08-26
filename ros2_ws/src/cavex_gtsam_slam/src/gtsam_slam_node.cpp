@@ -23,23 +23,23 @@
 #include <gtsam/slam/PoseTranslationPrior.h>
 #include <gtsam/linear/LossFunctions.h>
 
-#include "cavex_sic_slam/scan_registration.hpp"
-#include "cavex_sic_slam/current_factor.hpp"
-#include "cavex_sic_slam/continuous_current_estimator.hpp"
+#include "cavex_gtsam_slam/scan_registration.hpp"
+#include "cavex_gtsam_slam/current_factor.hpp"
+#include "cavex_gtsam_slam/continuous_current_estimator.hpp"
 
 using gtsam::symbol_shorthand::X;
 using gtsam::symbol_shorthand::V;
 using gtsam::symbol_shorthand::B;
 using gtsam::symbol_shorthand::C;
 
-namespace cavex_sic_slam
+namespace cavex_gtsam_slam
 {
 
-class SicSlamNode : public rclcpp::Node
+class GtsamSlamNode : public rclcpp::Node
 {
 public:
-  SicSlamNode()
-  : Node("sic_slam_node"),
+  GtsamSlamNode()
+  : Node("gtsam_slam_node"),
     keyframe_index_(0),
     have_prev_imu_time_(false)
   {
@@ -131,8 +131,8 @@ public:
     last_bias_ = prior_bias;
     last_current_ = prior_current;
 
-    thruster_geom_ = cavex_sic_slam::defaultBlueRov2Geometry();
-    thruster_drag_ = cavex_sic_slam::defaultBlueRov2Drag();
+    thruster_geom_ = cavex_gtsam_slam::defaultBlueRov2Geometry();
+    thruster_drag_ = cavex_gtsam_slam::defaultBlueRov2Drag();
     thrust_n_.fill(0.0);
     for (int i = 0; i < 6; ++i) {
       std::string topic = "/bluerov2/thruster" + std::to_string(i + 1) + "/cmd_thrust";
@@ -144,25 +144,25 @@ public:
         });
     }
     current_pub_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(
-      "/sic_slam/current_estimate", 10);
+      "/gtsam_slam/current_estimate", 10);
     continuous_current_pub_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>(
-      "/sic_slam/current_estimate_continuous", 10);
+      "/gtsam_slam/current_estimate_continuous", 10);
 
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
       "/bluerov2/imu", rclcpp::SensorDataQoS(),
-      std::bind(&SicSlamNode::imuCallback, this, std::placeholders::_1));
-    odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/sic_slam/odometry", 10);
+      std::bind(&GtsamSlamNode::imuCallback, this, std::placeholders::_1));
+    odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/gtsam_slam/odometry", 10);
 
     sonar_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       "/bluerov2/sonar", rclcpp::SensorDataQoS(),
-      std::bind(&SicSlamNode::sonarCallback, this, std::placeholders::_1));
-    map_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud>("/sic_slam/map", 10);
+      std::bind(&GtsamSlamNode::sonarCallback, this, std::placeholders::_1));
+    map_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud>("/gtsam_slam/map", 10);
     keyframes_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>(
-      "/sic_slam/keyframes", 10);
+      "/gtsam_slam/keyframes", 10);
 
     RCLCPP_INFO(
       this->get_logger(),
-      "sic_slam_node ready: /bluerov2/imu + /bluerov2/sonar -> /sic_slam/odometry (%s).",
+      "gtsam_slam_node ready: /bluerov2/imu + /bluerov2/sonar -> /gtsam_slam/odometry (%s).",
       enable_current_factor_ ? "IMU+sonar+CurrentFactor" : "IMU+sonar only, no CurrentFactor");
   }
 
@@ -246,14 +246,14 @@ protected:
     values_.insert(V(curr), predicted.velocity());
     values_.insert(B(curr), last_bias_);
 
-    std::vector<cavex_sic_slam::ScanPoint> curr_scan_points;
+    std::vector<cavex_gtsam_slam::ScanPoint> curr_scan_points;
     if (latest_scan_) {
       // LaserScan stores ranges/intensities as float; registerScans/
       // laserScanToPoints operate on double.
       std::vector<double> ranges(latest_scan_->ranges.begin(), latest_scan_->ranges.end());
       std::vector<double> intensities(
         latest_scan_->intensities.begin(), latest_scan_->intensities.end());
-      curr_scan_points = cavex_sic_slam::laserScanToPoints(
+      curr_scan_points = cavex_gtsam_slam::laserScanToPoints(
         ranges, intensities, latest_scan_->angle_min, latest_scan_->angle_increment);
     }
 
@@ -298,7 +298,7 @@ protected:
       "kf %zu: curr_scan=%zu prev_scan=%zu", curr, curr_scan_points.size(),
       prev_keyframe_scan_.size());
     if (!curr_scan_points.empty() && !prev_keyframe_scan_.empty()) {
-      auto reg = cavex_sic_slam::registerScans(
+      auto reg = cavex_gtsam_slam::registerScans(
         curr_scan_points, prev_keyframe_scan_, 0.5, 20);
       RCLCPP_INFO(
         this->get_logger(), "kf %zu: reg.converged=%d matched_fraction=%.3f",
@@ -323,7 +323,7 @@ protected:
           // most recent history entry is the same scan pair as (prev, curr).
           continue;
         }
-        auto loop_reg = cavex_sic_slam::registerScans(
+        auto loop_reg = cavex_gtsam_slam::registerScans(
           curr_scan_points, hist_scan, 0.5, 20);
         if (loop_reg.converged && loop_reg.matched_fraction > 0.7 &&
           loop_reg.mean_residual < 0.15)
@@ -341,7 +341,7 @@ protected:
     if (enable_current_factor_) {
       std::array<double, 6> thrust_snapshot = thrust_n_;
       auto current_factor_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.15);
-      graph_.add(cavex_sic_slam::CurrentFactor(
+      graph_.add(cavex_gtsam_slam::CurrentFactor(
         X(curr), V(curr), C(curr), thrust_snapshot, thruster_geom_, thruster_drag_,
         current_factor_noise));
 
@@ -496,7 +496,7 @@ protected:
 
   void publishMap(
     const rclcpp::Time & stamp,
-    const std::vector<cavex_sic_slam::ScanPoint> & points,
+    const std::vector<cavex_gtsam_slam::ScanPoint> & points,
     const gtsam::Pose3 & pose)
   {
     sensor_msgs::msg::PointCloud msg;
@@ -539,15 +539,15 @@ protected:
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr keyframes_pub_;
   std::array<rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr, 6> thruster_subs_;
   std::array<double, 6> thrust_n_;
-  cavex_sic_slam::ThrusterGeometry thruster_geom_;
-  cavex_sic_slam::DragCoefficients thruster_drag_;
+  cavex_gtsam_slam::ThrusterGeometry thruster_geom_;
+  cavex_gtsam_slam::DragCoefficients thruster_drag_;
   rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr current_pub_;
   rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr continuous_current_pub_;
 
   sensor_msgs::msg::LaserScan::SharedPtr latest_scan_;
-  std::vector<cavex_sic_slam::ScanPoint> prev_keyframe_scan_;
+  std::vector<cavex_gtsam_slam::ScanPoint> prev_keyframe_scan_;
   std::vector<std::tuple<std::size_t, gtsam::Pose3,
-    std::vector<cavex_sic_slam::ScanPoint>>> keyframe_history_;
+    std::vector<cavex_gtsam_slam::ScanPoint>>> keyframe_history_;
 
   boost::shared_ptr<gtsam::PreintegratedCombinedMeasurements::Params> imu_params_;
   std::shared_ptr<gtsam::PreintegratedCombinedMeasurements> preint_;
@@ -559,7 +559,7 @@ protected:
   size_t consecutive_scan_starved_keyframes_ = 0;
   bool enable_current_factor_;
   bool enable_continuous_current_field_;
-  cavex_sic_slam::ContinuousCurrentEstimator continuous_current_estimator_{90.0, 6};
+  cavex_gtsam_slam::ContinuousCurrentEstimator continuous_current_estimator_{90.0, 6};
   size_t continuous_current_refit_counter_ = 0;
   bool enable_dcs_robust_;
   double dcs_c_;
@@ -576,12 +576,12 @@ protected:
   gtsam::Vector3 last_current_;
 };
 
-}  // namespace cavex_sic_slam
+}  // namespace cavex_gtsam_slam
 
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<cavex_sic_slam::SicSlamNode>());
+  rclcpp::spin(std::make_shared<cavex_gtsam_slam::GtsamSlamNode>());
   rclcpp::shutdown();
   return 0;
 }

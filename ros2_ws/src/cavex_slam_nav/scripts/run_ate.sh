@@ -9,7 +9,7 @@
 # Usage: run_ate.sh <with|without> <n_target> <label> [dcs]
 # Zero-current baseline ablation: with-CurrentFactor vs without.
 # 4th arg "dcs" enables Dynamic Covariance Scaling (the robust M-estimator
-# on sonar/loop-closure factors) on sic_slam_node via
+# on sonar/loop-closure factors) on gtsam_slam_node via
 # -p enable_dcs_robust:=true.
 # Results/logs go to $ATE_OUT_DIR (default /tmp/cavex_ate_results).
 MODE="$1"        # "with" or "without"
@@ -34,7 +34,7 @@ source /opt/ros/jazzy/setup.bash
 source ardupilot_gazebo_env.sh
 source install/setup.bash
 
-SLAM_PAT="install/cavex_sic_slam/lib/cavex_sic_slam/sic_slam_node"
+SLAM_PAT="install/cavex_gtsam_slam/lib/cavex_gtsam_slam/gtsam_slam_node"
 
 killall_real() {
   for pat in "$SLAM_PAT" \
@@ -86,10 +86,10 @@ while [ "$VALID" -lt "$N_TARGET" ]; do
   sleep 3
 
   if [ "$MODE" = "with" ]; then
-    ros2 run cavex_sic_slam sic_slam_node --ros-args $DCS_FLAG \
+    ros2 run cavex_gtsam_slam gtsam_slam_node --ros-args $DCS_FLAG \
       > "$SP/Nx_${LABEL}_slam_$RUN.log" 2>&1 &
   else
-    ros2 run cavex_sic_slam sic_slam_node --ros-args -p enable_current_factor:=false $DCS_FLAG \
+    ros2 run cavex_gtsam_slam gtsam_slam_node --ros-args -p enable_current_factor:=false $DCS_FLAG \
       > "$SP/Nx_${LABEL}_slam_$RUN.log" 2>&1 &
   fi
   sleep 4
@@ -97,7 +97,7 @@ while [ "$VALID" -lt "$N_TARGET" ]; do
   # Reliable stacking check: real PID count, not DDS publisher discovery.
   N_INST=$(count_real_slam_instances)
   if [ "$N_INST" != "1" ]; then
-    echo "[$LABEL] attempt $ATTEMPT: DISCARDED -- $N_INST sic_slam_node instances (expected 1), node-stacking detected"
+    echo "[$LABEL] attempt $ATTEMPT: DISCARDED -- $N_INST gtsam_slam_node instances (expected 1), node-stacking detected"
     DISCARDED=$((DISCARDED + 1))
     killall_real
     sleep 3
@@ -114,7 +114,7 @@ while [ "$VALID" -lt "$N_TARGET" ]; do
   # contact. This stays within ~2m of (20,0), >5m from every current
   # water boundary.
   # ate_thrust_excitation.py, NOT ate_excitation.py -- real bug found
-  # 2026-08-22: ApplyLinkWrench never fed real thrust into sic_slam_node's
+  # 2026-08-22: ApplyLinkWrench never fed real thrust into gtsam_slam_node's
   # CurrentFactor input, so the factor was silently seeing zero predicted
   # velocity. The new script drives real per-thruster commands instead.
   # +10s buffer past the sampler's ~18s window -- same tail-of-run
@@ -134,7 +134,7 @@ class Sampler(Node):
     def __init__(self):
         super().__init__('ate_sampler_Nx')
         self.last = None
-        self.create_subscription(Odometry, '/sic_slam/odometry', self._cb, qos_profile_sensor_data)
+        self.create_subscription(Odometry, '/gtsam_slam/odometry', self._cb, qos_profile_sensor_data)
     def _cb(self, msg):
         self.last = msg
 

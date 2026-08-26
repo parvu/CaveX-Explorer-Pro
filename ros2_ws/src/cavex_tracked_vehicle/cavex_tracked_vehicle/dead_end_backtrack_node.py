@@ -333,8 +333,8 @@ def instance_penalty(instance_centroids, x, y, yaw,
                       lateral_tolerance_m=INSTANCE_LATERAL_TOLERANCE_M,
                       penalty_m=INSTANCE_PENALTY_M):
     """How much to subtract from a survey direction's clearance score
-    because a known instance (from /sic_slam/instances) sits in that
-    direction. instance_centroids is a list of (x, y) tuples in the same
+    because a known instance (from /instance_clustering/instances) sits in
+    that direction. instance_centroids is a list of (x, y) tuples in the same
     frame as the pose ("map"). Pure function, no ROS dependency."""
     dx, dy = math.cos(yaw), math.sin(yaw)
     for (ix, iy) in instance_centroids:
@@ -388,7 +388,7 @@ class DeadEndBacktrackNode(Node):
         self.create_subscription(OccupancyGrid, '/global_costmap/costmap',
                                   self._costmap_cb, qos_transient)
         self._instance_centroids = []
-        self.create_subscription(Detection3DArray, '/sic_slam/instances',
+        self.create_subscription(Detection3DArray, '/instance_clustering/instances',
                                   self._instances_cb, 10)
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self._cancel_client = self.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal')

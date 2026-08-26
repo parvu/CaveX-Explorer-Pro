@@ -3,7 +3,7 @@
 ate_evaluator_node.py
 
 ROS2 node providing simulated ATE (Absolute Trajectory Error) evaluation
-for CAVE-SLAM / SIC-SLAM, matching the OS2 objective's stated methodology
+for CAVE-SLAM / gtsam_slam, matching the OS2 objective's stated methodology
 (Funding Application, Section B.2.1): "Absolute Trajectory Error (ATE)
 below 0.5 m in simulation and below 1.5 m in basin testing, each measured
 against ground truth over a minimum of 10 runs, reported as mean +/-
@@ -13,7 +13,7 @@ This node subscribes to two Odometry streams:
   - /cavex/ground_truth/odom : ground-truth pose, published by the Gazebo
     simulation (or, for basin testing, derived from the acoustic-beacon
     ground-truth grid described in Section B.2.3 / T4.3).
-  - /cavex/slam/odom          : SIC-SLAM's estimated pose, published by the
+  - /cavex/slam/odom          : gtsam_slam's estimated pose, published by the
     perception/SLAM pipeline (WP2-WP3).
 
 It buffers timestamp-matched pairs, and on receiving a `/cavex/eval/finish_run`
@@ -26,9 +26,9 @@ Running `analyze_ate_runs.py` afterwards on the accumulated CSV produces
 the mean +/- std across runs required by OS2.
 
 NOTE ON HONESTY: this node provides the *evaluation harness* -- it computes
-ATE correctly given two pose streams. It does not itself implement SIC-SLAM
+ATE correctly given two pose streams. It does not itself implement gtsam_slam
 or the CurrentFactor; those remain WP2-WP3 deliverables. Do not present the
-existence of this evaluator as evidence that SIC-SLAM itself has been run
+existence of this evaluator as evidence that gtsam_slam itself has been run
 against it -- that distinction matters when this repository is cited in the
 Funding Application (Section B.2.2, ref. [9]).
 """

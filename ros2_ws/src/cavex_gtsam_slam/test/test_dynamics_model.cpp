@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 #include <cmath>
-#include "cavex_sic_slam/dynamics_model.hpp"
+#include "cavex_gtsam_slam/dynamics_model.hpp"
 
-using cavex_sic_slam::defaultBlueRov2Geometry;
-using cavex_sic_slam::defaultBlueRov2Drag;
-using cavex_sic_slam::bodyForce;
-using cavex_sic_slam::quasiSteadyVelocity;
-using cavex_sic_slam::predictBodyVelocity;
+using cavex_gtsam_slam::defaultBlueRov2Geometry;
+using cavex_gtsam_slam::defaultBlueRov2Drag;
+using cavex_gtsam_slam::bodyForce;
+using cavex_gtsam_slam::quasiSteadyVelocity;
+using cavex_gtsam_slam::predictBodyVelocity;
 
 TEST(DynamicsModel, ZeroThrustGivesZeroForceAndZeroVelocity) {
   auto geom = defaultBlueRov2Geometry();
@@ -46,7 +46,7 @@ TEST(DynamicsModel, VerticalThrustersGiveHeaveOnly) {
 }
 
 TEST(DynamicsModel, QuasiSteadyVelocitySolvesQuadraticDragPerAxis) {
-  cavex_sic_slam::DragCoefficients drag{-33.732, -54.16, -73.225};
+  cavex_gtsam_slam::DragCoefficients drag{-33.732, -54.16, -73.225};
   // v*|v| = F/|coef| => v = sign(F)*sqrt(|F|/|coef|)
   Eigen::Vector3d force(33.732, 0.0, 0.0);  // chosen so |F|/|coef| == 1
   Eigen::Vector3d v = quasiSteadyVelocity(force, drag);
@@ -56,7 +56,7 @@ TEST(DynamicsModel, QuasiSteadyVelocitySolvesQuadraticDragPerAxis) {
 }
 
 TEST(DynamicsModel, QuasiSteadyVelocityPreservesForceSign) {
-  cavex_sic_slam::DragCoefficients drag{-33.732, -54.16, -73.225};
+  cavex_gtsam_slam::DragCoefficients drag{-33.732, -54.16, -73.225};
   Eigen::Vector3d force(-33.732, 0.0, 0.0);
   Eigen::Vector3d v = quasiSteadyVelocity(force, drag);
   EXPECT_LT(v.x(), 0.0);

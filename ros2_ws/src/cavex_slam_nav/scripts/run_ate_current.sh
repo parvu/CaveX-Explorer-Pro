@@ -14,7 +14,7 @@
 # default; earlier ablations used 3.0 for a deliberately heavy-turbidity
 # condition -- pass 3.0 explicitly to reproduce that).
 # 6th arg "dcs" enables Dynamic Covariance Scaling (the robust M-estimator
-# on sonar/loop-closure factors) on sic_slam_node via
+# on sonar/loop-closure factors) on gtsam_slam_node via
 # -p enable_dcs_robust:=true.
 # 7th arg "continuous" enables the continuous-time current field smoothing
 # layer (.superpowers/plans/2026-08-23-continuous-current-field-
@@ -50,7 +50,7 @@ source /opt/ros/jazzy/setup.bash
 source ardupilot_gazebo_env.sh
 source install/setup.bash
 
-SLAM_PAT="install/cavex_sic_slam/lib/cavex_sic_slam/sic_slam_node"
+SLAM_PAT="install/cavex_gtsam_slam/lib/cavex_gtsam_slam/gtsam_slam_node"
 
 killall_real() {
   for pat in "$SLAM_PAT" \
@@ -118,10 +118,10 @@ while [ "$VALID" -lt "$N_TARGET" ]; do
   sleep 3
 
   if [ "$MODE" = "with" ]; then
-    ros2 run cavex_sic_slam sic_slam_node --ros-args $DCS_FLAG $CONTINUOUS_FLAG \
+    ros2 run cavex_gtsam_slam gtsam_slam_node --ros-args $DCS_FLAG $CONTINUOUS_FLAG \
       > "$SP/Nx_${LABEL}_slam_$RUN.log" 2>&1 &
   else
-    ros2 run cavex_sic_slam sic_slam_node --ros-args -p enable_current_factor:=false $DCS_FLAG \
+    ros2 run cavex_gtsam_slam gtsam_slam_node --ros-args -p enable_current_factor:=false $DCS_FLAG \
       > "$SP/Nx_${LABEL}_slam_$RUN.log" 2>&1 &
   fi
   sleep 4
@@ -129,7 +129,7 @@ while [ "$VALID" -lt "$N_TARGET" ]; do
   # Reliable stacking check: real PID count, not DDS publisher discovery.
   N_INST=$(count_real_slam_instances)
   if [ "$N_INST" != "1" ]; then
-    echo "[$LABEL] attempt $ATTEMPT: DISCARDED -- $N_INST sic_slam_node instances (expected 1), node-stacking detected"
+    echo "[$LABEL] attempt $ATTEMPT: DISCARDED -- $N_INST gtsam_slam_node instances (expected 1), node-stacking detected"
     DISCARDED=$((DISCARDED + 1))
     killall_real
     sleep 3
@@ -157,7 +157,7 @@ while [ "$VALID" -lt "$N_TARGET" ]; do
   # contaminating ground truth with wall/floor contact.
   # ate_thrust_excitation.py, NOT ate_excitation.py -- real bug found
   # 2026-08-22: ate_excitation.py drove the vehicle via ApplyLinkWrench,
-  # which never publishes to the thruster cmd_thrust topics sic_slam_node
+  # which never publishes to the thruster cmd_thrust topics gtsam_slam_node
   # actually subscribes to for CurrentFactor's v_pred_, so CurrentFactor
   # was silently operating on zero thrust signal for every run. The new
   # script drives the SAME PD-computed force through real per-thruster
@@ -184,7 +184,7 @@ class Sampler(Node):
     def __init__(self):
         super().__init__('ate_sampler_Nx')
         self.last = None
-        self.create_subscription(Odometry, '/sic_slam/odometry', self._cb, qos_profile_sensor_data)
+        self.create_subscription(Odometry, '/gtsam_slam/odometry', self._cb, qos_profile_sensor_data)
     def _cb(self, msg):
         self.last = msg
 

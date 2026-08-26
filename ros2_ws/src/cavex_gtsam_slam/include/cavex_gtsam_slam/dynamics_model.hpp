@@ -1,10 +1,10 @@
-#ifndef CAVEX_SIC_SLAM__DYNAMICS_MODEL_HPP_
-#define CAVEX_SIC_SLAM__DYNAMICS_MODEL_HPP_
+#ifndef CAVEX_GTSAM_SLAM__DYNAMICS_MODEL_HPP_
+#define CAVEX_GTSAM_SLAM__DYNAMICS_MODEL_HPP_
 
 #include <array>
 #include <Eigen/Dense>
 
-namespace cavex_sic_slam
+namespace cavex_gtsam_slam
 {
 
 // Position and thrust-direction unit vector (body frame) for each of the
@@ -50,6 +50,6 @@ Eigen::Vector3d predictBodyVelocity(
   const ThrusterGeometry & geom,
   const DragCoefficients & drag);
 
-}  // namespace cavex_sic_slam
+}  // namespace cavex_gtsam_slam
 
-#endif  // CAVEX_SIC_SLAM__DYNAMICS_MODEL_HPP_
+#endif  // CAVEX_GTSAM_SLAM__DYNAMICS_MODEL_HPP_

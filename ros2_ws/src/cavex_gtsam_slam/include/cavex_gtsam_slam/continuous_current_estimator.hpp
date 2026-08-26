@@ -1,5 +1,5 @@
-#ifndef CAVEX_SIC_SLAM__CONTINUOUS_CURRENT_ESTIMATOR_HPP_
-#define CAVEX_SIC_SLAM__CONTINUOUS_CURRENT_ESTIMATOR_HPP_
+#ifndef CAVEX_GTSAM_SLAM__CONTINUOUS_CURRENT_ESTIMATOR_HPP_
+#define CAVEX_GTSAM_SLAM__CONTINUOUS_CURRENT_ESTIMATOR_HPP_
 
 #include <gtsam/basis/BasisFactors.h>
 #include <gtsam/basis/Chebyshev2.h>
@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace cavex_sic_slam
+namespace cavex_gtsam_slam
 {
 
 // Smooths a sequence of discrete, per-keyframe current-vector estimates
@@ -249,6 +249,6 @@ private:
   std::optional<double> first_delayed_success_time_;
 };
 
-}  // namespace cavex_sic_slam
+}  // namespace cavex_gtsam_slam
 
-#endif  // CAVEX_SIC_SLAM__CONTINUOUS_CURRENT_ESTIMATOR_HPP_
+#endif  // CAVEX_GTSAM_SLAM__CONTINUOUS_CURRENT_ESTIMATOR_HPP_

@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <vector>
-#include "cavex_sic_slam/scan_registration.hpp"
+#include "cavex_gtsam_slam/scan_registration.hpp"
 
-using namespace cavex_sic_slam;
+using namespace cavex_gtsam_slam;
 
 TEST(ScanRegistration, LaserScanToPointsSkipsNonFiniteRanges) {
   std::vector<double> ranges{5.0, std::numeric_limits<double>::infinity(), 3.0};

@@ -3,10 +3,10 @@ import { Compass, Route, Gauge, Cog } from "lucide-react";
 
 // Live telemetry for the tracked BlueBoat-like vehicle (Tasks 5/10-13),
 // polled from web_telemetry_bridge.py -> /api/telemetry the same way
-// SICSlamVisualizer.tsx does. No demo/concept fallback numbers here --
-// unlike SIC-SLAM this vehicle has no separate mock version, so the panel
-// just shows "offline" when the ROS2 stack isn't posting telemetry rather
-// than fabricate anything.
+// GtsamSlamVisualizer.tsx does. No demo/concept fallback numbers here --
+// unlike the gtsam_slam system this vehicle has no separate mock version,
+// so the panel just shows "offline" when the ROS2 stack isn't posting
+// telemetry rather than fabricate anything.
 interface TrackedVehicleTelemetry {
   tracked_vehicle_gt: { x: number; y: number; z: number; yaw: number } | null;
   frontier_count: number | null;

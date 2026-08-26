@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-sic_slam_node.py
+dead_reckoning_prototype_node.py
 
-SIC-SLAM v0 -- a real, minimal prototype of the "current-bias-compensated"
-pose correction described in the funding application's WP2-WP3 roadmap
+A real, minimal prototype of the "current-bias-compensated" pose
+correction described in the funding application's WP2-WP3 roadmap
 (Section B.2.2). This is NOT the full sonar + Invariant-EKF + GTSAM
 factor-graph system described there (the robot in this sim has no sonar,
 and there is no GTSAM CurrentFactor here) -- it is a small, real, working
@@ -12,6 +12,9 @@ rate between RTAB-Map corrections, and estimates a slowly-varying 2D bias
 term (the "CurrentFactor" analog: a persistent push the dead-reckoning
 model doesn't account for, e.g. a real water current or drift) from the
 residual against RTAB-Map's SLAM-corrected pose each time one arrives.
+Publishes to /gtsam_slam/odometry as a placeholder for the real
+`cavex_gtsam_slam` factor-graph node's own output -- same topic contract,
+so downstream consumers don't care which implementation is running.
 
 Inputs (all real topics, no synthetic data):
   /cmd_vel            : commanded body velocity (what VelocityControl
@@ -26,11 +29,11 @@ Inputs (all real topics, no synthetic data):
                          correction/measurement.
 
 Output:
-  /sic_slam/odometry (nav_msgs/Odometry) -- the fused pose.
+  /gtsam_slam/odometry (nav_msgs/Odometry) -- the fused pose.
 
-Do not present this as the full SIC-SLAM system from the Funding
-Application; it is an honest, working prototype subset. See the same
-caveat in ate_evaluator_node.py.
+Do not present this as the full `cavex_gtsam_slam` factor-graph system
+from the Funding Application; it is an honest, working prototype subset.
+See the same caveat in ate_evaluator_node.py.
 """
 
 import math
@@ -51,9 +54,9 @@ def quaternion_from_yaw(yaw):
     return math.sin(yaw / 2.0), math.cos(yaw / 2.0)  # (z, w) for a pure-yaw rotation
 
 
-class SicSlamNode(Node):
+class DeadReckoningPrototypeNode(Node):
     def __init__(self):
-        super().__init__('sic_slam_node')
+        super().__init__('dead_reckoning_prototype_node')
 
         self.declare_parameter('slam_topic', '/cavex/slam/odom')
         self.declare_parameter('predict_rate_hz', 20.0)
@@ -83,14 +86,14 @@ class SicSlamNode(Node):
         self.create_subscription(Twist, '/cmd_vel', self._cmd_cb, 10)
         self.create_subscription(Imu, '/imu', self._imu_cb, best_effort)
         self.create_subscription(Odometry, slam_topic, self._slam_cb, 10)
-        self.pub = self.create_publisher(Odometry, '/sic_slam/odometry', 10)
+        self.pub = self.create_publisher(Odometry, '/gtsam_slam/odometry', 10)
 
         rate_hz = self.get_parameter('predict_rate_hz').value
         self._last_predict = self.get_clock().now()
         self.timer = self.create_timer(1.0 / rate_hz, self._predict_and_publish)
 
         self.get_logger().info(
-            f"SIC-SLAM v0 started (prototype: cmd_vel+IMU dead reckoning, "
+            f"dead-reckoning prototype started (prototype: cmd_vel+IMU dead reckoning, "
             f"bias-corrected against {slam_topic}). See module docstring for scope."
         )
 
@@ -127,7 +130,7 @@ class SicSlamNode(Node):
             # spawn pose -- publishing here would score as a ~robot-spawn-
             # distance outlier against ground truth for no real reason
             # (this was the actual cause of the large max-error outlier
-            # seen in the first SIC-SLAM v0 run, not turn dynamics).
+            # seen in the first dead-reckoning prototype run, not turn dynamics).
             self._last_predict = self.get_clock().now()
             return
 
@@ -163,7 +166,7 @@ class SicSlamNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = SicSlamNode()
+    node = DeadReckoningPrototypeNode()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

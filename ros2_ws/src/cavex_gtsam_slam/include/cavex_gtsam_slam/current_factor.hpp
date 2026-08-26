@@ -1,13 +1,13 @@
-#ifndef CAVEX_SIC_SLAM__CURRENT_FACTOR_HPP_
-#define CAVEX_SIC_SLAM__CURRENT_FACTOR_HPP_
+#ifndef CAVEX_GTSAM_SLAM__CURRENT_FACTOR_HPP_
+#define CAVEX_GTSAM_SLAM__CURRENT_FACTOR_HPP_
 
 #include <array>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <gtsam/base/Matrix.h>
-#include "cavex_sic_slam/dynamics_model.hpp"
+#include "cavex_gtsam_slam/dynamics_model.hpp"
 
-namespace cavex_sic_slam
+namespace cavex_gtsam_slam
 {
 
 // residual = V - [ R(X) * v_body_predicted(thrust, drag) + C ]
@@ -66,6 +66,6 @@ private:
   gtsam::Vector3 v_pred_;
 };
 
-}  // namespace cavex_sic_slam
+}  // namespace cavex_gtsam_slam
 
-#endif  // CAVEX_SIC_SLAM__CURRENT_FACTOR_HPP_
+#endif  // CAVEX_GTSAM_SLAM__CURRENT_FACTOR_HPP_

@@ -1097,7 +1097,7 @@
         <!-- REP 103/145 optical convention (z-forward, x-right, y-down),
              not camera_link's own body convention (x-forward, y-left,
              z-up) -- image_geometry::PinholeCameraModel::project3dToPixel
-             (sic_slam_node.cpp) requires this. camera_link_optical is a
+             (instance_clustering_node.cpp) requires this. camera_link_optical is a
              zero-translation, pure-rotation child of camera_link, added
              as a static TF in tracked_vehicle_slam.launch.py. -->
         <gz_frame_id>camera_link_optical</gz_frame_id>

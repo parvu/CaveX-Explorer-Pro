@@ -1,7 +1,7 @@
-#include "cavex_sic_slam/dynamics_model.hpp"
+#include "cavex_gtsam_slam/dynamics_model.hpp"
 #include <cmath>
 
-namespace cavex_sic_slam
+namespace cavex_gtsam_slam
 {
 
 ThrusterGeometry defaultBlueRov2Geometry()
@@ -76,4 +76,4 @@ Eigen::Vector3d predictBodyVelocity(
   return quasiSteadyVelocity(bodyForce(thrust_n, geom), drag);
 }
 
-}  // namespace cavex_sic_slam
+}  // namespace cavex_gtsam_slam

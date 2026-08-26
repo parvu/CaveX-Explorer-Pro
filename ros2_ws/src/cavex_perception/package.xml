@@ -3,7 +3,7 @@
 <package format="3">
   <name>cavex_perception</name>
   <version>1.0.0</version>
-  <description>SIC-SLAM: RGB-D + 3D lidar fusion and geometric instance clustering for the CaveX tracked vehicle.</description>
+  <description>RGB-D + 3D lidar fusion and geometric instance clustering for the CaveX tracked vehicle.</description>
   <maintainer email="petrisor.parvu@upb.ro">CaveX Team</maintainer>
   <license>Apache-2.0</license>
 

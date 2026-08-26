@@ -3,7 +3,7 @@
 the old raw open-loop thrust pulse AND ate_excitation.py's ApplyLinkWrench
 approach.
 
-Real bug found and fixed here (2026-08-22): sic_slam_node's CurrentFactor
+Real bug found and fixed here (2026-08-22): gtsam_slam_node's CurrentFactor
 predicts through-water velocity from `thrust_n_`, which is populated ONLY
 by subscribing to /bluerov2/thrusterN/cmd_thrust (bridged from the real
 Gazebo thruster-joint topics). ate_excitation.py drove the vehicle via
@@ -41,7 +41,7 @@ itself (yaw_from_quat() already returns true heading, model.sdf's
 base_link is x-forward/y-left/z-up, no offset needed) is correct and
 still used in circle_demo.py/line_demo.py. But live-tested here at full
 gain (KYAW=1.5, MAX_TORQUE=3.0) and at 10x-reduced gain (0.15/0.3): BOTH
-corrupted `/sic_slam/odometry` into incoherent noise from the very first
+corrupted `/gtsam_slam/odometry` into incoherent noise from the very first
 sample -- ground truth stayed smooth in both cases (confirmed via direct
 raw-sample inspection and a live odometry-topic watch), so this is real
 yaw-torque-vs-sonar-registration interference, not a coincidence, and not

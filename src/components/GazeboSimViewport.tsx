@@ -24,7 +24,7 @@ interface GazeboSimViewportProps {
   isLive?: boolean;
   liveTelemetry?: {
     ground_truth: { x: number; y: number; z: number; yaw: number } | null;
-    sic_slam_pose: { x: number; y: number; z: number; yaw: number } | null;
+    gtsam_slam_pose: { x: number; y: number; z: number; yaw: number } | null;
     ate_rmse: number | null;
     lidar_ranges: number[] | null;
     nav_goal: { x: number; y: number; distance_remaining: number } | null;
@@ -1944,9 +1944,9 @@ export const GazeboSimViewport: React.FC<GazeboSimViewportProps> = ({
               {sensorData.lidarRanges?.length > 0 && (
                 <div>lidar min: {Math.min(...sensorData.lidarRanges).toFixed(2)}m</div>
               )}
-              {liveTelemetry.sic_slam_pose && (
+              {liveTelemetry.gtsam_slam_pose && (
                 <div>
-                  SIC-SLAM v0: ({liveTelemetry.sic_slam_pose.x.toFixed(2)}, {liveTelemetry.sic_slam_pose.y.toFixed(2)})
+                  GTSAM-SLAM v0: ({liveTelemetry.gtsam_slam_pose.x.toFixed(2)}, {liveTelemetry.gtsam_slam_pose.y.toFixed(2)})
                 </div>
               )}
               {liveTelemetry.ate_rmse !== null && (

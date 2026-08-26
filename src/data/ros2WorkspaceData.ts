@@ -548,8 +548,8 @@ def generate_launch_description():
     ])`
   },
   {
-    path: "hybrid_drone_ws/src/hybrid_cave_drone/src/sic_slam_node.cpp",
-    name: "sic_slam_node.cpp",
+    path: "hybrid_drone_ws/src/hybrid_cave_drone/src/gtsam_slam_node.cpp",
+    name: "gtsam_slam_node.cpp",
     language: "cpp",
     content: `#include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -558,22 +558,22 @@ def generate_launch_description():
 #include <geometry_msgs/msg/pose_stamped.hpp>
 
 /**
- * @brief SIC-SLAM: Subsea Sonar-Inertial-Camera Constrained SLAM Node
+ * @brief GTSAM-SLAM: Subsea Sonar-Inertial-Camera Constrained SLAM Node
  * Implements Invariant EKF Lie Group SE_2(3) state filtering with GTSAM factor graph optimization
  */
-class SICSlamNode : public rclcpp::Node {
+class GtsamSlamNode : public rclcpp::Node {
 public:
-  SICSlamNode() : Node("sic_slam_node") {
-    RCLCPP_INFO(this->get_logger(), "Initializing SIC-SLAM Invariant EKF & Multi-Modal Factor Graph Solver...");
+  GtsamSlamNode() : Node("gtsam_slam_node") {
+    RCLCPP_INFO(this->get_logger(), "Initializing GTSAM-SLAM Invariant EKF & Multi-Modal Factor Graph Solver...");
 
     // Subscribers
     sonar_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-      "/sonar/range_azimuth_image", 10, std::bind(&SICSlamNode::sonarCallback, this, std::placeholders::_1));
+      "/sonar/range_azimuth_image", 10, std::bind(&GtsamSlamNode::sonarCallback, this, std::placeholders::_1));
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      "/imu/data_raw", 100, std::bind(&SICSlamNode::imuCallback, this, std::placeholders::_1));
+      "/imu/data_raw", 100, std::bind(&GtsamSlamNode::imuCallback, this, std::placeholders::_1));
 
     // Publisher
-    odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/sic_slam/odometry", 10);
+    odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/gtsam_slam/odometry", 10);
   }
 
 private:
@@ -594,7 +594,7 @@ private:
 
 int main(int argc, char** argv) {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<SICSlamNode>());
+  rclcpp::spin(std::make_shared<GtsamSlamNode>());
   rclcpp::shutdown();
   return 0;
 }

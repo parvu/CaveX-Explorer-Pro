@@ -54,15 +54,16 @@ def main():
           f"(min={summary['min']:.4f}, max={summary['max']:.4f})")
     print()
     print("NOTE: this measures whatever pose stream was configured as ate_evaluator_node's")
-    print("'estimate_topic' -- as of this wiring, that is /sic_slam/odometry, produced by")
-    print("sic_slam_node.py: a real but MINIMAL PROTOTYPE (cmd_vel+IMU dead reckoning, bias-")
-    print("corrected against RTAB-Map's pose). It is NOT the full sonar + Invariant-EKF +")
-    print("GTSAM CurrentFactor system described in the Funding Application (Section B.2.2,")
-    print("ref. [9]) -- that remains a WP2-WP3 deliverable. Label results as 'SIC-SLAM v0")
-    print("(prototype)', not 'SIC-SLAM', until the full system replaces this node.")
+    print("'estimate_topic' -- as of this wiring, that is /gtsam_slam/odometry, produced by")
+    print("dead_reckoning_prototype_node.py: a real but MINIMAL PROTOTYPE (cmd_vel+IMU dead")
+    print("reckoning, bias-corrected against RTAB-Map's pose). It is NOT the full sonar +")
+    print("Invariant-EKF + GTSAM CurrentFactor system described in the Funding Application")
+    print("(Section B.2.2, ref. [9]) -- that remains a WP2-WP3 deliverable. Label results as")
+    print("'gtsam_slam v0 (prototype)', not 'gtsam_slam', until the full system replaces")
+    print("this node.")
     print()
     print("Reporting sentence template (update Section B.2.1/OS2):")
-    print(f'  "Across {summary["n_runs"]} runs, SIC-SLAM v0 (prototype) achieved an ATE of '
+    print(f'  "Across {summary["n_runs"]} runs, gtsam_slam v0 (prototype) achieved an ATE of '
           f'{summary["mean"]:.3f} +/- {summary["std"]:.3f} m, '
           f'{"meeting" if summary["mean"] < 0.5 else "not yet meeting"} '
           f'the OS2 simulation target of < 0.5 m."')

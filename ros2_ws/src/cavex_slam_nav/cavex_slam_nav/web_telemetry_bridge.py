@@ -65,7 +65,7 @@ class WebTelemetryBridge(Node):
         self._latest = {
             'ground_truth': None,
             'rtabmap_pose': None,
-            'sic_slam_pose': None,
+            'gtsam_slam_pose': None,
             'ate_rmse': None,
             'lidar_ranges': None,
             'nav_goal': None,
@@ -76,7 +76,7 @@ class WebTelemetryBridge(Node):
 
         self.create_subscription(Odometry, '/odom', self._gt_cb, best_effort)
         self.create_subscription(Odometry, '/cavex/slam/odom', self._rtabmap_cb, 10)
-        self.create_subscription(Odometry, '/sic_slam/odometry', self._sic_slam_cb, 10)
+        self.create_subscription(Odometry, '/gtsam_slam/odometry', self._gtsam_slam_cb, 10)
         self.create_subscription(Float64, '/cavex/eval/ate_rmse', self._ate_cb, 10)
         self.create_subscription(LaserScan, '/lidar/scan', self._scan_cb, best_effort)
         self.create_subscription(Float64, '/cavex/nav/distance_remaining', self._nav_dist_cb, 10)
@@ -110,8 +110,8 @@ class WebTelemetryBridge(Node):
     def _rtabmap_cb(self, msg):
         self._latest['rtabmap_pose'] = self._pose_dict(msg)
 
-    def _sic_slam_cb(self, msg):
-        self._latest['sic_slam_pose'] = self._pose_dict(msg)
+    def _gtsam_slam_cb(self, msg):
+        self._latest['gtsam_slam_pose'] = self._pose_dict(msg)
 
     def _ate_cb(self, msg):
         self._latest['ate_rmse'] = msg.data

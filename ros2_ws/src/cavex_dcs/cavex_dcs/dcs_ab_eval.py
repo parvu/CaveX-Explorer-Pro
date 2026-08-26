@@ -46,7 +46,7 @@ class DcsAbEvalRunner(Node):
 
         cmd_topic = '/cmd_vel_rov_desired' if dcs_enabled else '/cmd_vel_rov'
         self._cmd_pub = self.create_publisher(Twist, cmd_topic, 10)
-        self.create_subscription(Odometry, '/sic_slam/odometry', self._odom_cb, 10)
+        self.create_subscription(Odometry, '/gtsam_slam/odometry', self._odom_cb, 10)
         self.create_subscription(
             Vector3Stamped, '/cavex/current_ground_truth', self._current_gt_cb, 10)
         self._timer = self.create_timer(0.1, self._tick)

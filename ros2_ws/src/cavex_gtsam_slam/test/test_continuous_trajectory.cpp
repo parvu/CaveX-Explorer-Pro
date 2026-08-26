@@ -12,10 +12,10 @@
 #include <cmath>
 #include <random>
 
-#include "cavex_sic_slam/velocity_coupling_factor.hpp"
+#include "cavex_gtsam_slam/velocity_coupling_factor.hpp"
 
 using namespace gtsam;
-using cavex_sic_slam::VelocityCouplingFactor;
+using cavex_gtsam_slam::VelocityCouplingFactor;
 
 namespace {
 // Ground truth used by both tests below: a curved trajectory and a

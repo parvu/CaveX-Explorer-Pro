@@ -1,7 +1,7 @@
 """
 ate_metrics.py
 
-Pure trajectory-evaluation math for CAVE-SLAM / SIC-SLAM, with no ROS2
+Pure trajectory-evaluation math for CAVE-SLAM / gtsam_slam, with no ROS2
 dependency, so it can be unit-tested standalone (see the __main__ block
 and test_ate_metrics.py) before being wrapped in a ROS2 node.
 

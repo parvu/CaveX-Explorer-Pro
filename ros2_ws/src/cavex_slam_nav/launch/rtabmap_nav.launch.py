@@ -81,13 +81,16 @@ def generate_launch_description():
             parameters=[{'use_sim_time': use_sim_time}],
         ),
 
-        # SIC-SLAM v0 (real prototype: cmd_vel+IMU dead reckoning, bias-
-        # corrected against RTAB-Map's pose -- see sic_slam_node.py for the
-        # honest scope of what this is and isn't).
+        # Dead-reckoning prototype (real: cmd_vel+IMU dead reckoning, bias-
+        # corrected against RTAB-Map's pose -- see
+        # dead_reckoning_prototype_node.py for the honest scope of what
+        # this is and isn't; it publishes /gtsam_slam/odometry as a
+        # placeholder for the real cavex_gtsam_slam factor-graph node's
+        # own output).
         Node(
             package='cavex_slam_nav',
-            executable='sic_slam_node.py',
-            name='sic_slam_node',
+            executable='dead_reckoning_prototype_node.py',
+            name='dead_reckoning_prototype_node',
             output='screen',
             parameters=[{'use_sim_time': use_sim_time}],
         ),
@@ -97,9 +100,9 @@ def generate_launch_description():
         # OdometryPublisher computes it directly from true simulator state
         # with no noise model, so it IS ground truth in this simulation
         # (not a claim about basin/real-hardware ground truth). Estimate is
-        # SIC-SLAM v0's fused pose, a real (if prototype-scope) system, not
-        # a placeholder. Publish an Empty message to /cavex/eval/finish_run
-        # to score a run.
+        # the dead-reckoning prototype's fused pose, a real (if
+        # prototype-scope) system, not a placeholder. Publish an Empty
+        # message to /cavex/eval/finish_run to score a run.
         Node(
             package='cavex_slam_nav',
             executable='ate_evaluator_node.py',
@@ -108,7 +111,7 @@ def generate_launch_description():
             parameters=[{
                 'use_sim_time': use_sim_time,
                 'ground_truth_topic': '/odom',
-                'estimate_topic': '/sic_slam/odometry',
+                'estimate_topic': '/gtsam_slam/odometry',
             }],
         ),
 

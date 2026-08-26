@@ -2,10 +2,10 @@
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Rot3.h>
-#include "cavex_sic_slam/current_factor.hpp"
-#include "cavex_sic_slam/dynamics_model.hpp"
+#include "cavex_gtsam_slam/current_factor.hpp"
+#include "cavex_gtsam_slam/dynamics_model.hpp"
 
-using namespace cavex_sic_slam;
+using namespace cavex_gtsam_slam;
 using gtsam::Pose3;
 using gtsam::Rot3;
 using gtsam::Point3;

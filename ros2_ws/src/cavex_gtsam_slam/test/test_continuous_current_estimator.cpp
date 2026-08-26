@@ -3,9 +3,9 @@
 #include <cmath>
 #include <random>
 
-#include "cavex_sic_slam/continuous_current_estimator.hpp"
+#include "cavex_gtsam_slam/continuous_current_estimator.hpp"
 
-using cavex_sic_slam::ContinuousCurrentEstimator;
+using cavex_gtsam_slam::ContinuousCurrentEstimator;
 using gtsam::Vector3;
 
 namespace {
@@ -96,7 +96,7 @@ TEST(ContinuousCurrentEstimator, EvaluateReturnsNulloptOutsideFitDomain) {
 TEST(ContinuousCurrentEstimator, EvaluateForFeedbackWorksAtNowDuringLiveIncrementalUse) {
   // This is the test attempt 2 should have written: the LIVE incremental
   // pattern (addSample + periodic refit + evaluate-at-the-current-
-  // iteration's-own-t, every single iteration) that sic_slam_node.cpp
+  // iteration's-own-t, every single iteration) that gtsam_slam_node.cpp
   // actually uses -- NOT a single fit-then-query-the-past setup, which
   // cannot distinguish "the query time is wrong" from "the fit's own
   // timing is wrong." Regression test for a design flaw found and fixed
@@ -116,7 +116,7 @@ TEST(ContinuousCurrentEstimator, EvaluateForFeedbackWorksAtNowDuringLiveIncremen
   int feedback_successes = 0;
   int iterations = 0;
   for (int i = 0; i < 60; ++i) {
-    double t = i * 3.0;  // ~3s keyframe cadence, matching sic_slam_node
+    double t = i * 3.0;  // ~3s keyframe cadence, matching gtsam_slam_node
     est.addSample(t, trueCurrent(t) + Vector3(noise(rng), noise(rng), noise(rng)));
     // refitDelayed() is called every iteration, NOT gated to every-5th
     // like refit(). Real finding from debugging this: gating it the same

@@ -79,7 +79,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
-          <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> SIC-SLAM Engine
+          <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> GTSAM-SLAM Engine
         </button>
         <button
           id="nav-tab-urdf"

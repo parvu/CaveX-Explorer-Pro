@@ -108,7 +108,7 @@ void selfCheck()
     std::exit(1);
   }
 
-  std::cout << "sic_slam_node self-check: OK\n";
+  std::cout << "instance_clustering_node self-check: OK\n";
 }
 
 }  // namespace
@@ -116,11 +116,11 @@ void selfCheck()
 namespace cavex_perception
 {
 
-class SicSlamNode : public rclcpp::Node
+class InstanceClusteringNode : public rclcpp::Node
 {
 public:
-  SicSlamNode()
-  : Node("sic_slam_node"), next_id_(0)
+  InstanceClusteringNode()
+  : Node("instance_clustering_node"), next_id_(0)
   {
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -139,16 +139,16 @@ public:
       });
     lidar_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
       "/lidar/points", rclcpp::SensorDataQoS(),
-      std::bind(&SicSlamNode::lidarCallback, this, std::placeholders::_1));
+      std::bind(&InstanceClusteringNode::lidarCallback, this, std::placeholders::_1));
 
     instances_pub_ = create_publisher<vision_msgs::msg::Detection3DArray>(
-      "/sic_slam/instances", 10);
+      "/instance_clustering/instances", 10);
     colored_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
-      "/sic_slam/colored_points", 10);
+      "/instance_clustering/colored_points", 10);
 
-    RCLCPP_INFO(get_logger(), "sic_slam_node ready: colorizing lidar via camera "
-      "projection, clustering into instances, publishing /sic_slam/instances "
-      "and /sic_slam/colored_points.");
+    RCLCPP_INFO(get_logger(), "instance_clustering_node ready: colorizing lidar via camera "
+      "projection, clustering into instances, publishing /instance_clustering/instances "
+      "and /instance_clustering/colored_points.");
   }
 
 private:
@@ -335,7 +335,7 @@ int main(int argc, char ** argv)
     }
   }
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<cavex_perception::SicSlamNode>());
+  rclcpp::spin(std::make_shared<cavex_perception::InstanceClusteringNode>());
   rclcpp::shutdown();
   return 0;
 }

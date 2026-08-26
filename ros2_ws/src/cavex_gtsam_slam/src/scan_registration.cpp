@@ -1,9 +1,9 @@
-#include "cavex_sic_slam/scan_registration.hpp"
+#include "cavex_gtsam_slam/scan_registration.hpp"
 #include <cmath>
 #include <limits>
 #include <Eigen/Dense>
 
-namespace cavex_sic_slam
+namespace cavex_gtsam_slam
 {
 
 std::vector<ScanPoint> laserScanToPoints(
@@ -169,4 +169,4 @@ RegistrationResult registerScans(
   return result;
 }
 
-}  // namespace cavex_sic_slam
+}  // namespace cavex_gtsam_slam

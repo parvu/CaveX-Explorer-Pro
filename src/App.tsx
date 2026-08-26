@@ -6,7 +6,7 @@ import { SensorDashboard } from "./components/SensorDashboard";
 import { MultiModalNavPlanner } from "./components/MultiModalNavPlanner";
 import { KinematicChainEditor } from "./components/KinematicChainEditor";
 import { ROS2WorkspaceExplorer } from "./components/ROS2WorkspaceExplorer";
-import { SICSlamVisualizer } from "./components/SICSlamVisualizer";
+import { GtsamSlamVisualizer } from "./components/GtsamSlamVisualizer";
 import { TrackedVehiclePanel } from "./components/TrackedVehiclePanel";
 import { AICopilotModal } from "./components/AICopilotModal";
 
@@ -279,10 +279,10 @@ export default function App() {
   // used to drive the 3D view + sensor panels below in place of the
   // client-fabricated physics when the ROS2 stack is actually running.
   // Falls back to the mock simulation (unchanged) when it isn't -- same
-  // honest live/demo split already used in SICSlamVisualizer.tsx.
+  // honest live/demo split already used in GtsamSlamVisualizer.tsx.
   const [liveTelemetry, setLiveTelemetry] = useState<{
     ground_truth: { x: number; y: number; z: number; yaw: number } | null;
-    sic_slam_pose: { x: number; y: number; z: number; yaw: number } | null;
+    gtsam_slam_pose: { x: number; y: number; z: number; yaw: number } | null;
     ate_rmse: number | null;
     lidar_ranges: number[] | null;
     nav_goal: { x: number; y: number; distance_remaining: number } | null;
@@ -641,7 +641,7 @@ export default function App() {
         )}
 
         {activeView === "sicslam" && (
-          <SICSlamVisualizer robotState={robotState} sensorData={sensorData} />
+          <GtsamSlamVisualizer robotState={robotState} sensorData={sensorData} />
         )}
 
         {activeView === "workspace" && (

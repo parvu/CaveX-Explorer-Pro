@@ -47,7 +47,7 @@ sequences, driving commands, and verification steps for each:
 | `cavex_tracked_vehicle` | Tracked BlueBoat + BlueROV2, ArduPilot Rover/Sub SITL |
 | `cavex_sonar` | Simulated BlueROV2 acoustic sonar + ocean current |
 | `cavex_perception` | RGB-D + lidar instance clustering |
-| `cavex_sic_slam` | Real GTSAM Sonar-Inertial-Current factor-graph SLAM |
+| `cavex_gtsam_slam` | Real GTSAM Sonar-Inertial-Current factor-graph SLAM |
 | `cavex_dcs` | Drift/Current Suppression controller (feed-forward + PI) |
 
 ### Phase 1: tracked BlueBoat + BlueROV2 (dry cave, ArduPilot)
@@ -60,7 +60,7 @@ sleep 15
 ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
 ```
 
-### Phase 2: BlueROV2 sonar + current + SIC-SLAM + DCS (flooded section)
+### Phase 2: BlueROV2 sonar + current + GTSAM-SLAM + DCS (flooded section)
 
 ```bash
 gz sim -r -v2 src/cavex_slam_nav/worlds/cavex_world.world &
@@ -73,7 +73,7 @@ ros2 run ros_gz_bridge parameter_bridge --ros-args \
 sleep 10
 ros2 run cavex_sonar sonar_node --ros-args -p seed:=42 -p frame_id:=bluerov2/sonar &
 sleep 3
-ros2 run cavex_sic_slam sic_slam_node &
+ros2 run cavex_gtsam_slam gtsam_slam_node &
 ros2 run cavex_dcs dcs_controller &
 ```
 
@@ -99,7 +99,7 @@ Harmonic) -- no additional ROS nodes needed beyond the spawned vehicle.
 the vehicle, run a closed-loop excitation trajectory, and compute
 Absolute Trajectory Error against Gazebo ground truth, repeating until
 `n_target` valid (non-discarded) runs complete. Each attempt is a fully
-fresh process restart (gz sim, bridge, sonar, sic_slam_node); a run is
+fresh process restart (gz sim, bridge, sonar, gtsam_slam_node); a run is
 discarded and retried (not counted) on node-stacking or an implausible
 solution jump, so the reported n is always n genuinely valid runs. Output
 (per-run logs + `ate_Nx_<label>_results.csv`) goes to `$ATE_OUT_DIR`
@@ -157,7 +157,7 @@ instant, so there's no real per-beam motion distortion in the data to
 correct for; this just gives a consumer the field a real sensor driver
 would provide.
 
-**Scan registration is classical, not learned.** `cavex_sic_slam`'s
+**Scan registration is classical, not learned.** `cavex_gtsam_slam`'s
 keyframe-to-keyframe registration (`scan_registration.cpp`) is a
 plain ICP-style SVD rigid-transform fit — there is no neural network or
 learned feature extractor anywhere in this pipeline. Any claim about a

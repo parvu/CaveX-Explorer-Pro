@@ -150,7 +150,7 @@
   gz_type_name: "gz.msgs.Vector3d"
   direction: ROS_TO_GZ
 
-# Task 4 (cavex_sic_slam): BlueROV2's own IMU sensor, for sic_slam_node's
+# Task 4 (cavex_gtsam_slam): BlueROV2's own IMU sensor, for gtsam_slam_node's
 # IMU-only preintegration graph. Distinct from the /imu entry above, which
 # is cavex_tracked_blueboat's IMU, a different model/link entirely.
 - ros_topic_name: "/bluerov2/imu"
@@ -159,8 +159,8 @@
   gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS
 
-# Task 6 (cavex_sic_slam): BlueROV2's six real thruster commands, relayed
-# GZ->ROS for sic_slam_node's CurrentFactor (needs the actual commanded
+# Task 6 (cavex_gtsam_slam): BlueROV2's six real thruster commands, relayed
+# GZ->ROS for gtsam_slam_node's CurrentFactor (needs the actual commanded
 # thrust per thruster to predict through-water body velocity). gz_topic_name
 # matches model.sdf's own <cmd_topic> for each gz-sim-thruster-system plugin
 # exactly (confirmed by reading model.sdf; live-verified empirically per

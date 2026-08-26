@@ -59,14 +59,14 @@ class DcsController(Node):
 
         self.create_subscription(Twist, '/cmd_vel_rov_desired', self._desired_cb, 10)
         self.create_subscription(
-            TwistWithCovarianceStamped, '/sic_slam/current_estimate', self._current_cb, 10)
-        self.create_subscription(Odometry, '/sic_slam/odometry', self._odom_cb, 10)
+            TwistWithCovarianceStamped, '/gtsam_slam/current_estimate', self._current_cb, 10)
+        self.create_subscription(Odometry, '/gtsam_slam/odometry', self._odom_cb, 10)
         self._cmd_pub = self.create_publisher(Twist, '/cmd_vel_rov', 10)
         self._status_pub = self.create_publisher(String, '/dcs/status', 10)
 
         self.get_logger().info(
             'dcs_controller ready: /cmd_vel_rov_desired -> /cmd_vel_rov, '
-            'compensating for /sic_slam/current_estimate.')
+            'compensating for /gtsam_slam/current_estimate.')
 
     def _current_cb(self, msg: TwistWithCovarianceStamped):
         self._current_vx = msg.twist.twist.linear.x

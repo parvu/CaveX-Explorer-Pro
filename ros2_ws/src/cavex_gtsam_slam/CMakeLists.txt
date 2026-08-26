@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(cavex_sic_slam)
+project(cavex_gtsam_slam)
 
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
@@ -22,24 +22,24 @@ find_package(Eigen3 REQUIRED)
 
 include_directories(include)
 
-add_library(sic_slam_core
+add_library(gtsam_slam_core
   src/dynamics_model.cpp
   src/scan_registration.cpp
 )
-target_link_libraries(sic_slam_core Eigen3::Eigen)
-target_include_directories(sic_slam_core PUBLIC
+target_link_libraries(gtsam_slam_core Eigen3::Eigen)
+target_include_directories(gtsam_slam_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
 
-install(TARGETS sic_slam_core
+install(TARGETS gtsam_slam_core
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/
   DESTINATION include)
 
-add_executable(sic_slam_node src/sic_slam_node.cpp)
-target_link_libraries(sic_slam_node sic_slam_core gtsam)
-ament_target_dependencies(sic_slam_node rclcpp sensor_msgs nav_msgs geometry_msgs tf2_ros tf2_geometry_msgs std_msgs)
-install(TARGETS sic_slam_node
+add_executable(gtsam_slam_node src/gtsam_slam_node.cpp)
+target_link_libraries(gtsam_slam_node gtsam_slam_core gtsam)
+ament_target_dependencies(gtsam_slam_node rclcpp sensor_msgs nav_msgs geometry_msgs tf2_ros tf2_geometry_msgs std_msgs)
+install(TARGETS gtsam_slam_node
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
@@ -50,20 +50,20 @@ if(BUILD_TESTING)
 
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_dynamics_model test/test_dynamics_model.cpp)
-  target_link_libraries(test_dynamics_model sic_slam_core)
+  target_link_libraries(test_dynamics_model gtsam_slam_core)
 
   find_package(GTSAM REQUIRED)
   ament_add_gtest(test_current_factor test/test_current_factor.cpp)
-  target_link_libraries(test_current_factor sic_slam_core gtsam)
+  target_link_libraries(test_current_factor gtsam_slam_core gtsam)
 
   ament_add_gtest(test_scan_registration test/test_scan_registration.cpp)
-  target_link_libraries(test_scan_registration sic_slam_core)
+  target_link_libraries(test_scan_registration gtsam_slam_core)
 
   ament_add_gtest(test_continuous_trajectory test/test_continuous_trajectory.cpp)
-  target_link_libraries(test_continuous_trajectory sic_slam_core gtsam)
+  target_link_libraries(test_continuous_trajectory gtsam_slam_core gtsam)
 
   ament_add_gtest(test_continuous_current_estimator test/test_continuous_current_estimator.cpp)
-  target_link_libraries(test_continuous_current_estimator sic_slam_core gtsam)
+  target_link_libraries(test_continuous_current_estimator gtsam_slam_core gtsam)
 endif()
 
 install(DIRECTORY launch
