@@ -126,6 +126,102 @@
         <real_time_factor>true</real_time_factor>
         <iterations>true</iterations>
       </plugin>
+
+      <!-- Real request, 2026-08-26: GUI controls for the tracked vehicle,
+           ported from perception branch's InfoLabel/ManualControl (see
+           cavex_tracked_vehicle_gui, built from that package's own
+           pattern) and adapted for a ground vehicle -- discrete
+           track/rover commands instead of numeric current/turbidity
+           readouts, turn-left/turn-right instead of a depth axis. Both
+           plugin types only speak gz-transport; manual_gui_bridge.py
+           (cavex_tracked_vehicle, auto-launched by
+           gazebo_tracked_vehicle.launch.py) is what actually drives
+           /cmd_vel and republishes the ActionButtons commands onto the
+           real ROS2 topics vehicle_switch_node.py/
+           track_retract_control.py already consume. -->
+      <plugin filename="ActionButtons" name="Track control">
+        <gz-gui>
+          <title>Track control</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">170</property>
+          <property type="double" key="height">34</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="horizontalCenter" target="horizontalCenter"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+        <label>Track</label>
+        <button1_label>Up</button1_label>
+        <button1_cmd>retracted</button1_cmd>
+        <button2_label>Down</button2_label>
+        <button2_cmd>deployed</button2_cmd>
+        <topic>/cavex/track_cmd</topic>
+      </plugin>
+      <!-- Same line as "Track control" above, anchored to its right
+           edge -- same convention as perception's Current speed/
+           Turbidity pair. -->
+      <plugin filename="ActionButtons" name="Rover lock control">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">170</property>
+          <property type="double" key="height">34</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="Track control">
+            <line own="left" target="right"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+        <label>Rover</label>
+        <button1_label>Lock</button1_label>
+        <button1_cmd>lock</button1_cmd>
+        <button2_label>Unlock</button2_label>
+        <button2_cmd>unlock</button2_cmd>
+        <topic>/cavex/rov_lock_cmd</topic>
+      </plugin>
+      <!-- Manual drive D-pad (left/fwd/right/rev + center stop) --
+           top-left, the only free corner (bottom two are the
+           ActionButtons + World control/stats). Publishes to
+           /cavex/manual_cmd; only actually moves the vehicle while
+           manual_gui_bridge.py is running AND the Manual toggle (on the
+           turn panel below) is on. -->
+      <plugin filename="ManualControl" name="Manual control">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">150</property>
+          <property type="double" key="height">96</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="left" target="left"/>
+            <line own="top" target="top"/>
+          </anchors>
+        </gz-gui>
+        <mode>dpad</mode>
+      </plugin>
+      <!-- Turn (left/right pivot) + the Manual toggle -- top-right.
+           Real request: replaces the ROV version's depth (up/down)
+           pair, which has no ground-vehicle equivalent. -->
+      <plugin filename="ManualControl" name="Manual turn control">
+        <gz-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="width">100</property>
+          <property type="double" key="height">96</property>
+          <property type="double" key="z">1</property>
+          <property type="string" key="state">floating</property>
+          <anchors target="3D View">
+            <line own="right" target="right"/>
+            <line own="top" target="top"/>
+          </anchors>
+        </gz-gui>
+        <mode>turn</mode>
+      </plugin>
     </gui>
     <physics name="4ms" type="ode">
       <max_step_size>0.004</max_step_size>

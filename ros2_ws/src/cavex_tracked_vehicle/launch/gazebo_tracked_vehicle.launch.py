@@ -409,6 +409,21 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
+    # Real request, 2026-08-26: consumer for cavex_world.world's new
+    # ActionButtons/ManualControl GUI plugins (Track up/down, Rover
+    # lock/unlock, D-pad + turn-left/right). Auto-launched here for the
+    # same reason sic_slam's sim_launch.py auto-launches
+    # manual_control_node.py -- clicking the GUI's buttons would
+    # otherwise silently do nothing until an operator remembered to start
+    # this separately. Publishes nothing on /cmd_vel while the Manual
+    # toggle is off, same convention.
+    manual_gui_bridge = Node(
+        package='cavex_tracked_vehicle',
+        executable='manual_gui_bridge.py',
+        name='manual_gui_bridge',
+        output='screen',
+    )
+
     # ros2_control's controllers are declared to the controller_manager the
     # gz_ros2_control plugin starts on model spawn, but nothing loads/activates
     # them by itself (same real, empirically-confirmed requirement as the
@@ -452,6 +467,7 @@ def generate_launch_description():
         track_retract_control,
         vehicle_switch_node,
         motorized_tether_control,
+        manual_gui_bridge,
         spawn_bluerov2_retry,
         RegisterEventHandler(
             event_handler=OnProcessExit(

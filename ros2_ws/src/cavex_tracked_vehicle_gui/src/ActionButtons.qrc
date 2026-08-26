@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/ActionButtons">
+    <file alias="ActionButtons.qml">ActionButtons.qml</file>
+  </qresource>
+</RCC>

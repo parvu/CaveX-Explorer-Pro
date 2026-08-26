@@ -17,6 +17,19 @@ export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_sla
 # was always genuinely correct even while nothing rendered.
 export GZ_SIM_RESOURCE_PATH=/home/parvu/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models:$GZ_SIM_RESOURCE_PATH
 
+# Real request, 2026-08-26: cavex_world.world's <gui> section now loads
+# ActionButtons/ManualControl (cavex_tracked_vehicle_gui, ported from
+# perception's sic_slam_gui) -- this is the compiled .so lib dir, so it
+# must point at install/, not src/ (unlike the two GZ_SIM_RESOURCE_PATH
+# entries above, which work from src/ because models aren't compiled).
+# gazebo_tracked_vehicle.launch.py always runs the server headless-only
+# and the GUI is started separately (`gz sim -g`, per that launch file's
+# own comment) -- a SetEnvironmentVariable action in that launch file
+# would never reach the separately-invoked GUI process, so this has to
+# live here instead, in the file every `gz sim -g` invocation already
+# sources.
+export GZ_GUI_PLUGIN_PATH=/home/parvu/CaveX-Explorer-Pro/ros2_ws/install/cavex_tracked_vehicle_gui/lib/cavex_tracked_vehicle_gui:$GZ_GUI_PLUGIN_PATH
+
 # micro_ros_agent fix (Task 10 follow-up): micro_ros_msgs isn't a real apt/rosdep package on
 # ROS2 Jazzy, so this environment vendors it as a prebuilt extract at .local-deps/ros-extract.
 # micro_ros_agent's own binary RUNPATH already points there and resolves its direct dependency

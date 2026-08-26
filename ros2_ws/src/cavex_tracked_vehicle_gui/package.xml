@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>cavex_tracked_vehicle_gui</name>
+  <version>0.1.0</version>
+  <description>gz-gui plugins for the tracked BlueBoat's on-screen controls:
+    ActionButtons (a small corner rectangle with two command buttons, used
+    for Track deploy/retract and Rover lock/unlock) and ManualControl (a
+    D-pad for driving + a turn-left/turn-right pair with a Manual toggle),
+    ported and adapted from perception branch's sic_slam_gui for the
+    tracked ground vehicle (no depth axis, no strafe -- turning instead).
+  </description>
+  <maintainer email="petrisor.parvu@upb.ro">CaveX Explorer Pro</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

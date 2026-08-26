@@ -76,6 +76,7 @@ from geometry_msgs.msg import TwistStamped, Twist
 
 from gz.transport13 import Node as GzNode
 from gz.msgs10.pose_v_pb2 import Pose_V
+from gz.msgs10.stringmsg_pb2 import StringMsg
 
 WORLD_NAME = 'cavex_world'
 VEHICLE_MODEL_NAME = 'cavex_tracked_blueboat'
@@ -108,8 +109,23 @@ class TrackCmdVelBridge(RclpyNode):
         self._got_first_gt_pose = False
         self._got_first_twist = False
 
+        self._manual_on = False
+
         self._gz_node = GzNode()
         self._gz_node.subscribe(Pose_V, GZ_POSE_TOPIC, self._gz_pose_cb)
+        # Real bug found and fixed here, 2026-08-26: this bridge and
+        # manual_gui_bridge.py's ManualControl-driven /cmd_vel both target
+        # the same gz-transport /model/.../cmd_vel topic (this one via
+        # ros_gz_bridge, the other direct) -- two competing publishers on
+        # one topic, exactly the "silently confounded" collision already
+        # documented in blueboat_tracked_static/model.sdf's own friction
+        # comment, just discovered again via the manual GUI controls this
+        # time (a "forward" button press produced zero real displacement
+        # while this bridge kept relaying ArduPilot's own near-idle
+        # output). Real fix: this bridge goes silent while Manual is on,
+        # the same "publish nothing at all, not even zeros" convention
+        # manual_gui_bridge.py itself already uses for the reverse case.
+        self._gz_node.subscribe(StringMsg, "/cavex/manual_cmd", self._manual_cmd_cb)
 
         # AP_DDS publishes /ap/twist/filtered as BEST_EFFORT (confirmed live via
         # `ros2 topic info -v /ap/twist/filtered`); rclpy's default subscription
@@ -141,7 +157,15 @@ class TrackCmdVelBridge(RclpyNode):
                         f"{VEHICLE_MODEL_NAME}; heading source is live.")
                 return
 
+    def _manual_cmd_cb(self, msg: StringMsg):
+        if msg.data == 'manual_on':
+            self._manual_on = True
+        elif msg.data == 'manual_off':
+            self._manual_on = False
+
     def _twist_cb(self, msg: TwistStamped):
+        if self._manual_on:
+            return
         if not self._got_first_twist:
             self._got_first_twist = True
             self.get_logger().info(
