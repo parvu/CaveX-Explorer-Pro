@@ -48,13 +48,15 @@ VEHICLE_MASS_KG = 47.1
 GRAVITY = 9.81
 WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 
-# Real request 2026-08-26: was 8.15 -- live-confirmed in the browser viewer as
-# floating too high, with the deployed tracks (which hang roughly 0.35-0.45m
-# below base_link's own origin -- left_track_retract_mount at local z=-0.2,
-# left_track a further -0.15) barely reaching the water at all. Lowered so
-# the hull itself sits partly submerged at the surface (7.9) and the tracks
-# are clearly underwater, not just grazing it.
-TARGET_FLOAT_Z = 7.75
+# Real request 2026-08-26: raised again -- 7.75 (chosen so the deployed tracks,
+# which hang ~0.35-0.45m below base_link, clear the water) left the hull deck
+# itself too submerged. hull_collision's own real bounding box (see
+# model.sdf.tracked's lidar_link mount-height comment) has its top at local
+# z=0 -- base_link's own Z essentially IS deck height -- so "deck >=12cm above
+# the water surface (7.9)" means target >= 8.02. Set a bit above that (8.15)
+# for margin, since the controller settles slightly below target under real
+# tilt/lift-loss even with the current gain.
+TARGET_FLOAT_Z = 8.15
 
 # Real request 2026-08-26: KZ bumped from 400 -- a P-only height controller
 # always leaves a steady-state error proportional to whatever's fighting it
@@ -79,6 +81,16 @@ MAX_LIFT_N = 1200.0  # clamp, headroom for the higher KZ
 # righting stiffness.
 BUOY_OFFSET_Z = 0.4
 ANGULAR_DAMPING = 40.0  # N*m per (rad/s) of roll/pitch rate
+
+# Real request 2026-08-26: "too back heavy" -- live-confirmed a genuine, real
+# mass-imbalance trim (~-7deg pitch, stable, not oscillating), not noise: the
+# stern motor/prop links (model.sdf.tracked's motor_port_link/motor_stbd_link,
+# x=-0.488) plus tether_anchor_link (x=-0.2) and bluerov2_link (x=-0.10) all
+# sit aft of base_link's own origin, unbalanced by the (now hull-centered,
+# x=0.1) helipad/x500 cargo. ANGULAR_DAMPING only opposes RATE, so it can calm
+# oscillation but can't correct a steady offset -- a real P term on the angle
+# itself is what's actually missing to drive the resting trim toward level.
+LEVEL_KP = 550.0  # N*m per radian of roll/pitch angle
 
 
 def roll_pitch_from_quat(x, y, z, w):
@@ -130,8 +142,8 @@ class BoatBuoyancyControl(Node):
 
         lift = WEIGHT_N + KZ * (TARGET_FLOAT_Z - z) - DZ * vz
         lift = max(0.0, min(MAX_LIFT_N, lift))
-        torque_x = -ANGULAR_DAMPING * roll_rate
-        torque_y = -ANGULAR_DAMPING * pitch_rate
+        torque_x = -LEVEL_KP * roll - ANGULAR_DAMPING * roll_rate
+        torque_y = -LEVEL_KP * pitch - ANGULAR_DAMPING * pitch_rate
         self._publish_wrench(lift, BUOY_OFFSET_Z, torque_x, torque_y)
 
     def _publish_wrench(self, force_z, offset_z, torque_x, torque_y):
