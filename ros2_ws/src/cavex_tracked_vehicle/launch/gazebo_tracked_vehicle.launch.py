@@ -183,11 +183,13 @@ def generate_launch_description():
 
     # Real request 2026-08-26: helipad_link moved from local x=0.3 to x=0.1 (see its own
     # comment -- part of the water-floating CoG fix, this cargo riding far forward and
-    # high up was producing a real nose-down pitch trim once floating). This spawn's own
-    # x below updated to match (boat_x + 0.1, was + 0.3).
+    # high up was producing a real nose-down pitch trim once floating), then back out to
+    # x=0.25 once boat_buoyancy_control.py's active pitch-leveling torque gave real
+    # authority to correct trim without relying on mass placement alone. This spawn's
+    # own x below updated to match (boat_x + 0.25).
     #
     # Carried PX4 x500 quadcopter (real, vendored fuel.gazebosim.org/PX4/models/x500)
-    # on model.sdf.tracked's real helipad_link (near hull center, local x=0.1,
+    # on model.sdf.tracked's real helipad_link (local x=0.25,
     # z=0.005 deck-top -- flush, no support post, see helipad_link's own
     # comment). helipad_deck_visual/collision is a 0.01-thick disc centered
     # on that link origin (no further local offset), so its own top surface
@@ -217,8 +219,8 @@ def generate_launch_description():
     # likely landing in empty space or unrelated geometry in the now-2x cave
     # and just free-falling under gravity with nothing for the
     # DetachableJoint to actually hold. Same relative-offset math as before,
-    # now against the moved helipad (x = boat_x + 0.1, y = boat_y): x = -88.78 + 0.1 =
-    # -88.68, y = -31.4 (matching the boat, same convention bluerov2's own spawn
+    # now against the moved helipad (x = boat_x + 0.25, y = boat_y): x = -88.78 + 0.25 =
+    # -88.53, y = -31.4 (matching the boat, same convention bluerov2's own spawn
     # above already uses). z is unchanged -- it never depended on the cave
     # scale (see README's "Cave scaled 2x": vehicle-size/local-height
     # parameters were deliberately left unscaled).
@@ -233,7 +235,7 @@ def generate_launch_description():
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'x500', 'model.sdf'),
                    '-name', 'x500',
-                   '-x', '-88.68', '-y', '-31.4', '-z', '6.887'],
+                   '-x', '-88.53', '-y', '-31.4', '-z', '6.887'],
         output='screen',
     )
 

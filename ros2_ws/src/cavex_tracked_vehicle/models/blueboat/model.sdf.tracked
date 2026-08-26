@@ -1646,11 +1646,17 @@
          (~-10 to -20 deg) once floating; moving its whole mount toward center removes
          most of that lever arm instead of trying to counterweight it elsewhere. Still
          clear of tether_anchor_link's own footprint at x=-0.2 (radius 0.03) and the
-         camera mast at x=0.55. gazebo_tracked_vehicle.launch.py's x500 spawn offset was
-         updated to match (boat_x + 0.1, was + 0.3) -- see its own comment. Deck-level
-         (z=0.005, matching the hull collision's own real top surface). -->
+         camera mast at x=0.55.
+         Real request 2026-08-26 (later): moved 15cm further forward again, to x=0.25 --
+         boat_buoyancy_control.py's active pitch-leveling torque (LEVEL_KP) added since
+         the original move gives real authority to correct trim now, not just passive
+         mass placement, so this can move back toward the bow without reintroducing the
+         original nose-down problem. Still clear of the camera mast (x=0.55).
+         gazebo_tracked_vehicle.launch.py's x500 spawn offset was updated to match
+         (boat_x + 0.25) -- see its own comment. Deck-level (z=0.005, matching the hull
+         collision's own real top surface). -->
     <link name="helipad_link">
-      <pose relative_to="base_link">0.1 0 0.005 0 0 0</pose>
+      <pose relative_to="base_link">0.25 0 0.005 0 0 0</pose>
       <inertial>
         <mass>0.5</mass>
         <inertia><ixx>0.01</ixx><iyy>0.01</iyy><izz>0.01</izz></inertia>
