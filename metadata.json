@@ -1,6 +1,0 @@
-{
-  "name": "CaveX Explorer Pro",
-  "description": "Interactive ROS 2 Jazzy workspace generator & Gazebo simulator for tri-modal hybrid drones (walking, sailing, flying) in flooded caves with URDF kinematics, multi-sensor SLAM, auto-avoidance, and transition algorithms.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
