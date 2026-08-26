@@ -252,46 +252,32 @@
          cave_floor_patch's own comment for how CAVE_FLOOR_Z=5.9 was
          derived) -- a 2m partial flood above the real cave floor, not a
          guessed height. -->
+    <!-- Real request 2026-08-26: gz-sim-buoyancy-system's <enable> gates by entity
+         name only -- <graded_buoyancy>/<above_depth> grades fluid density purely by
+         world-frame Z height, with no concept of the water region's real X boundary
+         (WATER_BOUNDARY_X=15.0, see vehicle_switch_node.py). Since the dry cave floor
+         sits at roughly the same Z band as the flooded floor, enabling this for the
+         boat lifted it even on dry land -- confirmed live, no way to region-gate it
+         from this plugin's own config. It also computes lift through the hull
+         collision mesh's own volume centroid, which isn't guaranteed to sit above the
+         vehicle's real center of mass (bluerov2's fused hull + 6 thruster props add
+         real off-axis mass -- see bluerov2_link below), so with no real righting
+         moment the boat settled upside-down.
+         Left disabled here (cavex_tracked_blueboat intentionally NOT in <enable>) and
+         replaced by cavex_tracked_vehicle's boat_buoyancy_control.py, which applies
+         an equivalent lift manually via gz-sim-apply-link-wrench-system below, gated
+         on real live X position, and through a fixed above-CoM offset point that
+         gives it a genuine righting torque when it heels. See that node's own
+         docstring for the full story and the empirically-tuned target float height
+         (Z~=7.2, surface at 7.9, floor at 5.9) this carries forward. -->
     <plugin filename="gz-sim-buoyancy-system" name="gz::sim::systems::Buoyancy">
       <graded_buoyancy>
-        <!-- Real request 2026-08-26: real water density (1000) left the boat net
-             negatively buoyant (mass ~47kg vs the hull collision mesh's real
-             displaced volume) -- it just sank to the cave floor. gz-sim-buoyancy-
-             system computes force straight from that mesh's volume, and the mesh
-             was never modeled/tuned to actually be watertight-accurate for a
-             floating vehicle, so bumping density is the practical lever here
-             instead of reshaping the hull. Tuned empirically via live teleport-
-             into-water tests: 1000 sinks to the floor, 1800 still sinks (barely
-             off it), 3000 overshoots hard and bobs violently near the surface.
-             2200 live-verified to float stably a little under the surface
-             (~7.15-7.25, surface at 7.9, floor at 5.9) with only mild residual
-             bob -- there's no hydrodynamic drag plugin installed in this
-             environment (gz-waves1-hydrodynamics-system, see the removed-plugin
-             comment on the boat model) to damp that bob out further. -->
-        <default_density>2200</default_density>
+        <default_density>1000</default_density>
         <density_change>
           <above_depth>7.9</above_depth>
           <density>1</density>
         </density_change>
       </graded_buoyancy>
-      <!-- Must match the SPAWN-TIME ENTITY NAME exactly, not just the model's internal
-           SDF <model name>. gz-sim-buoyancy-system matches <enable> against the entity
-           name given at spawn (e.g. the `name:` argument to `gz service .../create`),
-           not the model file's own <model name="...">. Spawning with any other
-           entity name (e.g. "bluerov2_test") makes Buoyancy silently no-op -- no error,
-           the vehicle just sinks/rests on the floor as if unbuoyant. Confirmed the hard
-           way: Task 16's own live verification test hit exactly this and produced a
-           false pass (settled on ground_plane, not actual mid-water equilibrium) until
-           re-run with the correctly-matching entity name "bluerov2".
-
-           bluerov2 is no longer spawned as its own entity at all (it's now a fixed
-           decorative child link fused onto the boat's own model) so "bluerov2" here was
-           dead/stale. Real request 2026-08-26: give the boat real buoyancy for the
-           water phase -- enable against its real spawn entity name instead. Uses the
-           collision geometry gz-sim-buoyancy-system already reads from
-           cavex_tracked_blueboat's model.sdf.tracked (no <buoyancy> annotation needed;
-           the system falls back to each link's own <collision> volume). -->
-      <enable>cavex_tracked_blueboat</enable>
     </plugin>
 
     <light type="directional" name="sun">

@@ -41,6 +41,8 @@ install(PROGRAMS
   cavex_tracked_vehicle/run_tracked_vehicle_ate_eval.py
   cavex_tracked_vehicle/dead_end_backtrack_node.py
   cavex_tracked_vehicle/manual_gui_bridge.py
+  cavex_tracked_vehicle/boat_buoyancy_control.py
+  cavex_tracked_vehicle/boat_thruster_control.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

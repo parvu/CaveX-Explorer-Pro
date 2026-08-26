@@ -181,8 +181,13 @@ def generate_launch_description():
     # any more -- see perception branch for the full, functional,
     # independently-tethered BlueROV2.
 
+    # Real request 2026-08-26: helipad_link moved from local x=0.3 to x=0.1 (see its own
+    # comment -- part of the water-floating CoG fix, this cargo riding far forward and
+    # high up was producing a real nose-down pitch trim once floating). This spawn's own
+    # x below updated to match (boat_x + 0.1, was + 0.3).
+    #
     # Carried PX4 x500 quadcopter (real, vendored fuel.gazebosim.org/PX4/models/x500)
-    # on model.sdf.tracked's real helipad_link (front of the hull, local x=0.3,
+    # on model.sdf.tracked's real helipad_link (near hull center, local x=0.1,
     # z=0.005 deck-top -- flush, no support post, see helipad_link's own
     # comment). helipad_deck_visual/collision is a 0.01-thick disc centered
     # on that link origin (no further local offset), so its own top surface
@@ -211,10 +216,9 @@ def generate_launch_description():
     # helipad actually are post-scale -- nowhere near the helipad, most
     # likely landing in empty space or unrelated geometry in the now-2x cave
     # and just free-falling under gravity with nothing for the
-    # DetachableJoint to actually hold. Same relative-offset math as before
-    # (x = boat_x + 0.3, y = boat_y), just against the real current boat
-    # spawn instead of the stale one: x = -88.78 + 0.3 = -88.48,
-    # y = -31.4 (matching the boat, same convention bluerov2's own spawn
+    # DetachableJoint to actually hold. Same relative-offset math as before,
+    # now against the moved helipad (x = boat_x + 0.1, y = boat_y): x = -88.78 + 0.1 =
+    # -88.68, y = -31.4 (matching the boat, same convention bluerov2's own spawn
     # above already uses). z is unchanged -- it never depended on the cave
     # scale (see README's "Cave scaled 2x": vehicle-size/local-height
     # parameters were deliberately left unscaled).
@@ -229,7 +233,7 @@ def generate_launch_description():
         arguments=['-world', 'cavex_world', '-file',
                    os.path.join(pkg_cavex_tracked, 'models', 'x500', 'model.sdf'),
                    '-name', 'x500',
-                   '-x', '-88.48', '-y', '-31.4', '-z', '6.887'],
+                   '-x', '-88.68', '-y', '-31.4', '-z', '6.887'],
         output='screen',
     )
 
@@ -348,6 +352,31 @@ def generate_launch_description():
         output='screen',
     )
 
+    # Real request 2026-08-26: replaces cavex_world.world's Buoyancy plugin for this
+    # vehicle (left disabled there -- see its own comment) with a manual, region- and
+    # righting-aware lift. Same /odom_ground_truth dependency and caveat as
+    # vehicle_switch_node just above -- idle with zero lift until
+    # tracked_vehicle_ground_truth_odom.py (tracked_vehicle_slam.launch.py) is
+    # actually publishing it, not a crash.
+    boat_buoyancy_control = Node(
+        package='cavex_tracked_vehicle',
+        executable='boat_buoyancy_control.py',
+        name='boat_buoyancy_control',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
+    # Real request 2026-08-26: mixes the boat's real drive command into thrust for the
+    # twin motor/prop assemblies re-added to model.sdf.tracked. Same /odom_ground_truth
+    # dependency/caveat as vehicle_switch_node and boat_buoyancy_control above.
+    boat_thruster_control = Node(
+        package='cavex_tracked_vehicle',
+        executable='boat_thruster_control.py',
+        name='boat_thruster_control',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
     # ros2_control's controllers are declared to the controller_manager the
     # gz_ros2_control plugin starts on model spawn, but nothing loads/activates
     # them by itself (same real, empirically-confirmed requirement as the
@@ -389,6 +418,8 @@ def generate_launch_description():
         track_retract_control,
         vehicle_switch_node,
         manual_gui_bridge,
+        boat_buoyancy_control,
+        boat_thruster_control,
         RegisterEventHandler(
             event_handler=OnProcessExit(
                 target_action=spawn_x500_cargo,
