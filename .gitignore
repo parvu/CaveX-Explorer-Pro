@@ -9,6 +9,7 @@ coverage/
 ros2_ws/install/
 ros2_ws/log/
 ros2_ws/cavex_ate_runs.csv
+ros2_ws/SIC_SLAM_Flight_Log.csv
 ros2_ws/eeprom.bin
 ros2_ws/mav.parm
 ros2_ws/mav.tlog
