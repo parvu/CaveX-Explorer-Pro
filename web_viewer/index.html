@@ -62,6 +62,16 @@
       }
     });
 
+    // Real request 2026-08-26: "camera looking at the boat" -- a fixed
+    // resetCameraPose() snapshot only helps at load time, and the boat moves
+    // (it's been driven all over the map this session). Track it live instead:
+    // BOAT_NAME's real pose already comes through on every dynamic_pose/info
+    // update below (same message that moves the 3D model itself), so the
+    // camera is repositioned at a fixed offset behind/above the boat and
+    // pointed at it on every one of those updates, not just once.
+    var BOAT_NAME = 'cavex_tracked_blueboat';
+    var CAMERA_OFFSET = new THREE.Vector3(-8, -8, 6);
+
     // Create the pos subscriber
     var poseSub = new Topic({
       gz: gz,
@@ -74,6 +84,12 @@
               && entity.parent !== scene.modelManipulator.object) {
             scene.updatePose(entity, msg.pose[i].position,
               msg.pose[i].orientation);
+          }
+          if (msg.pose[i].name === BOAT_NAME) {
+            var p = msg.pose[i].position;
+            var boatPos = new THREE.Vector3(p.x, p.y, p.z);
+            scene.camera.position.copy(boatPos).add(CAMERA_OFFSET);
+            scene.camera.lookAt(boatPos);
           }
         }
       }
@@ -148,13 +164,16 @@
     }
 
     function resetCameraPose() {
+      // Real bug found live: this was near the world origin (x=1.1,y=-1.4,z=0.6),
+      // sized for gz-launch's own tiny demo "shapes" world -- our real cave/water
+      // world puts everything far from the origin, so on load this pointed at
+      // empty space. Points at the water region (where the boat's real spawn and
+      // most driving happens, around x=20) as a reasonable starting view; the
+      // live camera-follow in the dynamic_pose/info callback below takes over
+      // and tracks the boat's actual position within the first update anyway.
       const cam = scene.camera;
-      cam.position.x = 1.1;
-      cam.position.y = -1.4;
-      cam.position.z = 0.6;
-      cam.rotation.x = 67 * Math.PI / 180;
-      cam.rotation.y = 33 * Math.PI / 180;
-      cam.rotation.z = 12 * Math.PI / 180;
+      cam.position.set(12, -8, 14);
+      cam.lookAt(20, 0, 7.9);
     }
 
     function animate() {
