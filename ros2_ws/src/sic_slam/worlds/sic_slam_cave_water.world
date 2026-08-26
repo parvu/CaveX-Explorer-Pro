@@ -376,31 +376,5 @@
       <pose>25 0 7.9 0 0 0</pose>
       <static>true</static>
     </include>
-
-    <!-- Floating helipad + parked x500 drone, real request -- offset 5m
-         in +y from the boat/Home so the two models don't overlap. Both
-         reused unmodified: helipad copied from PX4-Autopilot's own
-         Tools/simulation/gz/models/helipad (small, 28KB, into
-         cavex_tracked_vehicle/models alongside the other vehicle models
-         already used here, rather than adding a whole new
-         GZ_SIM_RESOURCE_PATH entry into the PX4-Autopilot submodule for
-         one 3-file model); x500 was already vendored there
-         (cavex_tracked_vehicle/models/x500). Both forced static for the
-         same "keep it stationary" reason as the boat -- x500 has real
-         rotor joints/gravity by default (<static>false</static> in its
-         own SDF), helipad is already static in its own SDF (kept
-         explicit here anyway for clarity). -->
-    <include>
-      <uri>model://helipad</uri>
-      <name>helipad</name>
-      <pose>25 5 7.9 0 0 0</pose>
-      <static>true</static>
-    </include>
-    <include>
-      <uri>model://x500</uri>
-      <name>x500</name>
-      <pose>25 5 7.9 0 0 0</pose>
-      <static>true</static>
-    </include>
   </world>
 </sdf>

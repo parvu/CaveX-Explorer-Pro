@@ -41,20 +41,9 @@ def generate_launch_description():
                     "'sic_slam_cave_water' (real cave mesh's flooded water section, "
                     'reused from cavex_world.world -- see that world file for the '
                     'circle-trajectory ATE setup, ate_circle_demo.py)')
-    # Defaults depend on `world` (real fix, 2026-08-26: every cave-water
-    # launch this session needed spawn_x:=25 spawn_y:=0 spawn_z:=6.9 passed
-    # by hand -- (0,0,-2) is the tank world's own spawn, not a sane default
-    # for cave-water at all). "Home" (sim_info_publisher.py's marker,
-    # blueboat's own pose in sic_slam_cave_water.world) is exactly this
-    # water-center point, so this is also what "move spawn to home"
-    # amounts to -- home_x/y/z there already just mirror these same args.
-    spawn_x_arg = DeclareLaunchArgument(
-        'spawn_x', default_value=PythonExpression(
-            ["'25' if '", LaunchConfiguration('world'), "' == 'sic_slam_cave_water' else '0'"]))
+    spawn_x_arg = DeclareLaunchArgument('spawn_x', default_value='0')
     spawn_y_arg = DeclareLaunchArgument('spawn_y', default_value='0')
-    spawn_z_arg = DeclareLaunchArgument(
-        'spawn_z', default_value=PythonExpression(
-            ["'6.9' if '", LaunchConfiguration('world'), "' == 'sic_slam_cave_water' else '-2'"]))
+    spawn_z_arg = DeclareLaunchArgument('spawn_z', default_value='-2')
 
     pkg_share = get_package_share_directory('sic_slam')
     # bluerov2_sim's model.sdf lives here (an ArduPilot-plugin-free copy of
