@@ -1,11 +1,16 @@
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <mutex>
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/qos.hpp>
 #include <sensor_msgs/msg/imu.hpp>
-#include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/point32.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -20,7 +25,52 @@
 #include <gtsam/slam/PoseTranslationPrior.h>
 #include <gtsam/linear/LossFunctions.h>
 
+#include <Eigen/Geometry>
+
 #include "cavex_gtsam_slam/scan_registration.hpp"
+
+// Real request, 2026-08-26: "move gtsam to boat and use it's camera and
+// lidar" (confirmed scope: runs ALONGSIDE the boat's own real RTAB-Map
+// SLAM as a second, independent odometry estimate -- not replacing it).
+// The boat's lidar is a real 3D gpu_lidar (PointCloud2), not the 2D
+// LaserScan the old /bluerov2/sonar fed this same registerScans()
+// mechanism with, so lidarToScanPoints() below flattens a horizontal
+// band of rays (|z|/range small -- the lidar's middle rings, out of its
+// real +/-15deg vertical FOV, model.sdf.tracked's lidar_sensor block)
+// into the same 2D ScanPoint representation laserScanToPoints() used to
+// produce, rather than changing registerScans() itself. The camera
+// contributes too: depthToScanPoints() unprojects the RGB-D depth image
+// into camera_link_optical-frame points using real CameraInfo
+// intrinsics, then a FIXED (hardcoded, not tf2-looked-up -- matches
+// this project's existing convention of using known static mount poses
+// directly, e.g. tracked_vehicle_ground_truth_odom.py/
+// motorized_tether_control.py's own gz-transport-pose-only approach)
+// camera_link_optical -> lidar_link transform puts both sensors'
+// points into one consistent local frame before they're merged and fed
+// to the SAME registerScans() ICP call the old sonar-only path used.
+// Deliberately NOT subscribing to cavex_perception's
+// /instance_clustering/colored_points (which already does a real
+// camera+lidar fusion) -- that topic is published in the "map" frame
+// using RTAB-Map's own live localization to place points, so depending
+// on it here would make this supposedly-independent estimate secretly
+// derivative of the very system it's meant to be compared against.
+
+namespace
+{
+
+// Camera intrinsics (K = [fx 0 cx; 0 fy cy; 0 0 1], row-major, standard
+// sensor_msgs/CameraInfo layout) times a real depth pixel -> a 3D point
+// in the optical frame (REP 103/145: z-forward, x-right, y-down).
+Eigen::Vector3d unprojectPixel(int u, int v, float depth_m, const std::array<double, 9> & k)
+{
+  double fx = k[0], cx = k[2], fy = k[4], cy = k[5];
+  return Eigen::Vector3d(
+    (u - cx) * depth_m / fx,
+    (v - cy) * depth_m / fy,
+    depth_m);
+}
+
+}  // namespace
 
 using gtsam::symbol_shorthand::X;
 using gtsam::symbol_shorthand::V;
@@ -93,23 +143,29 @@ public:
     last_bias_ = prior_bias;
 
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      "/bluerov2/imu", rclcpp::SensorDataQoS(),
+      "/imu", rclcpp::SensorDataQoS(),
       std::bind(&GtsamSlamNode::imuCallback, this, std::placeholders::_1));
     odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/gtsam_slam/odometry", 10);
 
-    sonar_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-      "/bluerov2/sonar", rclcpp::SensorDataQoS(),
-      std::bind(&GtsamSlamNode::sonarCallback, this, std::placeholders::_1));
+    lidar_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      "/lidar/points", rclcpp::SensorDataQoS(),
+      std::bind(&GtsamSlamNode::lidarCallback, this, std::placeholders::_1));
+    camera_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
+      "/camera/color/camera_info", rclcpp::SensorDataQoS(),
+      std::bind(&GtsamSlamNode::cameraInfoCallback, this, std::placeholders::_1));
+    depth_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+      "/camera/depth/image_raw", rclcpp::SensorDataQoS(),
+      std::bind(&GtsamSlamNode::depthCallback, this, std::placeholders::_1));
     map_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud>("/gtsam_slam/map", 10);
     keyframes_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>(
       "/gtsam_slam/keyframes", 10);
 
     RCLCPP_INFO(
       this->get_logger(),
-      "gtsam_slam_node ready: subscribed to /bluerov2/imu + /bluerov2/sonar -> "
-      "/gtsam_slam/odometry, but bluerov2 is a forced-static decorative prop with no "
-      "sensors on this branch (real request, 2026-08-26) -- expect no real odometry, "
-      "see perception branch for the functional version.");
+      "gtsam_slam_node ready: /imu + /lidar/points + /camera/depth/image_raw -> "
+      "/gtsam_slam/odometry -- the tracked vehicle's own real sensors, running "
+      "alongside RTAB-Map as a second, independent estimate (real request, "
+      "2026-08-26).");
   }
 
 protected:
@@ -149,10 +205,105 @@ protected:
     }
   }
 
-  void sonarCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
+  // Flattens a horizontal band of the boat's real 3D lidar (middle rings,
+  // out of the sensor's own real +/-15deg vertical FOV -- see
+  // model.sdf.tracked's lidar_sensor block) into the 2D ScanPoint
+  // representation registerScans() already expects, in the sensor's own
+  // local (lidar_link) frame -- no base_link offset applied, matching
+  // the old sonar path's own convention (a constant per-scan offset
+  // cancels out of the relative delta pose registerScans() computes
+  // between consecutive keyframes anyway).
+  void lidarCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+  {
+    std::vector<cavex_gtsam_slam::ScanPoint> points;
+    sensor_msgs::PointCloud2ConstIterator<float> it_x(*msg, "x");
+    sensor_msgs::PointCloud2ConstIterator<float> it_y(*msg, "y");
+    sensor_msgs::PointCloud2ConstIterator<float> it_z(*msg, "z");
+    for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z) {
+      float x = *it_x, y = *it_y, z = *it_z;
+      if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+        continue;
+      }
+      double range = std::hypot(x, y);
+      if (range < 1e-3 || std::abs(z) / range > kHorizontalBandTangent) {
+        continue;
+      }
+      points.push_back({x, y, 0.0});
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    latest_lidar_points_ = std::move(points);
+  }
+
+  void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    latest_scan_ = msg;
+    if (have_camera_info_) {
+      return;  // intrinsics are static for a simulated camera, cache once
+    }
+    std::copy(msg->k.begin(), msg->k.end(), camera_k_.begin());
+    have_camera_info_ = true;
+  }
+
+  // Unprojects the RGB-D depth image into camera_link_optical-frame 3D
+  // points using the cached real intrinsics, then applies the FIXED
+  // camera_link_optical -> lidar_link offset (hardcoded from
+  // model.sdf.tracked's own <pose> declarations -- camera_link
+  // (0.55, 0, 0.15) minus lidar_link (0, 0, 0.55), both zero-rotation
+  // relative to base_link, so this is a pure translation once the
+  // optical->camera_link rotation below is applied) so camera- and
+  // lidar-derived points land in the same local frame before being
+  // flattened into the same horizontal band and merged.
+  void depthCallback(const sensor_msgs::msg::Image::SharedPtr msg)
+  {
+    std::array<double, 9> k;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (!have_camera_info_) {
+        return;
+      }
+      k = camera_k_;
+    }
+    if (msg->encoding != "32FC1") {
+      RCLCPP_WARN_ONCE(
+        this->get_logger(),
+        "depthCallback: expected 32FC1 depth encoding, got '%s' -- skipping (logged once)",
+        msg->encoding.c_str());
+      return;
+    }
+
+    // camera_link_optical (REP 103/145: z-forward, x-right, y-down) -> camera_link
+    // (x-forward, y-left, z-up): roll=-pi/2, yaw=-pi/2, matching
+    // tracked_vehicle_slam.launch.py's own camera_optical_static_tf values exactly.
+    static const Eigen::Quaterniond kOpticalToCameraLink =
+      Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitZ()) *
+      Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitX());
+    // camera_link -> lidar_link translation (both zero-rotation relative to
+    // base_link): (0.55,0,0.15) - (0,0,0.55) = (0.55, 0, -0.4).
+    static const Eigen::Vector3d kCameraToLidarOffset(0.55, 0.0, -0.4);
+
+    std::vector<cavex_gtsam_slam::ScanPoint> points;
+    const auto * depth = reinterpret_cast<const float *>(msg->data.data());
+    // Real request scale: full-resolution unprojection of an 800x800 image
+    // every keyframe is wasted work for a 2D flattened registration input --
+    // stride subsamples without changing the geometry being measured.
+    constexpr int kStride = 8;
+    for (uint32_t v = 0; v < msg->height; v += kStride) {
+      for (uint32_t u = 0; u < msg->width; u += kStride) {
+        float d = depth[v * msg->width + u];
+        if (!std::isfinite(d) || d <= 0.0f) {
+          continue;
+        }
+        Eigen::Vector3d p_optical = unprojectPixel(u, v, d, k);
+        Eigen::Vector3d p_lidar_frame = kOpticalToCameraLink * p_optical + kCameraToLidarOffset;
+        double range = std::hypot(p_lidar_frame.x(), p_lidar_frame.y());
+        if (range < 1e-3 || std::abs(p_lidar_frame.z()) / range > kHorizontalBandTangent) {
+          continue;
+        }
+        points.push_back({p_lidar_frame.x(), p_lidar_frame.y(), 0.0});
+      }
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    latest_camera_points_ = std::move(points);
   }
 
   // Dynamic Covariance Scaling (real request, 2026-08-22): wraps a base
@@ -188,16 +339,11 @@ protected:
     values_.insert(V(curr), predicted.velocity());
     values_.insert(B(curr), last_bias_);
 
-    std::vector<cavex_gtsam_slam::ScanPoint> curr_scan_points;
-    if (latest_scan_) {
-      // LaserScan stores ranges/intensities as float; registerScans/
-      // laserScanToPoints operate on double.
-      std::vector<double> ranges(latest_scan_->ranges.begin(), latest_scan_->ranges.end());
-      std::vector<double> intensities(
-        latest_scan_->intensities.begin(), latest_scan_->intensities.end());
-      curr_scan_points = cavex_gtsam_slam::laserScanToPoints(
-        ranges, intensities, latest_scan_->angle_min, latest_scan_->angle_increment);
-    }
+    // Merged lidar + camera points, both already flattened into the same
+    // lidar_link-frame horizontal band by lidarCallback()/depthCallback().
+    std::vector<cavex_gtsam_slam::ScanPoint> curr_scan_points = latest_lidar_points_;
+    curr_scan_points.insert(
+      curr_scan_points.end(), latest_camera_points_.begin(), latest_camera_points_.end());
 
     if (curr_scan_points.empty()) {
       ++consecutive_scan_starved_keyframes_;
@@ -312,7 +458,10 @@ protected:
     nav_msgs::msg::Odometry msg;
     msg.header.stamp = stamp;
     msg.header.frame_id = "map";
-    msg.child_frame_id = "bluerov2/base_link";
+    // Matches tracked_vehicle_ground_truth_odom.py's own convention (plain
+    // 'base_link', no vehicle-name prefix) now that this is the boat's own
+    // odometry, not bluerov2's.
+    msg.child_frame_id = "base_link";
     const auto & t = pose.translation();
     msg.pose.pose.position.x = t.x();
     msg.pose.pose.position.y = t.y();
@@ -371,11 +520,21 @@ protected:
   std::mutex mutex_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
-  rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sonar_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr lidar_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud>::SharedPtr map_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr keyframes_pub_;
 
-  sensor_msgs::msg::LaserScan::SharedPtr latest_scan_;
+  // Middle-rings horizontal band selection for both lidar and
+  // camera-derived points (see lidarCallback()'s own comment) --
+  // tan(6deg), comfortably inside the lidar's real +/-15deg vertical FOV.
+  static constexpr double kHorizontalBandTangent = 0.105;
+
+  std::vector<cavex_gtsam_slam::ScanPoint> latest_lidar_points_;
+  std::vector<cavex_gtsam_slam::ScanPoint> latest_camera_points_;
+  bool have_camera_info_ = false;
+  std::array<double, 9> camera_k_{};
   std::vector<cavex_gtsam_slam::ScanPoint> prev_keyframe_scan_;
   std::vector<std::tuple<std::size_t, gtsam::Pose3,
     std::vector<cavex_gtsam_slam::ScanPoint>>> keyframe_history_;
