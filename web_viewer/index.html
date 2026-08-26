@@ -14,8 +14,15 @@
     // by replacing `wss://` with `ws://` and remove the `key` parameter.
     // Make sure to also disable SSL and authentication in the
     // websocket_server plugin.
+    //
+    // Real request 2026-08-26: view from a phone on the LAN. Was hardcoded to
+    // 'localhost', which only ever means "this same device" -- a phone loading
+    // this page from the Windows host's real LAN IP still needs to reach the
+    // websocket server at THAT same IP, not its own localhost. Uses
+    // location.hostname so it adapts to whatever host the page itself was
+    // loaded from (localhost, 192.168.x.x, etc.) instead of hardcoding one.
     var gz = new Gazebo({
-      url: 'ws://localhost:9002',
+      url: 'ws://' + location.hostname + ':9002',
       key: "cavex_dev"
     });
 
