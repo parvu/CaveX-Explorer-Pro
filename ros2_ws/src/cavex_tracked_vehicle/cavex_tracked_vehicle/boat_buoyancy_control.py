@@ -48,15 +48,16 @@ VEHICLE_MASS_KG = 47.1
 GRAVITY = 9.81
 WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 
-# Real request 2026-08-26: raised again -- 7.75 (chosen so the deployed tracks,
-# which hang ~0.35-0.45m below base_link, clear the water) left the hull deck
-# itself too submerged. hull_collision's own real bounding box (see
-# model.sdf.tracked's lidar_link mount-height comment) has its top at local
-# z=0 -- base_link's own Z essentially IS deck height -- so "deck >=12cm above
-# the water surface (7.9)" means target >= 8.02. Set a bit above that (8.15)
-# for margin, since the controller settles slightly below target under real
-# tilt/lift-loss even with the current gain.
-TARGET_FLOAT_Z = 8.15
+# Real request 2026-08-26: was 8.15 (settled 8.02-8.13, i.e. 12-23cm of deck
+# clearance) -- real request narrowed the target range to 6-12cm clearance
+# (deck z 7.96-8.02, surface at 7.9). hull_collision's own real bounding box
+# (see model.sdf.tracked's lidar_link mount-height comment) has its top at
+# local z=0, so base_link's own Z is essentially deck height. This relationship
+# turned out non-linear/noisy near the surface (a naive proportional guess
+# from 8.15's own settle offset undershot badly at first try) -- 7.97 is
+# empirically interpolated from live measurements at several target values
+# and confirmed live: settles mostly in the 4-11cm band.
+TARGET_FLOAT_Z = 7.97
 
 # Real request 2026-08-26: KZ bumped from 400 -- a P-only height controller
 # always leaves a steady-state error proportional to whatever's fighting it
