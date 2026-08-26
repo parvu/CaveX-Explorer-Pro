@@ -30,6 +30,8 @@ moment back to upright -- the same physical mechanism as a boat's
 metacenter sitting above its center of gravity, just picked directly
 instead of derived from hull geometry.
 """
+import math
+
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
@@ -46,26 +48,53 @@ VEHICLE_MASS_KG = 47.1
 GRAVITY = 9.81
 WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 
-# Real request 2026-08-26: "float above water", not partially submerged --
-# was 7.2 (a bit under the surface). This is a direct PD height target, not
-# real Archimedes displacement, so there's nothing physically stopping it
-# from sitting above the water surface (world Z=7.9, cave floor at Z=5.9);
-# 8.15 puts the hull deck clearly above the surface with the keel still
-# down in it.
-TARGET_FLOAT_Z = 8.15
+# Real request 2026-08-26: was 8.15 -- live-confirmed in the browser viewer as
+# floating too high, with the deployed tracks (which hang roughly 0.35-0.45m
+# below base_link's own origin -- left_track_retract_mount at local z=-0.2,
+# left_track a further -0.15) barely reaching the water at all. Lowered so
+# the hull itself sits partly submerged at the surface (7.9) and the tracks
+# are clearly underwater, not just grazing it.
+TARGET_FLOAT_Z = 7.75
 
-KZ = 400.0    # N per meter of Z error
-DZ = 250.0    # N per (m/s) of Z velocity -- near-critical damping for
-              # VEHICLE_MASS_KG against KZ (c_crit = 2*sqrt(KZ*m) ~= 275)
-MAX_LIFT_N = 900.0  # clamp, ~2x weight
+# Real request 2026-08-26: KZ bumped from 400 -- a P-only height controller
+# always leaves a steady-state error proportional to whatever's fighting it
+# (here, real lift lost to tilt whenever the boat heels, since force.z is a
+# fixed direction, not one that re-aims itself upright as the hull rolls/
+# pitches). Live-confirmed settling ~0.3m short of target at KZ=400 while
+# heeled; a stiffer gain shrinks that residual error instead of chasing the
+# exact tilt-loss number.
+KZ = 700.0    # N per meter of Z error
+DZ = 350.0    # N per (m/s) of Z velocity -- keeps ~critical damping at the
+              # higher KZ (c_crit = 2*sqrt(KZ*m) ~= 363)
+MAX_LIFT_N = 1200.0  # clamp, headroom for the higher KZ
 
-# How far above base_link's own origin (in its own body frame) the lift is
-# applied. Bigger = stronger righting torque per degree of heel, but also
-# a stronger pendulum-style overshoot if too large; picked to give a
-# roughly boat-like righting stiffness against the hull's real roll
-# inertia (dominated by the two ~1.5kg tracks at their own ~0.35-0.4m
-# lateral offset) -- tune live if it over/under-corrects.
+# Real request 2026-08-26: passive righting via Wrench.force_offset alone was
+# a real live tradeoff -- 0.4 kept roll tight (~+-2 deg) but let pitch
+# oscillate hard; halving it to 0.2 calmed pitch but let roll heel over
+# ~45 deg (too weak to hold upright at all). Kept the stronger, roll-proven
+# 0.4 and added real ACTIVE damping torque below (opposing measured roll/
+# pitch rate, not just the offset's passive spring-like restoring force) --
+# that's what a passive offset alone structurally can't provide, and is what
+# was actually missing to calm the oscillation without weakening the static
+# righting stiffness.
 BUOY_OFFSET_Z = 0.4
+ANGULAR_DAMPING = 40.0  # N*m per (rad/s) of roll/pitch rate
+
+
+def roll_pitch_from_quat(x, y, z, w):
+    roll = math.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
+    sinp = max(-1.0, min(1.0, 2.0 * (w * y - z * x)))
+    pitch = math.asin(sinp)
+    return roll, pitch
+
+
+def wrap_angle_diff(a, b):
+    """a - b, wrapped to [-pi, pi]. Real bug found live: a plain subtraction
+    across the atan2 branch cut (e.g. roll going from +170deg to -170deg,
+    really a +20deg step) produced a huge bogus rate, which the angular
+    damping torque below then amplified into real instability instead of
+    damping it."""
+    return (a - b + math.pi) % (2.0 * math.pi) - math.pi
 
 
 class BoatBuoyancyControl(Node):
@@ -73,7 +102,7 @@ class BoatBuoyancyControl(Node):
         super().__init__('boat_buoyancy_control')
         self.gz_pub = gz_pub
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
-        self._prev = None  # (t, z)
+        self._prev = None  # (t, z, roll, pitch)
         self.get_logger().info(
             f"boat_buoyancy_control ready: applying lift only while "
             f"x > {WATER_BOUNDARY_X} (target float Z={TARGET_FLOAT_Z}).")
@@ -82,29 +111,37 @@ class BoatBuoyancyControl(Node):
         t = self.get_clock().now().nanoseconds * 1e-9
         x = msg.pose.pose.position.x
         z = msg.pose.pose.position.z
+        q = msg.pose.pose.orientation
+        roll, pitch = roll_pitch_from_quat(q.x, q.y, q.z, q.w)
 
         if x <= WATER_BOUNDARY_X:
             self._prev = None
-            self._publish_wrench(0.0, 0.0)
+            self._publish_wrench(0.0, 0.0, 0.0, 0.0)
             return
 
-        vz = 0.0
+        vz = roll_rate = pitch_rate = 0.0
         if self._prev is not None:
             dt = t - self._prev[0]
             if dt > 1e-3:
                 vz = (z - self._prev[1]) / dt
-        self._prev = (t, z)
+                roll_rate = wrap_angle_diff(roll, self._prev[2]) / dt
+                pitch_rate = wrap_angle_diff(pitch, self._prev[3]) / dt
+        self._prev = (t, z, roll, pitch)
 
         lift = WEIGHT_N + KZ * (TARGET_FLOAT_Z - z) - DZ * vz
         lift = max(0.0, min(MAX_LIFT_N, lift))
-        self._publish_wrench(lift, BUOY_OFFSET_Z)
+        torque_x = -ANGULAR_DAMPING * roll_rate
+        torque_y = -ANGULAR_DAMPING * pitch_rate
+        self._publish_wrench(lift, BUOY_OFFSET_Z, torque_x, torque_y)
 
-    def _publish_wrench(self, force_z, offset_z):
+    def _publish_wrench(self, force_z, offset_z, torque_x, torque_y):
         w = EntityWrench()
         w.entity.name = 'cavex_tracked_blueboat::base_link'
         w.entity.type = Entity.LINK
         w.wrench.force.z = force_z
         w.wrench.force_offset.z = offset_z
+        w.wrench.torque.x = torque_x
+        w.wrench.torque.y = torque_y
         self.gz_pub.publish(w)
 
 

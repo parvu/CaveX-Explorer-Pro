@@ -1,0 +1,28 @@
+<?xml version='1.0'?>
+<gz version='1.0'>
+
+  <!-- Real request 2026-08-26: browser-based viewer for the running sim, no separate
+       sim launch here -- this bridges the ALREADY-RUNNING gz-transport session started
+       by gazebo_tracked_vehicle.launch.py (via `gz launch -f websocket.gzlaunch`), same
+       way gz-launch's own README documents running the websocket server against a sim
+       already started with plain `gz sim`. No auth configured (matches this directory's
+       index.html, which doesn't send a key) -- fine for a local dev viewer, not meant
+       to be exposed beyond localhost. -->
+  <plugin name="gz::launch::WebsocketServer"
+          filename="gz-launch-websocket-server">
+    <publication_hz>30</publication_hz>
+    <port>9002</port>
+    <max_connections>-1</max_connections>
+    <!-- Real bug found live: with NO key configured, WebsocketServer.cc marks every
+         connection authorized automatically (correct), but its "auth" message handler
+         only sends back the "authorized" text reply when a key IS configured -- so an
+         unauthenticated client is technically already authorized server-side but never
+         gets the acknowledgment it's waiting for before continuing the handshake
+         (protos -> topics/worlds requests), and the whole client just stalls forever.
+         Setting a real key here (matching index.html's own key below) is what actually
+         makes the server send that reply. Trivial/shared, fine for a local dev viewer
+         only reachable on localhost. -->
+    <authorization_key>cavex_dev</authorization_key>
+  </plugin>
+
+</gz>

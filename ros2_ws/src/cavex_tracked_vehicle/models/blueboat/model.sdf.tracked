@@ -83,12 +83,6 @@
           <diffuse>0 0 1 1</diffuse>
           <ambient>1 0 1 1</ambient>
           <specular>0.7 0.7 0.7 1</specular>
-          <pbr>
-            <metal>
-              <metalness>0.5</metalness>
-              <roughness>0.5</roughness>
-            </metal>
-          </pbr>
         </material>
       </visual>
       <visual name="aerial_visual">
@@ -101,12 +95,6 @@
           <diffuse>0.01 0.01 0.01 1</diffuse>
           <ambient>0.01 0.01 0.01 1</ambient>
           <specular>0.7 0.7 0.7 1</specular>
-          <pbr>
-            <metal>
-              <metalness>0.5</metalness>
-              <roughness>0.5</roughness>
-            </metal>
-          </pbr>
         </material>
       </visual>
       <visual name="crosstube_visual">
@@ -119,12 +107,6 @@
           <diffuse>0.01 0.01 0.01 1</diffuse>
           <ambient>0.01 0.01 0.01 1</ambient>
           <specular>0.7 0.7 0.7 1</specular>
-          <pbr>
-            <metal>
-              <metalness>0.5</metalness>
-              <roughness>0.5</roughness>
-            </metal>
-          </pbr>
         </material>
       </visual>
       <!-- flag_visual (blueboat_flag.dae) removed here: real vertex-transformed bounding-box
@@ -148,12 +130,6 @@
           <diffuse>0.01 0.01 0.01 1</diffuse>
           <ambient>0.01 0.01 0.01 1</ambient>
           <specular>0.7 0.7 0.7 1</specular>
-          <pbr>
-            <metal>
-              <metalness>0.9</metalness>
-              <roughness>0.1</roughness>
-            </metal>
-          </pbr>
         </material>
       </visual>
       <visual name="frame_asm_aft_visual">
@@ -166,12 +142,6 @@
           <diffuse>0.01 0.01 0.01 1</diffuse>
           <ambient>0.01 0.01 0.01 1</ambient>
           <specular>0.7 0.7 0.7 1</specular>
-          <pbr>
-            <metal>
-              <metalness>0.9</metalness>
-              <roughness>0.1</roughness>
-            </metal>
-          </pbr>
         </material>
       </visual>
       <visual name="hatch_asm_stbd">
@@ -184,12 +154,6 @@
           <diffuse>0.01 0.01 0.01 1</diffuse>
           <ambient>0.01 0.01 0.01 1</ambient>
           <specular>0.7 0.7 0.7 1</specular>
-          <pbr>
-            <metal>
-              <metalness>0.5</metalness>
-              <roughness>0.5</roughness>
-            </metal>
-          </pbr>
         </material>
       </visual>
       <visual name="hatch_asm_port">
@@ -202,12 +166,6 @@
           <diffuse>0.01 0.01 0.01 1</diffuse>
           <ambient>0.01 0.01 0.01 1</ambient>
           <specular>0.7 0.7 0.7 1</specular>
-          <pbr>
-            <metal>
-              <metalness>0.5</metalness>
-              <roughness>0.5</roughness>
-            </metal>
-          </pbr>
         </material>
       </visual>
       <!-- Real request 2026-08-26: water propulsion. Real, original BlueBoat twin-hull
