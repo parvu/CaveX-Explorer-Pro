@@ -47,7 +47,16 @@
         <scene>scene</scene>
         <ambient_light>0.4 0.4 0.4</ambient_light>
         <background_color>0.8 0.8 0.8</background_color>
-        <camera_pose>0 -25 15 0 0.2215 0.8491</camera_pose>
+        <!-- Real request, 2026-08-26: aim the default GUI camera at
+             cavex_tracked_blueboat's Home spawn (-88.78 -31.4 6.65, see
+             gazebo_tracked_vehicle.launch.py's own spawn_bluerov2 args --
+             no -Y arg given there, so it spawns at yaw=0, nose toward
+             +X, meaning its rear/stern faces -X) so the boat's rear is
+             framed on load instead of the old generic near-origin
+             overview above. Camera sits 8m further out along -X (behind
+             the stern) and 3m above hull height, yaw=0 (facing +X, i.e.
+             toward the boat) with a mild downward pitch. -->
+        <camera_pose>-96.78 -31.4 9.65 0 0.3 0</camera_pose>
       </plugin>
       <plugin filename="GzSceneManager" name="Scene Manager">
         <gz-gui>
