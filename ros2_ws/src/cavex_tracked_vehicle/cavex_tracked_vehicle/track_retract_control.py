@@ -13,8 +13,15 @@ from std_msgs.msg import String
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
 
-DEPLOYED = 0.0
-RETRACTED = 1.4
+# Real request 2026-08-26: kept a small margin off the joints' true SDF hard
+# stops (0.0/1.4 in blueboat/model.sdf.tracked) -- commanding exactly to the
+# hard limit reproduced a real, live-confirmed gz-sim/DART bug where the
+# joint locks up entirely once driven flush against its limit and then
+# ignores every later command. See the joint's own SDF comment for the full
+# story (widening the limit and adding damping were both tried and made it
+# worse); staying just short of the stop avoids the lock outright.
+DEPLOYED = 0.05
+RETRACTED = 1.35
 
 
 class TrackRetractControl(Node):

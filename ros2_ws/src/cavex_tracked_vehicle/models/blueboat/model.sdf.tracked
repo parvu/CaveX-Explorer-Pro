@@ -265,9 +265,44 @@
         <limit>
           <lower>0.0</lower>
           <upper>1.4</upper>
-          <effort>50</effort>
+          <!-- Real request 2026-08-26: joint was getting physically stuck around
+               ~0.825 rad instead of reaching 0.0/1.4, confirmed live via
+               /world/.../joint_state (near-zero velocity, position holding well short
+               of the commanded target). 50 N-m is far more than the track assembly's
+               own weight needs (~6 N-m worst case at this lever arm) but not enough to
+               overcome real ground/hull contact resistance while the vehicle's weight
+               rests on the tracks. Bumped 10x; this is a position-controller effort cap
+               (gz_ros2_control's position_proportional_gain=20.0 drives it), not a
+               structural limit.
+
+               Second real bug found live after the effort fix: once driven flush
+               against this SDF hard limit, the joint froze completely (velocity
+               exactly 0) and refused EVERY subsequent commanded position, including
+               targets well clear of the limit -- confirmed the controller layer stayed
+               correct throughout (track_retract_controller's own /controller_state kept
+               reporting the right reference/output every time), so this is a gz-sim/
+               DART limit-constraint lock, not a controller or effort bug. Root cause:
+               with zero joint damping this is an undamped spring (position_proportional_
+               gain has no D term), so any single-shot move overshoots its target and
+               keeps going until something physically stops it -- the real hard limit --
+               where it then hits the lock above.
+               Two things fixed it together, live-verified: (1) real damping below,
+               sized near critical damping for this link's real inertia (dominated by
+               the 1.5kg track at its 0.15m offset from this pivot, ~0.03 kg*m^2) against
+               position_proportional_gain=20 -- c_crit = 2*sqrt(k*I) ~= 1.8; (2)
+               controller_manager's update_rate was 100Hz against gz-sim's own 0.004s
+               (250Hz) physics step (see cavex_tracked_vehicle_ros2_control.yaml) --
+               that split-rate gap was aliasing with the damping term into a sustained
+               velocity-limit chatter that never converged, tried and confirmed live
+               before matching the rates fixed it. track_retract_control.py's own
+               commanded targets (0.05/1.35) also keep a small margin off this exact
+               SDF limit as a second line of defense against ever touching the lock. -->
+          <effort>500</effort>
           <velocity>1.0</velocity>
         </limit>
+        <dynamics>
+          <damping>20.0</damping>
+        </dynamics>
       </axis>
     </joint>
     <link name="left_track_strut">
@@ -609,9 +644,14 @@
         <limit>
           <lower>0.0</lower>
           <upper>1.4</upper>
-          <effort>50</effort>
+          <!-- Same real stall + hard-limit-lock fixes as left_track_retract_joint -- see
+               its comment. -->
+          <effort>500</effort>
           <velocity>1.0</velocity>
         </limit>
+        <dynamics>
+          <damping>20.0</damping>
+        </dynamics>
       </axis>
     </joint>
     <link name="right_track_strut">

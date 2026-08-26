@@ -263,13 +263,21 @@
       <!-- Must match the SPAWN-TIME ENTITY NAME exactly, not just the model's internal
            SDF <model name>. gz-sim-buoyancy-system matches <enable> against the entity
            name given at spawn (e.g. the `name:` argument to `gz service .../create`),
-           not the model file's own <model name="bluerov2">. Spawning with any other
+           not the model file's own <model name="...">. Spawning with any other
            entity name (e.g. "bluerov2_test") makes Buoyancy silently no-op -- no error,
            the vehicle just sinks/rests on the floor as if unbuoyant. Confirmed the hard
            way: Task 16's own live verification test hit exactly this and produced a
            false pass (settled on ground_plane, not actual mid-water equilibrium) until
-           re-run with the correctly-matching entity name "bluerov2". -->
-      <enable>bluerov2</enable>
+           re-run with the correctly-matching entity name "bluerov2".
+
+           bluerov2 is no longer spawned as its own entity at all (it's now a fixed
+           decorative child link fused onto the boat's own model) so "bluerov2" here was
+           dead/stale. Real request 2026-08-26: give the boat real buoyancy for the
+           water phase -- enable against its real spawn entity name instead. Uses the
+           collision geometry gz-sim-buoyancy-system already reads from
+           cavex_tracked_blueboat's model.sdf.tracked (no <buoyancy> annotation needed;
+           the system falls back to each link's own <collision> volume). -->
+      <enable>cavex_tracked_blueboat</enable>
     </plugin>
 
     <light type="directional" name="sun">

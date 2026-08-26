@@ -1,6 +1,11 @@
 controller_manager:
   ros__parameters:
-    update_rate: 100
+    # Real request 2026-08-26: was 100 (0.01s), slower than gz-sim's own 0.004s physics
+    # step (confirmed live in gz_ros2_control's own startup WARN about this exact
+    # mismatch). That split-rate gap was implicated in a live-observed track_retract_joint
+    # chatter bug when tuning joint damping to fix a separate overshoot/lock issue --
+    # matching this to the physics rate removed the aliasing between the two loops.
+    update_rate: 250
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
     track_retract_controller:

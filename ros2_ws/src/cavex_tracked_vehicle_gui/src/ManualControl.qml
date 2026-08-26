@@ -74,7 +74,7 @@ Rectangle {
       border.width: 1
       Text {
         anchors.centerIn: parent
-        text: panel.manualOn ? "ON" : "man"
+        text: panel.manualOn ? "ON" : "OFF"
         font.pointSize: 8
         color: "#f0f0f0"
       }
