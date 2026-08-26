@@ -703,11 +703,19 @@
         font-family: sans-serif; z-index: 10;
         display: grid; grid-template-columns: repeat(3, 48px);
         grid-template-rows: repeat(3, 40px); gap: 4px;">
-      <button style="grid-column:2;grid-row:1" onmousedown="manualCmd('forward')" onmouseup="manualCmd('stop')">fwd</button>
-      <button style="grid-column:1;grid-row:2" onmousedown="manualCmd('left')" onmouseup="manualCmd('stop')">left</button>
+      <!-- Real bug found live: onmousedown=direction + onmouseup=stop assumed a
+           press-and-hold interaction, but a plain click always fires both events
+           back-to-back, so every tap immediately sent 'stop' right after the
+           direction -- manual_gui_bridge.py's own held-command semantics (a
+           direction persists until 'stop' or a different direction arrives, see
+           its docstring) already want a single tap to set the direction, not a
+           press-and-hold gesture. onclick for every direction now, matching that
+           model; only 'stop' itself needs its own tap. -->
+      <button style="grid-column:2;grid-row:1" onclick="manualCmd('forward')">fwd</button>
+      <button style="grid-column:1;grid-row:2" onclick="manualCmd('left')">left</button>
       <button style="grid-column:2;grid-row:2" onclick="manualCmd('stop')">stop</button>
-      <button style="grid-column:3;grid-row:2" onmousedown="manualCmd('right')" onmouseup="manualCmd('stop')">right</button>
-      <button style="grid-column:2;grid-row:3" onmousedown="manualCmd('backward')" onmouseup="manualCmd('stop')">rev</button>
+      <button style="grid-column:3;grid-row:2" onclick="manualCmd('right')">right</button>
+      <button style="grid-column:2;grid-row:3" onclick="manualCmd('backward')">rev</button>
     </div>
 
     <div id="trackControls" style="position: fixed; top: 10px; left: 50%;
