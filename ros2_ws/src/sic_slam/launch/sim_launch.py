@@ -41,9 +41,24 @@ def generate_launch_description():
                     "'sic_slam_cave_water' (real cave mesh's flooded water section, "
                     'reused from cavex_world.world -- see that world file for the '
                     'circle-trajectory ATE setup, ate_circle_demo.py)')
-    spawn_x_arg = DeclareLaunchArgument('spawn_x', default_value='0')
-    spawn_y_arg = DeclareLaunchArgument('spawn_y', default_value='0')
-    spawn_z_arg = DeclareLaunchArgument('spawn_z', default_value='-2')
+    # World-conditional, same pattern as bridge_yaml/checkpoint_path below.
+    # sic_slam_tank keeps its small enclosed-corridor origin (0,0,-2).
+    # sic_slam_cave_water's real spawn is the water region near (25,7,6.7)
+    # (real mesh-based z, not the tank's relative offset -- see that
+    # world's own camera_pose comment) -- launching this world with the
+    # tank's defaults drops the ROV outside the water region entirely and
+    # it free-falls until it hits something ~5-6m below where it should be
+    # (confirmed live, 2026-08-26: spawned at (0,0,-2) -> settled at
+    # (0,0,-7.68), nowhere near the intended (25,0) water center).
+    spawn_x_arg = DeclareLaunchArgument(
+        'spawn_x', default_value=PythonExpression(
+            ["'25' if '", LaunchConfiguration('world'), "' == 'sic_slam_cave_water' else '0'"]))
+    spawn_y_arg = DeclareLaunchArgument(
+        'spawn_y', default_value=PythonExpression(
+            ["'7' if '", LaunchConfiguration('world'), "' == 'sic_slam_cave_water' else '0'"]))
+    spawn_z_arg = DeclareLaunchArgument(
+        'spawn_z', default_value=PythonExpression(
+            ["'6.7' if '", LaunchConfiguration('world'), "' == 'sic_slam_cave_water' else '-2'"]))
 
     pkg_share = get_package_share_directory('sic_slam')
     # bluerov2_sim's model.sdf lives here (an ArduPilot-plugin-free copy of
