@@ -689,7 +689,51 @@
     <div id='status'>Status: disconnected</div>
     <div id='output'></div>
 
-    <div id="container" style="height: 800px">
+    <div id="container" style="height: 800px; position: relative;">
     </div>
+
+    <!-- Real request 2026-08-26: functional control buttons in the browser
+         viewer. control_server.py's /api/manual and /api/tracks relay these
+         into the exact same gz-transport topics the desktop GUI's
+         ManualControl/ActionButtons plugins already send
+         (/cavex/manual_cmd, /cavex/track_cmd) -- manual_gui_bridge.py
+         handles both already, no new backend logic needed. -->
+    <div id="controls" style="position: fixed; bottom: 10px; left: 50%;
+        transform: translateX(-50%); display: flex; gap: 24px;
+        font-family: sans-serif; z-index: 10;">
+      <div style="display: grid; grid-template-columns: repeat(3, 48px);
+          grid-template-rows: repeat(2, 40px); gap: 4px;">
+        <button style="grid-column:2" onmousedown="manualCmd('forward')" onmouseup="manualCmd('stop')">fwd</button>
+        <button style="grid-column:1;grid-row:2" onmousedown="manualCmd('left')" onmouseup="manualCmd('stop')">left</button>
+        <button style="grid-column:2;grid-row:2" onclick="manualCmd('stop')">stop</button>
+        <button style="grid-column:3;grid-row:2" onmousedown="manualCmd('right')" onmouseup="manualCmd('stop')">right</button>
+        <button style="grid-column:2;grid-row:3" onmousedown="manualCmd('backward')" onmouseup="manualCmd('stop')">rev</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <button onclick="manualCmd('speed_up')">spd +</button>
+        <button onclick="manualCmd('speed_down')">spd -</button>
+        <button id="manualToggle" onclick="toggleManual()">man: OFF</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <button onclick="trackCmd('deployed')">tracks down</button>
+        <button onclick="trackCmd('retracted')">tracks up</button>
+      </div>
+    </div>
+
+    <script>
+      var manualOn = false;
+      function manualCmd(cmd) {
+        fetch('/api/manual?cmd=' + cmd);
+      }
+      function trackCmd(cmd) {
+        fetch('/api/tracks?cmd=' + cmd);
+      }
+      function toggleManual() {
+        manualOn = !manualOn;
+        manualCmd(manualOn ? 'manual_on' : 'manual_off');
+        document.getElementById('manualToggle').textContent =
+          'man: ' + (manualOn ? 'ON' : 'OFF');
+      }
+    </script>
   </body>
 </html>
