@@ -355,26 +355,5 @@
         </visual>
       </link>
     </model>
-
-    <!-- Real request: a surface support boat at Home (see
-         sim_info_publisher.py's own Home marker -- same x/y, (25, 0)),
-         at the water surface (z=7.9) rather than the ROV's own home
-         depth (6.9) since a boat floats, it doesn't submerge. Reused
-         unmodified from cavex_tracked_vehicle/models/blueboat (real
-         Blue Robotics BlueBoat model, already on GZ_SIM_RESOURCE_PATH
-         via sim_launch.py -- see that file's own comment for why
-         cavex_tracked_vehicle's models dir is already on the path).
-         <static>true</static> override: the model's own SDF has real
-         revolute motor joints + thruster plugins (needs actual cmd_thrust
-         commands to move, none are ever sent here), but it's NOT
-         static by default -- "keep it stationary" (real request) means
-         freezing it outright rather than relying on zero commands plus
-         physics/gravity/buoyancy interactions never nudging it. -->
-    <include>
-      <uri>model://blueboat</uri>
-      <name>blueboat</name>
-      <pose>25 0 7.9 0 0 0</pose>
-      <static>true</static>
-    </include>
   </world>
 </sdf>
