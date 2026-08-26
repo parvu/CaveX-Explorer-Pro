@@ -142,12 +142,9 @@
           </anchors>
         </gz-gui>
         <label>Track</label>
-        <!-- Real request 2026-08-26: "Up"/"Down" didn't say which state the tracks end
-             up in -- relabeled to on/off (deployed = tracks down and driving = "on",
-             retracted = tracks lifted and idle = "off"). -->
-        <button1_label>off</button1_label>
+        <button1_label>up</button1_label>
         <button1_cmd>retracted</button1_cmd>
-        <button2_label>on</button2_label>
+        <button2_label>down</button2_label>
         <button2_cmd>deployed</button2_cmd>
         <topic>/cavex/track_cmd</topic>
       </plugin>
@@ -257,7 +254,21 @@
          guessed height. -->
     <plugin filename="gz-sim-buoyancy-system" name="gz::sim::systems::Buoyancy">
       <graded_buoyancy>
-        <default_density>1000</default_density>
+        <!-- Real request 2026-08-26: real water density (1000) left the boat net
+             negatively buoyant (mass ~47kg vs the hull collision mesh's real
+             displaced volume) -- it just sank to the cave floor. gz-sim-buoyancy-
+             system computes force straight from that mesh's volume, and the mesh
+             was never modeled/tuned to actually be watertight-accurate for a
+             floating vehicle, so bumping density is the practical lever here
+             instead of reshaping the hull. Tuned empirically via live teleport-
+             into-water tests: 1000 sinks to the floor, 1800 still sinks (barely
+             off it), 3000 overshoots hard and bobs violently near the surface.
+             2200 live-verified to float stably a little under the surface
+             (~7.15-7.25, surface at 7.9, floor at 5.9) with only mild residual
+             bob -- there's no hydrodynamic drag plugin installed in this
+             environment (gz-waves1-hydrodynamics-system, see the removed-plugin
+             comment on the boat model) to damp that bob out further. -->
+        <default_density>2200</default_density>
         <density_change>
           <above_depth>7.9</above_depth>
           <density>1</density>
