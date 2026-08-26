@@ -2,7 +2,7 @@ import QtQuick 2.9
 
 Rectangle {
   id: panel
-  width: ManualControl.mode === "turn" ? 100 : 150
+  width: ManualControl.mode === "speed" ? 100 : 150
   height: 96
   color: "#66000000"
   radius: 6
@@ -38,7 +38,7 @@ Rectangle {
   // ROV version -- left/right already read naturally as "turn" for a
   // tracked vehicle with no strafe capability, no relabeling needed.
   Grid {
-    visible: ManualControl.mode !== "turn"
+    visible: ManualControl.mode !== "speed"
     anchors.centerIn: parent
     columns: 3
     rows: 3
@@ -54,17 +54,16 @@ Rectangle {
     Item { width: 40; height: 26 }
   }
 
-  // Turn (left/right pivot) + Manual toggle -- replaces the ROV
-  // version's depth (up/down) pair, which has no ground-vehicle
-  // equivalent (real request: "replace up/down with turn left/turn
-  // right").
+  // Speed up/down + Manual toggle -- real request, 2026-08-26: replaces
+  // this panel's earlier turn-left/turn-right pair (the D-pad's own
+  // left/right buttons already turn the vehicle, see the Grid above).
   Column {
-    visible: ManualControl.mode === "turn"
+    visible: ManualControl.mode === "speed"
     anchors.centerIn: parent
     spacing: 4
 
-    Loader { sourceComponent: ctrlButton; onLoaded: { item.label = "turn L"; item.onPress = function() { ManualControl.SendCommand("turn_left") } } }
-    Loader { sourceComponent: ctrlButton; onLoaded: { item.label = "turn R"; item.onPress = function() { ManualControl.SendCommand("turn_right") } } }
+    Loader { sourceComponent: ctrlButton; onLoaded: { item.label = "spd +"; item.onPress = function() { ManualControl.SendCommand("speed_up") } } }
+    Loader { sourceComponent: ctrlButton; onLoaded: { item.label = "spd -"; item.onPress = function() { ManualControl.SendCommand("speed_down") } } }
 
     Rectangle {
       width: 40

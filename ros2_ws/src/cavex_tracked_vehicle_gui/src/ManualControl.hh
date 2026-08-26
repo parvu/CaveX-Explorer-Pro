@@ -11,13 +11,16 @@ namespace cavex_tracked_vehicle_gui
 
 // Ported from perception branch's sic_slam_gui::ManualControl, adapted
 // for a tracked ground vehicle: no depth axis, no strafe -- the second
-// panel (was "depth" mode, up/down for a ROV's vertical thrusters) is
-// now "turn" mode, turn-left/turn-right for a differential-track pivot.
-// Two instances of this one plugin class, distinguished by <mode>:
-// "dpad" (default) shows a D-pad (left/fwd/right/rev + center stop);
-// "turn" shows a turn-left/turn-right pair plus the Manual toggle. Every
-// button press publishes one gz.msgs.StringMsg command
-// ("left"/"forward"/"right"/"backward"/"turn_left"/"turn_right"/"stop"/
+// panel (was "depth" mode, up/down for a ROV's vertical thrusters, then
+// briefly "turn" mode, turn-left/turn-right) is now "speed" mode
+// (real request, 2026-08-26: the D-pad's own left/right buttons already
+// turn the vehicle, so this panel is free for speed adjustment instead
+// of duplicating that). Two instances of this one plugin class,
+// distinguished by <mode>: "dpad" (default) shows a D-pad (left/fwd/
+// right/rev + center stop); "speed" shows a speed-up/speed-down pair
+// plus the Manual toggle. Every button press publishes one
+// gz.msgs.StringMsg command
+// ("left"/"forward"/"right"/"backward"/"speed_up"/"speed_down"/"stop"/
 // "manual_on"/"manual_off") to /cavex/manual_cmd; manual_gui_bridge.py
 // (cavex_tracked_vehicle, not this package -- Qt/gz-gui plugins don't
 // touch cmd_vel directly) turns held commands into real /cmd_vel while

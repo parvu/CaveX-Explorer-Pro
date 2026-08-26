@@ -7,8 +7,8 @@ ROS2 or /cmd_vel directly, same convention as perception branch's
 sic_slam_gui/manual_control_node.py pair. This node is the consumer on
 the other end of both control topics:
 
-- /cavex/manual_cmd (ManualControl's D-pad + turn-left/right + Manual
-  toggle): held-command semantics, same as sic_slam's
+- /cavex/manual_cmd (ManualControl's D-pad + speed-up/speed-down +
+  Manual toggle): held-command semantics, same as sic_slam's
   manual_control_node.py -- a direction button sets the current command
   and it stays in effect (re-published at CONTROL_PERIOD_S) until "stop"
   or a different direction is pressed. Drives
@@ -21,6 +21,13 @@ the other end of both control topics:
   ArduPilot path producing zero motion). While "manual_on" is false, this
   publishes NOTHING at all on cmd_vel, so an autonomous script keeps sole
   control of the vehicle.
+
+  Real request, 2026-08-26: the "Manual speed control" panel's
+  turn-left/turn-right pair was replaced with speed-up/speed-down (the
+  D-pad's own left/right already turn the vehicle). "speed_up"/
+  "speed_down" adjust a shared multiplier applied to every direction's
+  base linear/angular rate, not a direction of their own -- they don't
+  set _drive_state["cmd"].
 
 - /cavex/track_cmd (the Track ActionButtons instance): single-shot
   commands, not held. Republished as the real ROS2 message
@@ -46,22 +53,25 @@ from gz.transport13 import Node as GzNode
 from gz.msgs10.twist_pb2 import Twist
 from gz.msgs10.stringmsg_pb2 import StringMsg
 
-LINEAR_MPS = 0.8
-ANGULAR_RAD_S = 0.5
+BASE_LINEAR_MPS = 0.8
+BASE_ANGULAR_RAD_S = 0.5
 CONTROL_PERIOD_S = 0.1
 
-# command -> (linear_x, angular_z)
+SPEED_SCALE_STEP = 0.25
+SPEED_SCALE_MIN = 0.25
+SPEED_SCALE_MAX = 3.0
+
+# command -> unit (linear_x, angular_z) direction, scaled by speed_scale
+# at publish time (see main()'s own control loop below).
 DRIVE_COMMANDS = {
-    "forward": (LINEAR_MPS, 0.0),
-    "backward": (-LINEAR_MPS, 0.0),
-    "left": (0.0, ANGULAR_RAD_S),
-    "right": (0.0, -ANGULAR_RAD_S),
-    "turn_left": (0.0, ANGULAR_RAD_S),
-    "turn_right": (0.0, -ANGULAR_RAD_S),
+    "forward": (1.0, 0.0),
+    "backward": (-1.0, 0.0),
+    "left": (0.0, 1.0),
+    "right": (0.0, -1.0),
     "stop": (0.0, 0.0),
 }
 
-_drive_state = {"cmd": "stop", "manual_on": False}
+_drive_state = {"cmd": "stop", "manual_on": False, "speed_scale": 1.0}
 
 
 def _manual_cmd_cb(msg: StringMsg):
@@ -71,6 +81,12 @@ def _manual_cmd_cb(msg: StringMsg):
     elif data == "manual_off":
         _drive_state["manual_on"] = False
         _drive_state["cmd"] = "stop"
+    elif data == "speed_up":
+        _drive_state["speed_scale"] = min(
+            SPEED_SCALE_MAX, _drive_state["speed_scale"] + SPEED_SCALE_STEP)
+    elif data == "speed_down":
+        _drive_state["speed_scale"] = max(
+            SPEED_SCALE_MIN, _drive_state["speed_scale"] - SPEED_SCALE_STEP)
     elif data in DRIVE_COMMANDS:
         _drive_state["cmd"] = data
 
@@ -112,10 +128,11 @@ def main():
     try:
         while rclpy.ok():
             if _drive_state["manual_on"]:
-                linear_x, angular_z = DRIVE_COMMANDS[_drive_state["cmd"]]
+                unit_x, unit_z = DRIVE_COMMANDS[_drive_state["cmd"]]
+                scale = _drive_state["speed_scale"]
                 msg = Twist()
-                msg.linear.x = linear_x
-                msg.angular.z = angular_z
+                msg.linear.x = unit_x * BASE_LINEAR_MPS * scale
+                msg.angular.z = unit_z * BASE_ANGULAR_RAD_S * scale
                 cmd_vel_pub.publish(msg)
             time.sleep(CONTROL_PERIOD_S)
     except KeyboardInterrupt:
