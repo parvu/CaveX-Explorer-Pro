@@ -402,24 +402,5 @@
       <pose>25 5 7.9 0 0 0</pose>
       <static>true</static>
     </include>
-
-    <!-- Tracked BlueBoat variant, real request ("boat tracks in retracted
-         position") -- resting on the cave floor near Home (offset 5m in
-         -y), not the water surface: unlike the regular blueboat above,
-         this variant is this project's own design specifically for
-         cave-floor locomotion (retractable track assemblies replacing
-         the props -- see models/blueboat_tracked_static/model.sdf's own
-         header, a stripped/forced-static copy of
-         models/blueboat/model.sdf.tracked with both track-retract joints
-         set to initial_position=1.4 rad, confirmed retracted per the
-         user). z=6.0: just above the real-mesh-derived floor (5.9) to
-         avoid z-fighting, matching this world's own floor/wall placement
-         convention elsewhere. -->
-    <include>
-      <uri>model://blueboat_tracked_static</uri>
-      <name>blueboat_tracked</name>
-      <pose>25 -5 6.0 0 0 0</pose>
-      <static>true</static>
-    </include>
   </world>
 </sdf>
