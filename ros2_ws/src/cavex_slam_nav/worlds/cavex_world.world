@@ -142,9 +142,12 @@
           </anchors>
         </gz-gui>
         <label>Track</label>
-        <button1_label>Up</button1_label>
+        <!-- Real request 2026-08-26: "Up"/"Down" didn't say which state the tracks end
+             up in -- relabeled to on/off (deployed = tracks down and driving = "on",
+             retracted = tracks lifted and idle = "off"). -->
+        <button1_label>off</button1_label>
         <button1_cmd>retracted</button1_cmd>
-        <button2_label>Down</button2_label>
+        <button2_label>on</button2_label>
         <button2_cmd>deployed</button2_cmd>
         <topic>/cavex/track_cmd</topic>
       </plugin>

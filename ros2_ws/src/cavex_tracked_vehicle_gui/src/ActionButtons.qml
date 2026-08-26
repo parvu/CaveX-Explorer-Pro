@@ -46,14 +46,19 @@ Rectangle {
     Loader {
       sourceComponent: ctrlButton
       onLoaded: {
-        item.label = ActionButtons.button1Label
+        // Qt.binding(), not a plain "=" assignment: LoadConfig() (which parses
+        // <button1_label> from the SDF and sets this property) can run after this
+        // Loader has already instantiated its item, so a one-shot assignment here
+        // can permanently capture the pre-LoadConfig empty default. A live binding
+        // keeps tracking button1Label via its NOTIFY signal instead.
+        item.label = Qt.binding(function() { return ActionButtons.button1Label })
         item.onPress = function() { ActionButtons.SendButton1() }
       }
     }
     Loader {
       sourceComponent: ctrlButton
       onLoaded: {
-        item.label = ActionButtons.button2Label
+        item.label = Qt.binding(function() { return ActionButtons.button2Label })
         item.onPress = function() { ActionButtons.SendButton2() }
       }
     }
