@@ -16,14 +16,12 @@ find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
-find_package(std_msgs REQUIRED)
 find_package(GTSAM REQUIRED)
 find_package(Eigen3 REQUIRED)
 
 include_directories(include)
 
 add_library(gtsam_slam_core
-  src/dynamics_model.cpp
   src/scan_registration.cpp
 )
 target_link_libraries(gtsam_slam_core Eigen3::Eigen)
@@ -38,7 +36,7 @@ install(DIRECTORY include/
 
 add_executable(gtsam_slam_node src/gtsam_slam_node.cpp)
 target_link_libraries(gtsam_slam_node gtsam_slam_core gtsam)
-ament_target_dependencies(gtsam_slam_node rclcpp sensor_msgs nav_msgs geometry_msgs tf2_ros tf2_geometry_msgs std_msgs)
+ament_target_dependencies(gtsam_slam_node rclcpp sensor_msgs nav_msgs geometry_msgs tf2_ros tf2_geometry_msgs)
 install(TARGETS gtsam_slam_node
   DESTINATION lib/${PROJECT_NAME})
 
@@ -49,21 +47,8 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 
   find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(test_dynamics_model test/test_dynamics_model.cpp)
-  target_link_libraries(test_dynamics_model gtsam_slam_core)
-
-  find_package(GTSAM REQUIRED)
-  ament_add_gtest(test_current_factor test/test_current_factor.cpp)
-  target_link_libraries(test_current_factor gtsam_slam_core gtsam)
-
   ament_add_gtest(test_scan_registration test/test_scan_registration.cpp)
   target_link_libraries(test_scan_registration gtsam_slam_core)
-
-  ament_add_gtest(test_continuous_trajectory test/test_continuous_trajectory.cpp)
-  target_link_libraries(test_continuous_trajectory gtsam_slam_core gtsam)
-
-  ament_add_gtest(test_continuous_current_estimator test/test_continuous_current_estimator.cpp)
-  target_link_libraries(test_continuous_current_estimator gtsam_slam_core gtsam)
 endif()
 
 install(DIRECTORY launch

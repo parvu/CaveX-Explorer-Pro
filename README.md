@@ -45,10 +45,8 @@ sequences, driving commands, and verification steps for each:
 |---|---|
 | `cavex_slam_nav` | Original wheeled robot, RTAB-Map SLAM, ATE eval |
 | `cavex_tracked_vehicle` | Tracked BlueBoat + BlueROV2, ArduPilot Rover/Sub SITL |
-| `cavex_sonar` | Simulated BlueROV2 acoustic sonar + ocean current |
 | `cavex_perception` | RGB-D + lidar instance clustering |
-| `cavex_gtsam_slam` | Real GTSAM Sonar-Inertial-Current factor-graph SLAM |
-| `cavex_dcs` | Drift/Current Suppression controller (feed-forward + PI) |
+| `cavex_gtsam_slam` | Real GTSAM inertial + sonar-scan-registration factor-graph SLAM (no live sonar source or CurrentFactor on this branch -- see perception branch) |
 
 ### Phase 1: tracked BlueBoat + BlueROV2 (dry cave, ArduPilot)
 
@@ -60,7 +58,13 @@ sleep 15
 ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
 ```
 
-### Phase 2: BlueROV2 sonar + current + GTSAM-SLAM + DCS (flooded section)
+### Phase 2: BlueROV2 GTSAM-SLAM (flooded section)
+
+Real request, 2026-08-26: `cavex_sonar` and the CurrentFactor subsystem
+(and its downstream consumer `cavex_dcs`) were removed from this branch
+-- see perception branch for the full sonar/current/DCS version. What's
+left here is IMU-only dead reckoning (the node's scan-registration code
+is unchanged but has no live sonar feed to register against).
 
 ```bash
 gz sim -r -v2 src/cavex_slam_nav/worlds/cavex_world.world &
@@ -71,10 +75,7 @@ sleep 5
 ros2 run ros_gz_bridge parameter_bridge --ros-args \
   -p config_file:=src/cavex_tracked_vehicle/config/gazebo_tracked_vehicle_bridge.yaml &
 sleep 10
-ros2 run cavex_sonar sonar_node --ros-args -p seed:=42 -p frame_id:=bluerov2/sonar &
-sleep 3
 ros2 run cavex_gtsam_slam gtsam_slam_node &
-ros2 run cavex_dcs dcs_controller &
 ```
 
 Closed-loop motion demos (real `gz-transport` position control, applied via
@@ -93,69 +94,7 @@ Both take an optional duration in seconds (default 60). Both require the
 `gz.transport13`/`gz.msgs10` Python bindings (installed alongside Gazebo
 Harmonic) -- no additional ROS nodes needed beyond the spawned vehicle.
 
-### ATE ablation test harness (10/25-run current + turbidity sweeps)
-
-`src/cavex_slam_nav/scripts/` has two self-contained scripts that spawn
-the vehicle, run a closed-loop excitation trajectory, and compute
-Absolute Trajectory Error against Gazebo ground truth, repeating until
-`n_target` valid (non-discarded) runs complete. Each attempt is a fully
-fresh process restart (gz sim, bridge, sonar, gtsam_slam_node); a run is
-discarded and retried (not counted) on node-stacking or an implausible
-solution jump, so the reported n is always n genuinely valid runs. Output
-(per-run logs + `ate_Nx_<label>_results.csv`) goes to `$ATE_OUT_DIR`
-(default `/tmp/cavex_ate_results`).
-
-```bash
-# Zero-current baseline: with-CurrentFactor vs without, 10 or 25 runs/leg
-src/cavex_slam_nav/scripts/run_ate.sh with    10 baseline_with
-src/cavex_slam_nav/scripts/run_ate.sh without 10 baseline_without
-src/cavex_slam_nav/scripts/run_ate.sh with    25 baseline_with25
-src/cavex_slam_nav/scripts/run_ate.sh without 25 baseline_without25
-
-# Real current + turbidity: <with|without> <n> <label> [current_vx m/s] [absorption_db_per_m] [dcs]
-#   current_vx: ocean current speed (default 2.0 m/s)
-#   absorption_db_per_m: turbidity proxy -- higher = murkier water, shorter
-#     sonar range (default 0.4 = no turbidity; 3.0+ = heavy turbidity)
-#   trailing "dcs" enables Dynamic Covariance Scaling (robust M-estimator)
-src/cavex_slam_nav/scripts/run_ate_current.sh without 10 current_test 2.0 0.4
-src/cavex_slam_nav/scripts/run_ate_current.sh without 10 current_test_dcs 2.0 0.4 dcs
-src/cavex_slam_nav/scripts/run_ate_current.sh with    25 heavy_turbidity25 2.0 3.0
-```
-
 ## Known limitations (sim-to-real gap)
-
-**The acoustic sonar model is not calibrated against real hardware.**
-`cavex_sonar`'s transmission-loss, backscatter, and speckle parameters
-(`sonar_acoustics.hpp`'s `AcousticParams`) are physically motivated
-(spherical spreading + absorption, Lambertian backscatter, Rayleigh
-speckle) but their specific values were chosen to be plausible for a
-~1 MHz short-range imaging sonar in fresh water, not fit to any real
-sensor's measured response.
-
-**No multi-path/reverberation modeling.** Every simulated beam is a
-single direct ray-cast (one range, one echo level) — there is no
-secondary-reflection or reverberation physics. In a confined, high-clutter
-underwater space this is a real simplification: a real sonar in that kind
-of environment sees genuine multi-path returns that a single-bounce model
-cannot produce, and that could degrade real scan registration in ways this
-simulation cannot currently exercise or catch.
-
-**Partially addressed:** `sonar_node`'s `clutter_probability` parameter
-(default `0.0`, off) injects spurious short-range false detections on
-any beam that would otherwise report a real dropout (including a beam
-with zero valid rays at all, the most realistic case) — a first-order
-model of turbidity-driven false returns (suspended-particle scattering),
-not true multi-path physics. Clutter range also drifts with the real
-current (`current_drift_range_m` in `AcousticParams`, driven by
-`sonar_node`'s subscription to `/ocean_current`): beams looking upstream
-get closer clutter over time, downstream beams get farther, both
-saturating at `clutter_max_range_m`/`min_range_m`. `sonar_node` also
-populates `LaserScan`'s standard `time_increment`/`scan_time` fields
-(`scan_duration_s` parameter, default 1.0s) — informational only, since
-the underlying `gpu_lidar` source samples every ray at one simulated
-instant, so there's no real per-beam motion distortion in the data to
-correct for; this just gives a consumer the field a real sensor driver
-would provide.
 
 **Scan registration is classical, not learned.** `cavex_gtsam_slam`'s
 keyframe-to-keyframe registration (`scan_registration.cpp`) is a

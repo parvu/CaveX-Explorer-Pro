@@ -3,7 +3,11 @@
 <package format="3">
   <name>cavex_gtsam_slam</name>
   <version>0.1.0</version>
-  <description>Sonar-Inertial-Current Graph-SLAM for the BlueROV2</description>
+  <description>Inertial + sonar scan-registration Graph-SLAM for the
+    BlueROV2 (real request, 2026-08-26: cavex_sonar and the CurrentFactor
+    subsystem removed from this branch, so there is no live sonar source
+    and the node degrades to IMU-only dead reckoning in practice -- see
+    perception branch for the full sonar/current version)</description>
   <maintainer email="petrisor.parvu@upb.ro">CaveX Explorer Pro</maintainer>
   <license>MIT</license>
 
@@ -15,7 +19,6 @@
   <depend>geometry_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
-  <depend>std_msgs</depend>
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

@@ -53,7 +53,7 @@
            reason gz::sensors::DopplerVelocityLog is unusable here). So this
            gpu_lidar supplies geometrically correct ranges only; all acoustic
            physics -- beam spread, transmission loss, incidence backscatter,
-           speckle, dropout -- lives in cavex_sonar and is applied downstream.
+           speckle, dropout -- used to live in cavex_sonar and be applied downstream (removed from this branch 2026-08-26, see perception branch).
            Do not treat this topic as sonar output. -->
       <sensor name="sonar_ray_engine" type="gpu_lidar">
         <pose>0.15 0 0 0 0 0</pose>

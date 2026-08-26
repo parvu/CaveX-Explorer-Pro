@@ -132,7 +132,9 @@
 
 # Task 6: dense gpu_lidar ray engine standing in for the BlueROV2's sonar
 # (Gazebo Harmonic has no sonar sensor type). Geometry only -- acoustic
-# physics is applied downstream in cavex_sonar (Task 7).
+# physics used to be applied downstream by cavex_sonar (Task 7), removed
+# from this branch 2026-08-26 (see perception branch); this bridge entry
+# is left in place (harmless) but currently has no real consumer.
 - ros_topic_name: "/bluerov2/sonar_rays"
   gz_topic_name: "/bluerov2/sonar_rays"
   ros_type_name: "sensor_msgs/msg/LaserScan"

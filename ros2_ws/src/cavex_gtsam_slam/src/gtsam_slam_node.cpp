@@ -8,10 +8,7 @@
 #include <sensor_msgs/msg/point_cloud.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/point32.hpp>
-#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
-#include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
-#include <std_msgs/msg/float64.hpp>
 
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/nonlinear/ISAM2.h>
@@ -24,13 +21,10 @@
 #include <gtsam/linear/LossFunctions.h>
 
 #include "cavex_gtsam_slam/scan_registration.hpp"
-#include "cavex_gtsam_slam/current_factor.hpp"
-#include "cavex_gtsam_slam/continuous_current_estimator.hpp"
 
 using gtsam::symbol_shorthand::X;
 using gtsam::symbol_shorthand::V;
 using gtsam::symbol_shorthand::B;
-using gtsam::symbol_shorthand::C;
 
 namespace cavex_gtsam_slam
 {
@@ -46,28 +40,10 @@ public:
     keyframe_period_s_ = this->declare_parameter<double>("keyframe_period_s", 0.5);
     keyframe_distance_m_ = this->declare_parameter<double>("keyframe_distance_m", 0.3);
     keyframe_rotation_rad_ = this->declare_parameter<double>("keyframe_rotation_rad", 0.2);
-    // Ablation switch: false runs the identical IMU+sonar iSAM2 graph with
-    // no C(i) variable, no CurrentFactor, no current random walk at all --
-    // not "CurrentFactor present but unconstrained". Same pipeline, same
-    // keyframe triggers, same live-sim/ATE methodology; only the current
-    // observability mechanism is removed, for an apples-to-apples baseline.
-    enable_current_factor_ = this->declare_parameter<bool>("enable_current_factor", true);
-    // Additive continuous-time smoothing of the existing discrete C(i)
-    // estimates -- see .superpowers/plans/2026-08-23-continuous-current-
-    // field-integration.md. Does NOT touch pose (X/V) estimation and does
-    // NOT independently re-derive current; only meaningful when
-    // enable_current_factor_ is also true. Default off.
-    enable_continuous_current_field_ = this->declare_parameter<bool>(
-      "enable_continuous_current_field", false);
     // Dynamic Covariance Scaling (real request, 2026-08-22): tests whether
     // a proper robust M-estimator on the actual outlier-prone geometric
     // constraints (sonar odometry + loop-closure BetweenFactors -- a bad
-    // scan match is a real outlier, unlike CurrentFactor's role which is
-    // absorbing a smoothly-varying disturbance, not rejecting bad
-    // measurements) achieves comparable graph stability to CurrentFactor,
-    // which would make CurrentFactor's incidental stabilizing effect
-    // (found earlier this session: it reduces IndeterminantLinearSystem-
-    // Exception crash RATE) redundant with a more targeted fix. Default
+    // scan match is a real outlier) improves graph stability. Default
     // off -- preserves existing behavior exactly.
     enable_dcs_robust_ = this->declare_parameter<bool>("enable_dcs_robust", false);
     dcs_c_ = this->declare_parameter<double>("dcs_c", 1.0);
@@ -86,13 +62,9 @@ public:
     // 10 (only every 10th update() call actually relinearizes) and
     // relinearizeThreshold defaults to 0.1. Tightened while chasing a
     // chaotic pose-estimate oscillation under real current (2026-08-22);
-    // that oscillation's actual root cause turned out to be an upstream
-    // test-harness bug (zero real thrust signal reaching CurrentFactor),
-    // not stale ISAM2 linearization, so this alone did not fix it either.
-    // Left in regardless -- forcing full relinearization every update is a
+    // left in regardless -- forcing full relinearization every update is a
     // real robustness improvement on its own merits (trades more CPU per
-    // update for never letting a variable go stale), independent of that
-    // investigation.
+    // update for never letting a variable go stale).
     gtsam::ISAM2Params isam_params;
     isam_params.relinearizeThreshold = 0.01;
     isam_params.relinearizeSkip = 1;
@@ -113,40 +85,12 @@ public:
     graph_.addPrior(V(0), prior_vel, vel_noise);
     graph_.addPrior(B(0), prior_bias, bias_noise);
 
-    gtsam::Vector3 prior_current = gtsam::Vector3::Zero();
-    if (enable_current_factor_) {
-      values_.insert(C(0), prior_current);
-      // Loose: 0.05 actively fought convergence to a real nonzero current --
-      // it should say "no information yet", not "confidently zero". See the
-      // matching current_walk_noise change below for the full reasoning.
-      auto current_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.5);
-      graph_.addPrior(C(0), prior_current, current_noise);
-    }
-
     isam_.update(graph_, values_);
     graph_.resize(0);
     values_.clear();
     last_pose_ = prior_pose;
     last_vel_ = prior_vel;
     last_bias_ = prior_bias;
-    last_current_ = prior_current;
-
-    thruster_geom_ = cavex_gtsam_slam::defaultBlueRov2Geometry();
-    thruster_drag_ = cavex_gtsam_slam::defaultBlueRov2Drag();
-    thrust_n_.fill(0.0);
-    for (int i = 0; i < 6; ++i) {
-      std::string topic = "/bluerov2/thruster" + std::to_string(i + 1) + "/cmd_thrust";
-      thruster_subs_[i] = this->create_subscription<std_msgs::msg::Float64>(
-        topic, rclcpp::SensorDataQoS(),
-        [this, i](const std_msgs::msg::Float64::SharedPtr msg) {
-          std::lock_guard<std::mutex> lock(mutex_);
-          thrust_n_[i] = msg->data;
-        });
-    }
-    current_pub_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(
-      "/gtsam_slam/current_estimate", 10);
-    continuous_current_pub_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>(
-      "/gtsam_slam/current_estimate_continuous", 10);
 
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
       "/bluerov2/imu", rclcpp::SensorDataQoS(),
@@ -162,8 +106,8 @@ public:
 
     RCLCPP_INFO(
       this->get_logger(),
-      "gtsam_slam_node ready: /bluerov2/imu + /bluerov2/sonar -> /gtsam_slam/odometry (%s).",
-      enable_current_factor_ ? "IMU+sonar+CurrentFactor" : "IMU+sonar only, no CurrentFactor");
+      "gtsam_slam_node ready: /bluerov2/imu + /bluerov2/sonar -> /gtsam_slam/odometry "
+      "(IMU+sonar, no CurrentFactor -- removed from this branch, see perception branch).");
   }
 
 protected:
@@ -214,9 +158,7 @@ protected:
   // "Robust Map Optimization using Dynamic Covariance Scaling") when
   // enabled, otherwise returns it unchanged. Applied only to the
   // sonar/loop-closure BetweenFactors -- the actual outlier-prone
-  // geometric constraints (a bad scan match is a real measurement
-  // outlier) -- not to CombinedImuFactor or CurrentFactor, whose role is
-  // absorbing a smoothly-varying quantity, not rejecting bad data.
+  // geometric constraints -- not to CombinedImuFactor.
   gtsam::SharedNoiseModel wrapDcsIfEnabled(const gtsam::SharedNoiseModel & base) const
   {
     if (!enable_dcs_robust_) {
@@ -226,15 +168,13 @@ protected:
       gtsam::noiseModel::mEstimator::DCS::Create(dcs_c_), base);
   }
 
-  // Extended in Task 5 (sonar BetweenFactor) and Task 6 (CurrentFactor,
-  // current random walk, thruster subscriptions). Kept as its own method so
+  // Extended in Task 5 (sonar BetweenFactor). Kept as its own method so
   // later tasks can insert factors between the IMU factor and the
   // isam_.update() call without restructuring the callback.
   virtual void addKeyframe(const rclcpp::Time & stamp)
   {
     std::size_t prev = keyframe_index_;
     std::size_t curr = keyframe_index_ + 1;
-    double t_seconds = rclcpp::Time(stamp).seconds();
 
     gtsam::CombinedImuFactor imu_factor(
       X(prev), V(prev), X(curr), V(curr), B(prev), B(curr), *preint_);
@@ -264,20 +204,15 @@ protected:
     }
 
     // Real fix, 2026-08-23, for the long-standing IndeterminantLinear-
-    // SystemException divergence bug (previously paused -- see project
-    // memory sic-slam-divergence-bug-paused.md). Diagnostic (this file's
-    // existing X_rot/X_trans condition-number split) confirmed the real
-    // mechanism: during a scan-starved streak, ROTATION stays perfectly
-    // well-conditioned (nothing here touches it), but TRANSLATION's
-    // marginal covariance grows unboundedly (observed: thousands -> 1e14+
-    // over ~10 consecutive starved keyframes) because the only thing
-    // constraining position during a gap is IMU accelerometer double-
-    // integration, which is inherently weak. This promotes the
-    // already-computed IMU-preintegration prediction (`predicted`,
-    // already trusted enough to seed the optimizer's initial guess just
-    // above) into an actual bounded FACTOR once a streak gets long
-    // enough to matter, capping how far position uncertainty can grow
-    // without fighting real sonar-based updates when sonar is healthy.
+    // SystemException divergence bug: during a scan-starved streak,
+    // ROTATION stays well-conditioned (nothing here touches it), but
+    // TRANSLATION's marginal covariance grows unboundedly because the only
+    // thing constraining position during a gap is IMU accelerometer
+    // double-integration, which is inherently weak. This promotes the
+    // already-computed IMU-preintegration prediction (`predicted`) into an
+    // actual bounded FACTOR once a streak gets long enough to matter,
+    // capping how far position uncertainty can grow without fighting real
+    // sonar-based updates when sonar is healthy.
     if (consecutive_scan_starved_keyframes_ >= 2) {
       auto position_regularizer_noise = gtsam::noiseModel::Isotropic::Sigma(3, 2.0);
       graph_.add(
@@ -285,24 +220,9 @@ protected:
           X(curr), predicted.pose().translation(), position_regularizer_noise));
     }
 
-    // TEMP diagnostic, 2026-08-22: investigating a recurring
-    // gtsam::IndeterminantLinearSystemException. Real hypothesis: when a
-    // keyframe's sonar scan has zero valid returns (real range/detection
-    // limits, not just turbidity), or registration fails to converge, the
-    // whole sonar-constraint block below is skipped and X(curr)/V(curr)
-    // are constrained by IMU (+CurrentFactor) alone -- if that happens
-    // for several consecutive keyframes, the chain could become
-    // ill-conditioned. Remove once confirmed/fixed.
-    RCLCPP_INFO(
-      this->get_logger(),
-      "kf %zu: curr_scan=%zu prev_scan=%zu", curr, curr_scan_points.size(),
-      prev_keyframe_scan_.size());
     if (!curr_scan_points.empty() && !prev_keyframe_scan_.empty()) {
       auto reg = cavex_gtsam_slam::registerScans(
         curr_scan_points, prev_keyframe_scan_, 0.5, 20);
-      RCLCPP_INFO(
-        this->get_logger(), "kf %zu: reg.converged=%d matched_fraction=%.3f",
-        curr, reg.converged, reg.matched_fraction);
       if (reg.converged) {
         gtsam::Pose3 odom_delta(
           gtsam::Rot3::Yaw(reg.dyaw), gtsam::Point3(reg.dx, reg.dy, 0.0));
@@ -338,47 +258,15 @@ protected:
       }
     }
 
-    if (enable_current_factor_) {
-      std::array<double, 6> thrust_snapshot = thrust_n_;
-      auto current_factor_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.15);
-      graph_.add(cavex_gtsam_slam::CurrentFactor(
-        X(curr), V(curr), C(curr), thrust_snapshot, thruster_geom_, thruster_drag_,
-        current_factor_noise));
-
-      // Briefly tried tightening this 0.2 -> 0.02 while chasing a chaotic
-      // pose-estimate oscillation under real current (2026-08-22) --
-      // reverted back to 0.2. Root cause of that oscillation turned out to
-      // be upstream: the test harness driving the vehicle via
-      // ApplyLinkWrench never fed real thrust into `thrust_n_`, so
-      // CurrentFactor's `v_pred_` was zero for the whole test, making its
-      // residual the maximally-degenerate `V - C` -- no noise-sigma choice
-      // fixes an upstream zero-signal input. The original 0.2 rationale
-      // (see above: 0.02 needs ~5600 keyframes to track a real changing
-      // current) is still valid and untouched by this.
-      auto current_walk_noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.2);
-      graph_.add(gtsam::BetweenFactor<gtsam::Vector3>(
-        C(prev), C(curr), gtsam::Vector3::Zero(), current_walk_noise));
-
-      values_.insert(C(curr), last_current_);
-    }
-
     isam_.update(graph_, values_);
     gtsam::Values result = isam_.calculateEstimate();
     last_pose_ = result.at<gtsam::Pose3>(X(curr));
     last_vel_ = result.at<gtsam::Vector3>(V(curr));
     last_bias_ = result.at<gtsam::imuBias::ConstantBias>(B(curr));
 
-    // TEMP diagnostic, 2026-08-22: sonar registration health was ruled
-    // out (matched_fraction stayed ~1.0 right through observed
-    // divergence events, both in a 1000+-keyframe run and a
-    // ~10-15-keyframe-old fresh graph). Real next hypothesis: the graph
-    // is briefly near-singular, catchable via the condition number
-    // (max/min eigenvalue) of X(curr)/V(curr)'s marginal covariance --
-    // a large, spiking condition number right before a divergence event
-    // would confirm this. Computed unconditionally (not just when
-    // CurrentFactor is on) so both ablation legs get the same diagnostic.
-    // Remove once confirmed/fixed -- Marginals computation is real cost
-    // added to every keyframe.
+    // Diagnostic (condition number of X/V's marginal covariance) --
+    // computed unconditionally, cheap enough and useful regardless of
+    // which factors are enabled.
     {
       gtsam::Marginals diag_marginals(isam_.getFactorsUnsafe(), result);
       auto log_condition = [&](const char * name, const gtsam::Matrix & cov) {
@@ -393,45 +281,9 @@ protected:
         };
       gtsam::Matrix x_cov = diag_marginals.marginalCovariance(X(curr));
       log_condition("X", x_cov);
-      // TEMP diagnostic, 2026-08-23: split X's 6x6 covariance into its
-      // rotation block (GTSAM Pose3 tangent space: rows/cols 0-2) and
-      // translation block (rows/cols 3-5) to determine whether a
-      // divergence event is a yaw/attitude degeneracy or a position
-      // degeneracy -- the combined 6x6 condition number alone can't
-      // distinguish these, and they'd call for different fixes (yaw has
-      // no magnetometer/compass reference in this system, only sonar
-      // dyaw and IMU gyro integration; position has sonar dx/dy, IMU
-      // accel integration, and CurrentFactor when enabled).
       log_condition("X_rot", x_cov.block<3, 3>(0, 0));
       log_condition("X_trans", x_cov.block<3, 3>(3, 3));
       log_condition("V", diag_marginals.marginalCovariance(V(curr)));
-      if (enable_current_factor_) {
-        log_condition("C", diag_marginals.marginalCovariance(C(curr)));
-      }
-    }
-
-    if (enable_current_factor_) {
-      last_current_ = result.at<gtsam::Vector3>(C(curr));
-      gtsam::Marginals marginals(isam_.getFactorsUnsafe(), result);
-      gtsam::Matrix current_cov = marginals.marginalCovariance(C(curr));
-      publishCurrent(stamp, last_current_, current_cov);
-    }
-
-    if (enable_current_factor_ && enable_continuous_current_field_) {
-      continuous_current_estimator_.addSample(t_seconds, last_current_);
-      if (++continuous_current_refit_counter_ % 5 == 0) {
-        continuous_current_estimator_.refit();
-      }
-      auto smoothed = continuous_current_estimator_.evaluate(t_seconds);
-      if (smoothed) {
-        geometry_msgs::msg::Vector3Stamped msg;
-        msg.header.stamp = stamp;
-        msg.header.frame_id = "map";
-        msg.vector.x = (*smoothed)(0);
-        msg.vector.y = (*smoothed)(1);
-        msg.vector.z = (*smoothed)(2);
-        continuous_current_pub_->publish(msg);
-      }
     }
 
     // Sonar map/keyframe publishing (Task 5). Self-contained: only reads
@@ -477,23 +329,6 @@ protected:
     odom_pub_->publish(msg);
   }
 
-  void publishCurrent(
-    const rclcpp::Time & stamp, const gtsam::Vector3 & current, const gtsam::Matrix & cov)
-  {
-    geometry_msgs::msg::TwistWithCovarianceStamped msg;
-    msg.header.stamp = stamp;
-    msg.header.frame_id = "map";
-    msg.twist.twist.linear.x = current.x();
-    msg.twist.twist.linear.y = current.y();
-    msg.twist.twist.linear.z = current.z();
-    for (int r = 0; r < 3; ++r) {
-      for (int c = 0; c < 3; ++c) {
-        msg.twist.covariance[r * 6 + c] = cov(r, c);
-      }
-    }
-    current_pub_->publish(msg);
-  }
-
   void publishMap(
     const rclcpp::Time & stamp,
     const std::vector<cavex_gtsam_slam::ScanPoint> & points,
@@ -537,12 +372,6 @@ protected:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sonar_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud>::SharedPtr map_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr keyframes_pub_;
-  std::array<rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr, 6> thruster_subs_;
-  std::array<double, 6> thrust_n_;
-  cavex_gtsam_slam::ThrusterGeometry thruster_geom_;
-  cavex_gtsam_slam::DragCoefficients thruster_drag_;
-  rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr current_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr continuous_current_pub_;
 
   sensor_msgs::msg::LaserScan::SharedPtr latest_scan_;
   std::vector<cavex_gtsam_slam::ScanPoint> prev_keyframe_scan_;
@@ -557,10 +386,6 @@ protected:
 
   std::size_t keyframe_index_;
   size_t consecutive_scan_starved_keyframes_ = 0;
-  bool enable_current_factor_;
-  bool enable_continuous_current_field_;
-  cavex_gtsam_slam::ContinuousCurrentEstimator continuous_current_estimator_{90.0, 6};
-  size_t continuous_current_refit_counter_ = 0;
   bool enable_dcs_robust_;
   double dcs_c_;
   double keyframe_period_s_;
@@ -573,7 +398,6 @@ protected:
   gtsam::Pose3 last_pose_;
   gtsam::Vector3 last_vel_;
   gtsam::imuBias::ConstantBias last_bias_;
-  gtsam::Vector3 last_current_;
 };
 
 }  // namespace cavex_gtsam_slam
