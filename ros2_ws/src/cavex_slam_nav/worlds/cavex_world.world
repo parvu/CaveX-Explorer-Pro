@@ -511,6 +511,55 @@
       </link>
     </model>
 
+    <!-- Real bug found and fixed, 2026-08-26 ("fill the gap between dry
+         and water so the boat doesn't fall between them"): the boat
+         (cavex_tracked_blueboat) has no Hydrodynamics/Buoyancy of its
+         own (only bluerov2 does, per the Buoyancy plugin's own <enable>
+         list below -- and bluerov2 is now a decorative fused link, not
+         an independent physics body), so it needs continuous floor
+         contact wherever it drives; there's no buoyant force to catch a
+         fall. shoreline_ramp above climbs from cave_floor_patch's real
+         flat height (x=6, z=5.9) up to (x=14.5, z=7.6) but then simply
+         ENDS there -- 1.7m above cave_floor_patch's own flat top, which
+         continues underneath at z=5.9 for the whole water region
+         (x up to 70). A vehicle driving off the ramp's end had nothing
+         to land on until that flat floor, 1.7m straight down: a real
+         free-fall gap, not a rendering artifact.
+
+         This second ramp continues the surface DOWN from exactly where
+         shoreline_ramp's own top surface ends (x=14.5, z=7.6 -- same
+         point, confirmed via the same corner-derivation method used for
+         shoreline_ramp itself, see the python check that reproduced its
+         real published numbers before trusting this one) to
+         cave_floor_patch's real flat height (x=20, z=5.9) -- inside the
+         water region (water starts at x=15) but short and steep enough
+         (~17deg) to stay clear of the region's own edges. Slightly
+         overlaps shoreline_ramp's own end (same "overlap so there's no
+         seam gap" convention as cave_floor_patch_bridge) and its bottom
+         corners dip slightly into cave_floor_patch's own solid box --
+         harmless for two static, non-moving colliders. Submerged the
+         whole way (surface stays below water_surface's z=7.9), which is
+         physically correct: this vehicle has no buoyancy, so it drives
+         ALONG the cave floor into the flooded section, it doesn't float
+         on top of it. -->
+    <model name="water_entry_ramp">
+      <static>true</static>
+      <pose>17.1023 6.5 6.2723 0 0.2998 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>5.7567 37 1</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>5.7567 37 1</size></box></geometry>
+          <material><ambient>0.2 0.22 0.28 1</ambient><diffuse>0.2 0.22 0.28 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
     <!-- obstacle_1..4 (Fuel-sourced cinder blocks/barrel) removed by real
          request -- the dry-section corridor between the spawn (x=-35) and
          the water boundary (x=15) is now clear of Nav2 costmap/explore_lite
