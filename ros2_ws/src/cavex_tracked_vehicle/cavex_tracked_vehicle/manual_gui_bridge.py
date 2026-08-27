@@ -71,17 +71,25 @@ DRIVE_COMMANDS = {
     "stop": (0.0, 0.0),
 }
 
-# Real request 2026-08-27: tracks and props now live on separate
-# gz-transport topics (model.sdf.tracked's TrackedVehicle plugin got its
-# own /track_cmd_vel -- see that file's own comment) so they can be
-# independently enabled/disabled by vehicle_switch_node.py's locomotion-
-# mode state machine. The live drive command has to go to whichever one
-# is actually active right now, not both -- "tracks"/"retracting" drive
-# via track motors, "props"/"deploying" via thrusters (see
-# vehicle_switch_node.py's own docstring for the full state machine).
-TRACK_MODES = ('tracks', 'retracting')
-
-_drive_state = {"cmd": "stop", "manual_on": False, "speed_scale": 1.0, "mode": "tracks"}
+# Real bug found live 2026-08-27: tried giving the TrackedVehicle SDF
+# plugin its own separate <topic> (a real attempt at splitting tracks and
+# props onto independent gz-transport topics, for genuine mutual
+# exclusion via vehicle_switch_node.py's locomotion-mode state machine) --
+# root-caused and reverted: <topic> is not actually a functional
+# parameter for this plugin's Twist SUBSCRIPTION (confirmed live: track
+# velocity read back as exactly 0.0 regardless of command, on either the
+# override topic or the original default, while the SAME plugin's
+# odometry -- an unrelated publish-only code path -- kept working fine
+# the whole time, which is what made this so misleading). Reverting the
+# SDF override alone restored normal driving (track velocity matched the
+# commanded value exactly). Both tracks and props are back on the single
+# shared /model/.../cmd_vel topic; boat_thruster_control.py still gates
+# its OWN output off /cavex/locomotion_mode (mode is read there, not
+# used to pick a topic here) -- tracks just physically do nothing useful
+# while retracted, same "rely on retracted tracks going idle" tradeoff
+# this project accepted as the fallback when the topic-split was first
+# proposed.
+_drive_state = {"cmd": "stop", "manual_on": False, "speed_scale": 1.0}
 
 
 def _manual_cmd_cb(msg: StringMsg):
@@ -105,10 +113,6 @@ class RosBridge(RclpyNode):
     def __init__(self):
         super().__init__('manual_gui_bridge')
         self.track_pub = self.create_publisher(String, '/cavex/tracks/command', 10)
-        self.create_subscription(String, '/cavex/locomotion_mode', self._mode_cb, 10)
-
-    def _mode_cb(self, msg: String):
-        _drive_state["mode"] = msg.data
 
     def track_cmd_cb(self, msg: StringMsg):
         # ActionButtons sends the exact command strings track_retract_control.py
@@ -131,15 +135,13 @@ def main():
     gz_node.subscribe(StringMsg, "/cavex/track_cmd", ros_bridge.track_cmd_cb)
 
     cmd_vel_pub = gz_node.advertise("/model/cavex_tracked_blueboat/cmd_vel", Twist)
-    track_cmd_vel_pub = gz_node.advertise(
-        "/model/cavex_tracked_blueboat/track_cmd_vel", Twist)
 
     spin_thread = threading.Thread(target=rclpy.spin, args=(ros_bridge,), daemon=True)
     spin_thread.start()
 
-    print("manual_gui_bridge ready: /cavex/manual_cmd -> track_cmd_vel or "
-          "cmd_vel (whichever /cavex/locomotion_mode says is active) while "
-          "Manual is on; /cavex/track_cmd -> /cavex/tracks/command")
+    print("manual_gui_bridge ready: /cavex/manual_cmd -> "
+          "/model/cavex_tracked_blueboat/cmd_vel (while Manual is on); "
+          "/cavex/track_cmd -> /cavex/tracks/command")
 
     try:
         while rclpy.ok():
@@ -149,18 +151,13 @@ def main():
                 msg = Twist()
                 msg.linear.x = unit_x * BASE_LINEAR_MPS * scale
                 msg.angular.z = unit_z * BASE_ANGULAR_RAD_S * scale
-                if _drive_state["mode"] in TRACK_MODES:
-                    track_cmd_vel_pub.publish(msg)
-                else:
-                    cmd_vel_pub.publish(msg)
+                cmd_vel_pub.publish(msg)
             time.sleep(CONTROL_PERIOD_S)
     except KeyboardInterrupt:
         pass
     finally:
         if _drive_state["manual_on"]:
-            zero = Twist()
-            cmd_vel_pub.publish(zero)
-            track_cmd_vel_pub.publish(zero)
+            cmd_vel_pub.publish(Twist())
         ros_bridge.destroy_node()
         rclpy.shutdown()
 

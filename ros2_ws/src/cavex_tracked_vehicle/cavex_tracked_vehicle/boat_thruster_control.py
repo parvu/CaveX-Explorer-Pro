@@ -9,11 +9,16 @@ vehicle's real drive command into differential port/stbd thrust and
 publishes it on each thruster's real cmd_thrust topic.
 
 Taps /model/cavex_tracked_blueboat/cmd_vel directly (gz-transport, same
-pattern as manual_gui_bridge.py's own publisher). Real request 2026-08-27:
-this topic is now dedicated to thrusters -- the TrackedVehicle plugin got
-its own separate /model/cavex_tracked_blueboat/track_cmd_vel topic (see
-model.sdf.tracked's own comment) specifically so tracks and props could
-be gated independently instead of always receiving the same live Twist.
+pattern as manual_gui_bridge.py's own publisher) -- the same topic the
+TrackedVehicle plugin also reads for the tracks. Real request 2026-08-27:
+briefly tried splitting them onto separate topics (an SDF <topic>
+override on TrackedVehicle) for real mutual exclusion; reverted after
+confirming live that <topic> silently breaks that plugin's Twist
+SUBSCRIPTION (its odometry, an unrelated publish-only code path, kept
+working fine the whole time, which is what made this so misleading) --
+see manual_gui_bridge.py's own comment for the full story. Tracks and
+thrusters are both driven from this one shared topic again; this file's
+own ACTIVE_MODES gate below still stops thrust output independently.
 
 Real request 2026-08-27: fires purely off /cavex/locomotion_mode
 (vehicle_switch_node.py's tracks<->props state machine), not its own

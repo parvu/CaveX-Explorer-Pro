@@ -414,17 +414,33 @@ def generate_launch_description():
     # OnProcessExit (spawn_entity's "create" process exits once the entity is
     # spawned, which is roughly when the controller_manager service becomes
     # available) -- the standard ros2_control launch idiom, copied directly.
+    # Real bug found live 2026-08-27 ("boat wont move"): both spawners were
+    # reliably dying with "A controller named '...' was already loaded
+    # inside the controller manager" -- root-caused, not guessed. The
+    # spawner's default --controller-manager-timeout is 10 REAL (wall-clock)
+    # seconds, but controller_manager runs on use_sim_time -- its own
+    # request-processing cadence is gated by how fast sim time actually
+    # advances. Confirmed live via /world/cavex_world/stats:
+    # real_time_factor ~=0.31 (this world runs at under a third of real
+    # speed under current load). The load_controller call was genuinely
+    # succeeding server-side (confirmed in controller_manager's own log --
+    # "Loading controller" printed once, immediately), just too slowly for
+    # the spawner's wall-clock deadline to see the response in time; the
+    # spawner's own retry then found it already loaded and died instead of
+    # succeeding. Raised to 60s of real wall-clock budget, comfortably
+    # covering a real_time_factor well below 0.31 without needing to touch
+    # the physics/rendering load causing the slowdown itself.
     load_joint_state_broadcaster = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_state_broadcaster'],
+        arguments=['joint_state_broadcaster', '--controller-manager-timeout', '60'],
         output='screen',
     )
 
     load_track_retract_controller = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['track_retract_controller'],
+        arguments=['track_retract_controller', '--controller-manager-timeout', '60'],
         output='screen',
     )
 

@@ -1292,7 +1292,6 @@
          the Thrusters' own cmd_vel based on /cavex/locomotion_mode
          (vehicle_switch_node.py), never both at once. -->
     <plugin filename="gz-sim-tracked-vehicle-system" name="gz::sim::systems::TrackedVehicle">
-      <topic>track_cmd_vel</topic>
       <body_link>base_link</body_link>
       <left_track link="left_track"/>
       <right_track link="right_track"/>
