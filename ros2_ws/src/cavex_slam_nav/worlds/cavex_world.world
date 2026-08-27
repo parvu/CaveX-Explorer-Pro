@@ -659,27 +659,94 @@
          past y=25 the way shoreline_ramp stops it at the x=15 edge. This is
          a straight (untilted) wall, not a ramp -- y=25 is deep water
          (z=7.9), not a wet/dry floor transition, so there is no floor
-         height to meet. Spans the same x range as water_surface
-         (x[15,35], size_x=20, center_x=25), thin in y (1m) centered right
-         at the y=25 boundary, and tall enough to block the vehicle from
-         cave_floor_patch height up through just above the water surface:
-         z[5.9,8.9], size_z=3, center_z=7.4. Same friction/contact
-         convention as its neighbors (max_vel=2.0, confirmed live to
-         actually stop a thrust-driven approach -- see shoreline_ramp's own
-         live wall-stop verification the same session). -->
+         height to meet. Tall enough to block the vehicle from cave_floor_
+         patch height up through just above the water surface: z[5.9,8.9],
+         size_z=3, center_z=7.4. Same friction/contact convention as its
+         neighbors (max_vel=2.0, confirmed live to actually stop a
+         thrust-driven approach -- see shoreline_ramp's own live wall-stop
+         verification the same session).
+
+         Real bug found live 2026-08-27: "vehicle tumbles / goes outside
+         cave world" in water. Root cause traced to boat_buoyancy_control.py
+         (the node that actually keeps the boat floating for this vehicle,
+         since gz-sim-buoyancy-system is disabled for it -- see that
+         plugin's own comment above): it gates lift purely on
+         x > WATER_BOUNDARY_X (15.0), with NO upper x bound and NO y bound
+         at all. So the vehicle stays buoyant (and controllable) far past
+         this wall's original x[15,35] span and past cave_floor_patch's own
+         y[-12,12] floor extent -- this single wall (originally sized to
+         match the old cosmetic water_surface plane, x[15,35]) left every
+         other edge of that real floating region completely open: drift
+         past x=35 east, or past y=-12 south, and there is nothing to hit
+         until the vehicle sails clean off the mapped world with no
+         reference to recover orientation/position by (reads as "tumbles",
+         since boat_buoyancy_control's righting torque has nothing wrong to
+         correct -- the vehicle is still upright, just gone). Widened this
+         wall's x-span from [15,35] to [15,70] (cave_floor_patch's own real
+         x extent, the largest x boat_buoyancy_control could plausibly still
+         apply lift over) and added matching south/east walls below to
+         actually close the box. West (x=15) intentionally left open --
+         shoreline_ramp already handles that edge as a real dry/wet
+         transition, not a hard boundary. -->
     <model name="north_boundary_wall">
       <static>true</static>
-      <pose>25 25 7.4 0 0 0</pose>
+      <pose>42.5 25 7.4 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>20 1 3</size></box></geometry>
+          <geometry><box><size>55 1 3</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>20 1 3</size></box></geometry>
+          <geometry><box><size>55 1 3</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- South boundary wall -- see north_boundary_wall's own comment for the
+         full story (2026-08-27 tumble/out-of-bounds bug). Mirrors it at
+         cave_floor_patch's real south edge (y=-12) instead of y=25, same
+         x[15,70] span and z[5.9,8.9] height/friction convention. -->
+    <model name="south_boundary_wall">
+      <static>true</static>
+      <pose>42.5 -12 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>55 1 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>55 1 3</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- East boundary wall -- see north_boundary_wall's own comment for the
+         full story (2026-08-27 tumble/out-of-bounds bug). Closes the far
+         (east) end of cave_floor_patch's own x extent (x=70), thin in x
+         this time, spanning the full north/south box: y[-12,25]
+         (size_y=37, center_y=6.5 -- same convention water_surface already
+         uses), same z[5.9,8.9] height/friction convention. -->
+    <model name="east_boundary_wall">
+      <static>true</static>
+      <pose>70 6.5 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1 37 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1 37 3</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>
