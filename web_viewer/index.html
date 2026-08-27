@@ -768,9 +768,17 @@
            live to connect and decode cleanly). Pre-connects to
            foxglove_bridge (port 8765) via the same URL data-source scheme
            Foxglove's own hosted app uses -- same underlying codebase
-           lineage, same scheme. -->
-      <a href="http://localhost:8766/?ds=foxglove-websocket&ds.url=ws%3A%2F%2Flocalhost%3A8765"
-         target="_blank" rel="noopener">
+           lineage, same scheme.
+
+           Real request 2026-08-27: view from a phone on the LAN, same real
+           bug already fixed once for the Gazebo websocket connection above
+           -- hardcoded 'localhost' only ever means "this same device," so a
+           phone loading this page from the Windows host's real LAN IP still
+           needs Flora AND the bridge URL inside Flora's own data-source
+           param at THAT same IP, not its own localhost. Built via JS using
+           location.hostname (matches whatever host this page itself was
+           loaded from) instead of a static href. -->
+      <a id="foxgloveLink" href="#" target="_blank" rel="noopener">
         <button type="button">open Foxglove</button>
       </a>
     </div>
@@ -789,6 +797,14 @@
         document.getElementById('manualToggle').textContent =
           'man: ' + (manualOn ? 'ON' : 'OFF');
       }
+
+      // Real request 2026-08-27: same location.hostname fix as the Gazebo
+      // websocket connection above, applied to the Foxglove link -- see this
+      // link's own HTML comment for the full reasoning.
+      var bridgeUrl = 'ws://' + location.hostname + ':8765';
+      document.getElementById('foxgloveLink').href =
+        'http://' + location.hostname + ':8766/?ds=foxglove-websocket&ds.url=' +
+        encodeURIComponent(bridgeUrl);
     </script>
   </body>
 </html>
