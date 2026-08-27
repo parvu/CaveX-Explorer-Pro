@@ -501,20 +501,35 @@ def generate_launch_description():
     # graph over a websocket (default port 8765) that Foxglove's web client
     # connects to directly (web_viewer/index.html links to it, opened in its
     # own tab -- app.foxglove.dev requires an account sign-in now, so that
-    # link points at a self-hosted Foxglove Studio instead). No topic
-    # allow/deny-list here: exposes everything on the graph, same as what
-    # RViz itself can already subscribe to locally.
+    # link points at a self-hosted client instead). No topic allow/deny-list
+    # here: exposes everything on the graph, same as what RViz itself can
+    # already subscribe to locally.
     #
-    # The self-hosted Foxglove Studio web client this bridge feeds is a
-    # separate, persistent Docker container (not a ROS node, and `docker run`
-    # needs a real sudo password this launch file can't supply
-    # non-interactively) -- start it once, it survives across launches
-    # (--restart unless-stopped):
+    # Real, live-diagnosed version archaeology: this apt package (3.4.1,
+    # Foxglove's newer Rust-SDK rewrite, protocol "foxglove.sdk.v1") is NOT
+    # compatible with the last fully open-source Foxglove Studio release
+    # (protocol "foxglove.websocket.v1", confirmed by reading both sides'
+    # source directly) -- a self-hosted build of that old client fails to
+    # even connect to this bridge. Building an old (0.8.5) foxglove_bridge
+    # from source to match it DID connect, but then failed to decode this
+    # old client's messages ("Unsupported encoding cdr" -- that release
+    # predates CDR-decode support in the frontend). Real fix: Flora
+    # (github.com/flora-suite/flora), an ACTIVELY MAINTAINED open-source fork
+    # continued after Foxglove closed-sourced Studio -- confirmed live, this
+    # exact apt package connects to it cleanly, protocol and encoding both
+    # match. Self-host it (needs a real sudo password this launch file can't
+    # supply non-interactively, so it's a one-time manual step, not an
+    # automated launch action -- persists across launches, --restart
+    # unless-stopped):
     #   sudo dockerd > /tmp/dockerd.log 2>&1 &
-    #   sudo docker run -d --name foxglove-studio --restart unless-stopped \
-    #     -p 8766:8080 ghcr.io/collabora/foxglove-studio:latest
+    #   git clone --depth 1 https://github.com/flora-suite/flora /tmp/flora
+    #   cd /tmp/flora && sudo docker build -t flora .
+    #   sudo docker run -d --name flora --restart unless-stopped \
+    #     -p 8766:8080 flora
     # Then open http://localhost:8766 (or click "open Foxglove" in
-    # web_viewer/index.html).
+    # web_viewer/index.html) and add a 3D panel (same idiom as RViz's own
+    # "Add Display") -- an empty dashboard on first connect is normal, no
+    # panel is added by default.
     foxglove_bridge = Node(
         package='foxglove_bridge',
         executable='foxglove_bridge',

@@ -28,8 +28,13 @@
 
     // Listen for the 'connection' event.
     gz.on('connection', function() {
-      var output = document.getElementById('status');
-      output.innerHTML = 'Status: connected';
+      // Real bug found live 2026-08-27: this used to target #status
+      // directly with .innerHTML, which now also contains the #output
+      // (clock) span as a child -- overwriting it would wipe that span out
+      // the moment a connection event fires. Targets the dedicated text
+      // span instead.
+      var statusText = document.getElementById('statusText');
+      statusText.innerHTML = 'Status: connected';
     });
 
     // Real bug found live: this file shipped hardcoded to gz-launch's own demo world
@@ -686,10 +691,28 @@
   </head>
 
   <body onload="init()">
-    <div id='status'>Status: disconnected</div>
-    <div id='output'></div>
+    <!-- Real request 2026-08-27: moved from the top (where it pushed the 3D
+         view down) to a fixed band at the bottom of the page. Real bug found
+         live: the WebGL canvas THREE.js appends into #container can paint
+         over regular DOM content under this environment's GPU compositing
+         path despite #status's higher z-index (a browser/WSLg-RDP
+         compositing quirk, not a CSS spec violation -- #container itself has
+         no explicit z-index, so this pins it below #status's stacking level
+         explicitly rather than relying on the implicit "auto" default). -->
+    <div id='status' style="position: fixed; bottom: 0; left: 0; right: 0;
+        background: white; font-family: sans-serif; padding: 4px 10px;
+        z-index: 9999; display: flex; justify-content: space-between;">
+      <span id='statusText'>Status: disconnected</span>
+      <!-- Real bug found live 2026-08-27: this was a SEPARATE #output div
+           with no styling at all -- the clock callback below writes into it,
+           not #status, so moving #status to the bottom left #output's clock
+           text stranded at its default top-left position, overlapping the
+           dpad's "fwd" button. Folded into the same bottom band instead of
+           being its own untouched element. -->
+      <span id='output'></span>
+    </div>
 
-    <div id="container" style="height: 800px; position: relative;">
+    <div id="container" style="height: 800px; position: relative; z-index: 0;">
     </div>
 
     <!-- Real request 2026-08-26: functional control buttons in the browser
@@ -734,14 +757,18 @@
       <!-- Real request 2026-08-27: RViz-equivalent 3D view (TF, /map,
            costmap, sensors) via Foxglove, opened in its own tab --
            app.foxglove.dev requires a Foxglove account sign-in now (their
-           hosted app moved to a closed/gated model), so this points at a
-           self-hosted Foxglove Studio instance instead (ghcr.io/collabora/
-           foxglove-studio -- the last open-source release, run via `sudo
-           docker run -d --name foxglove-studio --restart unless-stopped -p
-           8766:8080 ghcr.io/collabora/foxglove-studio:latest`), no account
-           needed. Pre-connects to foxglove_bridge (tracked_vehicle_slam.
-           launch.py, port 8765) via the same URL data-source scheme the
-           hosted app used -- confirmed live, same open-source codebase. -->
+           hosted app moved to a closed/gated model). A self-hosted build of
+           the frozen last-open-source Foxglove Studio release was tried
+           first but turned out protocol/encoding-incompatible with this
+           project's apt-installed foxglove_bridge (confirmed live, see
+           tracked_vehicle_slam.launch.py's own comment on this same node
+           for the full version archaeology) -- points at a self-hosted
+           Flora instance instead (github.com/flora-suite/flora, an
+           actively-maintained open-source Foxglove Studio fork, confirmed
+           live to connect and decode cleanly). Pre-connects to
+           foxglove_bridge (port 8765) via the same URL data-source scheme
+           Foxglove's own hosted app uses -- same underlying codebase
+           lineage, same scheme. -->
       <a href="http://localhost:8766/?ds=foxglove-websocket&ds.url=ws%3A%2F%2Flocalhost%3A8765"
          target="_blank" rel="noopener">
         <button type="button">open Foxglove</button>

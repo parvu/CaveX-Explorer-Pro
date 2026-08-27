@@ -25,6 +25,7 @@ static files, same port by default, now also serving /api/*.)
 """
 import sys
 import os
+import posixpath
 import http.server
 import urllib.parse
 
@@ -52,7 +53,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         elif parsed.path == '/api/tracks':
             self._handle_command(parsed, track_pub, TRACK_COMMANDS)
         else:
+            self._fix_up_asset_path(parsed)
             super().do_GET()
+
+    def _fix_up_asset_path(self, parsed):
+        # Real bug found live 2026-08-27: gz3d.js guesses model texture
+        # paths using the old Gazebo-classic layout convention
+        # (materials/textures/<file>), but this project's vendored models
+        # (cave_world, etc.) keep their real texture files directly
+        # alongside the mesh under meshes/ instead -- confirmed live via a
+        # 404 for .../cave_world/materials/textures/CaveWall.png while the
+        # real file sits at .../cave_world/meshes/CaveWall.png. Rewrites
+        # self.path to the real location when it exists there, rather than
+        # patching gz3d.js's own path-guessing logic in the ~2MB vendored
+        # file. posixpath.normpath also collapses the "assets//cave_world"
+        # double-slash gz3d.js's own path-joining produces.
+        path = posixpath.normpath(parsed.path)
+        if '/materials/textures/' not in path:
+            return
+        if os.path.isfile(self.translate_path(path)):
+            return  # real file already exists at the guessed path, nothing to fix
+        fallback = path.replace('/materials/textures/', '/meshes/')
+        if os.path.isfile(self.translate_path(fallback)):
+            self.path = fallback + (('?' + parsed.query) if parsed.query else '')
 
     def _handle_command(self, parsed, pub, allowed):
         cmd = urllib.parse.parse_qs(parsed.query).get('cmd', [''])[0]

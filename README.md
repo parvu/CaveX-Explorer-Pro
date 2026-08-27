@@ -53,21 +53,25 @@ rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz --r
 
 Foxglove (browser RViz-equivalent 3D view: TF, `/map`, costmap, sensors) —
 `tracked_vehicle_slam.launch.py` already starts `foxglove_bridge` (port
-8765). The web client itself is a separate, persistent Docker container
-(survives across launches, only needs starting once):
+8765, the apt `ros-jazzy-foxglove-bridge` package). The web client itself
+is a separate, persistent Docker container (survives across launches,
+only needs starting once):
 
 ```bash
 sudo dockerd > /tmp/dockerd.log 2>&1 &
-sleep 3
-sudo docker run -d --name foxglove-studio --restart unless-stopped \
-  -p 8766:8080 ghcr.io/collabora/foxglove-studio:latest
+git clone --depth 1 https://github.com/flora-suite/flora /tmp/flora
+cd /tmp/flora && sudo docker build -t flora .
+sudo docker run -d --name flora --restart unless-stopped -p 8766:8080 flora
 ```
 
 Then open http://localhost:8766 (or click "open Foxglove" in the web
-viewer) — pre-connects to the bridge automatically via the page's own link.
-Not `ghcr.io/foxglove/studio` — that image now requires a Foxglove account;
-this is a public mirror of the last fully open-source release, no account
-needed.
+viewer) — pre-connects to the bridge automatically via the page's own
+link. On first connect the dashboard is empty; add a 3D panel (same idiom
+as RViz's own "Add Display"). This is [Flora](https://github.com/flora-suite/flora),
+an actively-maintained open-source fork of Foxglove Studio — not
+`app.foxglove.dev` (requires a Foxglove account now) and not a self-hosted
+build of the frozen last-open-source Foxglove release (protocol/encoding
+mismatch with this apt bridge version, confirmed live).
 
 ### Phase 2: BlueROV2 GTSAM-SLAM (flooded section)
 
