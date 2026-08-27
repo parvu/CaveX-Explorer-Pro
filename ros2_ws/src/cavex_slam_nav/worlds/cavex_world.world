@@ -739,127 +739,18 @@
       </link>
     </model>
 
-    <!-- Dry-floor perimeter walls, real request 2026-08-27 ("add wall to
-         border cave floor patch"): the three dry-floor slabs
-         (cave_floor_patch, cave_floor_patch_scaled, cave_floor_patch_bridge
-         -- see their own comments for extents/overlaps) had no containment
-         at all on their outer edges, same class of bug as the water
-         region's own boundary gap above -- drive off any of them and there
-         is nothing until ground_plane's z=-200 safety net. Computed
-         programmatically (not by hand): unioned each patch's 4 edges,
-         subtracted whatever's covered by an overlapping neighbor patch or
-         by the (already-walled) water box, kept only the genuinely open
-         remainder. Same z[5.9,8.9] (center_z=7.4, size_z=3) height/
-         friction convention as the original north_boundary_wall, since
-         this is dry floor (no basin here). East edge of cave_floor_patch
-         itself (x=70) needs no separate wall -- already covered by
-         east_boundary_wall above, whose y[-12,25] span includes
-         cave_floor_patch's own y[-12,12]. -->
-    <model name="cave_floor_patch_north_wall">
-      <static>true</static>
-      <!-- y=12, x[-40,5] (cave_floor_patch's own north edge, west of where
-           the water box's north wall picks up at x=5) merged with
-           cave_floor_patch_bridge's own north edge x[-62,-38] (same y=12
-           line, contiguous through their 2m x-overlap) -> combined
-           x[-62,5], center_x=-28.5, size_x=67. -->
-      <pose>-28.5 12 7.4 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>67 1 3</size></box></geometry>
-          <surface>
-            <contact><ode><max_vel>2.0</max_vel></ode></contact>
-            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
-          </surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>67 1 3</size></box></geometry>
-          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
-
-    <model name="cave_floor_patch_south_wall">
-      <static>true</static>
-      <!-- y=-12, x[-38,5] -- cave_floor_patch's own south edge, west of the
-           water box's own south wall (which picks up at x=5), east of
-           where cave_floor_patch_bridge's own extent ends (x=-38). -->
-      <pose>-16.5 -12 7.4 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>43 1 3</size></box></geometry>
-          <surface>
-            <contact><ode><max_vel>2.0</max_vel></ode></contact>
-            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
-          </surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>43 1 3</size></box></geometry>
-          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
-
-    <model name="cave_floor_patch_scaled_north_wall">
-      <static>true</static>
-      <!-- y=-16.9, x[-120,-62] -- cave_floor_patch_scaled's own north edge,
-           west of where cave_floor_patch_bridge's own extent begins
-           (x=-62). -->
-      <pose>-91 -16.9 7.4 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>58 1 3</size></box></geometry>
-          <surface>
-            <contact><ode><max_vel>2.0</max_vel></ode></contact>
-            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
-          </surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>58 1 3</size></box></geometry>
-          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
-
-    <model name="cave_floor_patch_scaled_south_wall">
-      <static>true</static>
-      <!-- y=-45.9, x[-120,-62] -- cave_floor_patch_scaled's own south edge,
-           same x-span as its north wall above. -->
-      <pose>-91 -45.9 7.4 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>58 1 3</size></box></geometry>
-          <surface>
-            <contact><ode><max_vel>2.0</max_vel></ode></contact>
-            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
-          </surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>58 1 3</size></box></geometry>
-          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
-
-    <model name="cave_floor_patch_scaled_west_wall">
-      <static>true</static>
-      <!-- x=-120, y[-45.9,-16.9] -- cave_floor_patch_scaled's own west edge:
-           the real far end of the spawn corridor (vehicle spawns at
-           x=-88.78, well east of this wall). -->
-      <pose>-120 -31.4 7.4 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>1 29 3</size></box></geometry>
-          <surface>
-            <contact><ode><max_vel>2.0</max_vel></ode></contact>
-            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
-          </surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>1 29 3</size></box></geometry>
-          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
+    <!-- Dry-floor perimeter walls (cave_floor_patch_north_wall/south_wall,
+         cave_floor_patch_scaled_north_wall/south_wall/west_wall) added
+         earlier 2026-08-27 to contain the three dry-floor slabs, then
+         ALL removed by a later real request the same day ("remove all
+         cave floor walls"). The dry floor patches themselves
+         (cave_floor_patch, cave_floor_patch_scaled, cave_floor_patch_bridge)
+         and their ceilings above are unaffected -- only side containment
+         is gone. Driving off any dry-floor edge now falls through to
+         ground_plane's z=-200 safety net with nothing in between; the
+         earlier bridge_east_wall/bridge_west_wall removal (see comment
+         below) already established that as an accepted tradeoff for this
+         region rather than a bug to re-fix. -->
 
     <!-- Real request 2026-08-27: cave_floor_patch_bridge_east_wall (x=-38)
          and cave_floor_patch_bridge_west_wall (x=-62) removed -- both were
