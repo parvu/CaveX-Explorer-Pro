@@ -168,13 +168,31 @@
       // Real bug found live: this was near the world origin (x=1.1,y=-1.4,z=0.6),
       // sized for gz-launch's own tiny demo "shapes" world -- our real cave/water
       // world puts everything far from the origin, so on load this pointed at
-      // empty space. Points at the water region (where the boat's real spawn and
-      // most driving happens, around x=20) as a reasonable starting view; the
-      // live camera-follow in the dynamic_pose/info callback below takes over
-      // and tracks the boat's actual position within the first update anyway.
+      // empty space.
+      //
+      // Real request 2026-08-27: "start with camera looking down on vehicle".
+      // Points at the vehicle's actual spawn (-88.78, -31.4, 6.65 -- see
+      // spawn_entity in gazebo_tracked_vehicle.launch.py, the '12,-8,14'
+      // looking at '20,0,7.9' this replaced was never the real spawn either)
+      // from a high, slightly offset vantage so it's a steep bird's-eye view
+      // without being perfectly vertical (forward parallel to the z-up
+      // vector is a degenerate case for lookAt -- see the NaN-quaternion bug
+      // fixed just below this).
       const cam = scene.camera;
-      cam.position.set(12, -8, 14);
-      cam.lookAt(20, 0, 7.9);
+      cam.position.set(-88.78 + 15, -31.4 - 15, 46.65);
+      // Real bug found live 2026-08-27: this vendored three.js build (r86,
+      // see gz3d.js) only supports Object3D.lookAt(vector) -- a single
+      // Vector3 -- not the (x,y,z) numbers form modern three.js added later.
+      // Calling it with three raw numbers passes the number 20 as the whole
+      // "vector" arg; reading .x/.y/.z off it is undefined - undefined =
+      // NaN, permanently corrupting the camera's quaternion into NaN. Every
+      // draw call after that transforms geometry through a NaN matrix, so
+      // nothing rasterizes: renderer.info still reports draw calls (tens of
+      // thousands), but the canvas is uniform grey -- the clear color and
+      // nothing else. Root-caused by reproducing lookAt(20,0,7.9) on a bare
+      // scratch camera in the browser console and finding the resulting
+      // quaternion was already NaN before any render happened.
+      cam.lookAt(new THREE.Vector3(-88.78, -31.4, 6.65));
     }
 
     function animate() {
