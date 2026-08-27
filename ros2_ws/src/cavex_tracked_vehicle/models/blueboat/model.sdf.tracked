@@ -1279,7 +1279,20 @@
       <max_velocity>2.0</max_velocity>
       <max_acceleration>2.0</max_acceleration>
     </plugin>
+    <!-- Real request 2026-08-27 ("make tracks retractable when buoyant and
+         stop track motors, activate propellers -- and the reverse near
+         shore"): this plugin and the Thruster pair below it used to share
+         one input topic (/model/cavex_tracked_blueboat/cmd_vel), so there
+         was no way to actually stop just the tracks while still driving
+         thrusters from the same live Twist -- confirmed the binary
+         supports a <topic> override (both "/cmd_vel" and "/track_cmd_vel"
+         string literals present in libgz-sim-tracked-vehicle-system.so)
+         before relying on it. Retargeted to its own topic; manual_gui_bridge.py/
+         cmd_vel_gz_bridge.py now route the live command to this topic or
+         the Thrusters' own cmd_vel based on /cavex/locomotion_mode
+         (vehicle_switch_node.py), never both at once. -->
     <plugin filename="gz-sim-tracked-vehicle-system" name="gz::sim::systems::TrackedVehicle">
+      <topic>track_cmd_vel</topic>
       <body_link>base_link</body_link>
       <left_track link="left_track"/>
       <right_track link="right_track"/>

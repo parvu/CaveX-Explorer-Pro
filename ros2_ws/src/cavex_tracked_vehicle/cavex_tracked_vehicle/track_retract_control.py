@@ -5,20 +5,23 @@ track_retract_control.py
 Commands both track_retract_joints together via track_retract_controller's
 JointTrajectory topic, given a simple "deployed"/"retracted" string command.
 
-Real request 2026-08-26: gated to only actuate while the boat is in the
-water region AND actually floating (boat_buoyancy_control.py's lift has
-brought it up near its target float height, not still on the cave floor
-mid-transition) -- retracting/deploying makes sense as a water-vs-land
-locomotion switch, not something to allow mid-drive on dry land or while
-still sinking/rising through the water column right after crossing the
-boundary. Reads the same live /odom_ground_truth ground truth every other
-control node in this package uses (vehicle_switch_node.py,
-boat_buoyancy_control.py) rather than tracking its own state.
+Real request 2026-08-27: this used to independently re-check the boat was
+in the water and floating (its own copy of a WATER_BOUNDARY_X/FLOAT_Z_MIN
+gate) before obeying a command -- the exact duplication (three separate
+copies of the same threshold across this file, boat_thruster_control.py,
+and vehicle_switch_node.py) that caused two stale-constant bugs on
+2026-08-27 when the water surface height changed and not every copy got
+updated. vehicle_switch_node.py is now the sole source of truth for the
+tracks<->props locomotion-mode state machine (see its own docstring) and
+only ever sends a command at the right point in that state machine -- this
+node just executes whatever it's told, no second-guessing. manual_gui_
+bridge.py's own direct publish to /cavex/tracks/command (the Track
+ActionButtons panel, a deliberate manual override) also benefits: it's no
+longer silently ignored if the boat isn't currently past some threshold.
 """
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-from nav_msgs.msg import Odometry
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
 
@@ -32,22 +35,6 @@ from builtin_interfaces.msg import Duration
 DEPLOYED = 0.05
 RETRACTED = 1.35
 
-# Real bug found live 2026-08-27 ("not moving on manual"): both constants
-# below were stale after the basin redesign (see cavex_world.world's
-# entry_ramp/basin_floor/water_surface comments and boat_thruster_control.py's
-# own matching fix, found and fixed in the same investigation).
-# WATER_BOUNDARY_X here no longer needs to match vehicle_switch_node.py's
-# own 5.0 exactly (that one gates track retraction/deploy commands off
-# ground truth alone; this one additionally requires floating, so a small
-# x-margin past the tracks' own boundary is fine) -- matches
-# boat_thruster_control.py's 6.0.
-WATER_BOUNDARY_X = 6.0
-# boat_buoyancy_control.py's own TARGET_FLOAT_Z is now 6.07 (surface at
-# 6.0, was 7.97/7.9) -- this threshold must stay below that or the joint
-# animation would never fire. Matches boat_thruster_control.py's own
-# 5.95 (just above the shallow entry zone's real dry-floor top, 5.9).
-FLOAT_Z_MIN = 5.95
-
 
 class TrackRetractControl(Node):
     def __init__(self):
@@ -55,13 +42,6 @@ class TrackRetractControl(Node):
         self.pub = self.create_publisher(
             JointTrajectory, '/track_retract_controller/joint_trajectory', 10)
         self.create_subscription(String, '/cavex/tracks/command', self._cb, 10)
-        self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
-        self._x = None
-        self._z = None
-
-    def _odom_cb(self, msg: Odometry):
-        self._x = msg.pose.pose.position.x
-        self._z = msg.pose.pose.position.z
 
     def _cb(self, msg: String):
         cmd = msg.data.strip().lower()
@@ -71,18 +51,6 @@ class TrackRetractControl(Node):
             target = RETRACTED
         else:
             self.get_logger().warn(f"Unknown track command: {msg.data!r} (expected 'deployed' or 'retracted')")
-            return
-
-        if self._x is None:
-            self.get_logger().warn(
-                "Ignoring track command: no /odom_ground_truth received yet, "
-                "can't confirm the boat is in the water and floating.")
-            return
-        if self._x <= WATER_BOUNDARY_X or self._z < FLOAT_Z_MIN:
-            self.get_logger().warn(
-                f"Ignoring track command {cmd!r}: boat isn't in the water and "
-                f"floating (x={self._x:.2f}, z={self._z:.2f}; need x>"
-                f"{WATER_BOUNDARY_X} and z>={FLOAT_Z_MIN}).")
             return
 
         traj = JointTrajectory()

@@ -4,8 +4,11 @@ vehicle_switch_node.py
 
 Watches the tracked vehicle's real ground-truth pose (/odom_ground_truth,
 Task 13's real gz-transport-sourced Odometry -- see
-tracked_vehicle_ground_truth_odom.py) and retracts/redeploys the tracks
-on the dry-section/water-boundary crossing.
+tracked_vehicle_ground_truth_odom.py) and drives the tracks<->props
+locomotion-mode state machine, publishing it on /cavex/locomotion_mode
+(std_msgs/String: "tracks"/"retracting"/"props"/"deploying") for
+boat_thruster_control.py, manual_gui_bridge.py, and cmd_vel_gz_bridge.py
+to gate off of.
 
 Real request, 2026-08-26 ("make bluerov2 static in reference with
 blueboat not the world"): the ROV lock/unlock and motorized-tether
@@ -15,55 +18,152 @@ instead of a separately spawned entity held on by a DetachableJoint +
 tether -- there is no longer a separate ROV to lock, unlock, release,
 or tether. See perception branch for the full, functional,
 independently-swimming, tethered BlueROV2.
+
+Real request 2026-08-27: this used to just fire a single "retracted"/
+"deployed" command on a fixed WATER_BOUNDARY_X crossing (see git history),
+with track_retract_control.py, boat_thruster_control.py, and
+manual_gui_bridge.py/cmd_vel_gz_bridge.py each *independently* re-deriving
+their own x/z thresholds to decide when to actually act -- the exact
+duplication that caused two stale-constant bugs the same day (both files
+fell out of sync with a water-surface-height change). Replaced with a
+single real state machine, owned here, that's the one source of truth:
+
+  tracks --[buoyant]--> retracting --[2s]--> props --[<1m from shore]--> deploying --[2s]--> tracks
+
+"Buoyant" is z >= FLOAT_Z_MIN (boat_buoyancy_control.py's lift has it up
+near its target float height, not still resting on the cave floor).
+"Close to shore" is real distance to the nearest dry-floor collision
+geometry (cave_floor_patch/_scaled/_bridge, entry_ramp), NOT a fixed X
+coordinate -- since the dry-floor footprint is an irregular multi-patch
+shape (see cavex_world.world), not a simple x-threshold. Both
+transitions send the existing /cavex/tracks/command String
+track_retract_control.py already consumes to actually move the retract
+joints; the 2s hold in "retracting"/"deploying" matches that node's own
+JointTrajectory duration (track motors stay live through "retracting" so
+the vehicle keeps driving while the tracks lift, thrusters stay live
+through "deploying" so it keeps driving while they redeploy) -- track
+motors and props are never both active, both idle, at the same instant
+past that transition, by construction of this state machine.
 """
+import math
+
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from std_msgs.msg import String
 
-# Matches water_surface's own x-start in cavex_world.world (re-derived by
-# real mesh-vertex inspection, not the plan's original guess of 10.0 --
-# see that file's own comments for the full derivation and history). Was
-# briefly moved to 0.0 when the water region got extended to x=0; reverted
-# back to 15.0 along with that region after live-testing confirmed x<15 is
-# a real void in the cave mesh, not just unverified.
-#
-# Real request 2026-08-27: basin redesign moved the water region's west
-# edge again, this time to x=5.0 -- with an explicit entry_ramp/basin_floor
-# now providing the collision that x<15 always lacked (see cavex_world.
-# world's own comment on entry_ramp), the earlier void concern no longer
-# blocks extending this far; the region still has no real cave MESH
-# geometry there (visuals only), but that's a cosmetic gap, not a physics
-# one any more.
-WATER_BOUNDARY_X = 5.0
+# Real bug found live 2026-08-27, same session: a Z-only "buoyant" check
+# fired the instant the vehicle spawned, on DRY LAND at x=-88.78 -- the
+# boat's real RESTING height on dry ground (~6.65, hull clearance above
+# the 5.9 floor) turned out HIGHER than its floating TARGET_FLOAT_Z in the
+# new shallow basin (6.07, boat_buoyancy_control.py), so no single ">="
+# threshold can tell "resting on dry ground" from "floating" by height
+# alone. "Buoyant" now also requires being inside the water region's own
+# real footprint (WATER_BOX below, matching the boundary walls actually
+# built in cavex_world.world) -- not an arbitrary coordinate, the same
+# real known geometry the shore-distance check below already uses.
+FLOAT_Z_MIN = 5.95
+WATER_BOX = (5.0, 70.0, -12.0, 25.0)  # x0, x1, y0, y1
+
+
+def _in_water_box(x, y):
+    x0, x1, y0, y1 = WATER_BOX
+    return x0 <= x <= x1 and y0 <= y <= y1
+
+# Real request 2026-08-27: "allow tracks deploy when close under 1m from
+# shore" -- real collision distance to the nearest dry-floor geometry,
+# not a fixed X coordinate. Boxes are the same static AABBs cavex_world.
+# world declares (see each model's own pose/size there); entry_ramp is a
+# tilted box, approximated here by its axis-aligned bounding box (real
+# corners computed when it was authored: x[15.0,30.19], z[2.018,5.9] --
+# see cavex_world.world's own entry_ramp comment for the derivation).
+SHORE_DISTANCE_M = 1.0
+DRY_BOXES = [
+    # name, x0, x1, y0, y1, z0, z1
+    ('cave_floor_patch', -40.0, 70.0, -12.0, 12.0, 4.9, 5.9),
+    ('cave_floor_patch_scaled', -120.0, -60.0, -45.9, -16.9, 4.9, 5.9),
+    ('cave_floor_patch_bridge', -62.0, -38.0, -46.0, 12.0, 4.9, 5.9),
+    ('entry_ramp', 15.0, 30.19, -12.0, 25.0, 2.018, 5.9),
+]
+
+# Matches track_retract_control.py's own JointTrajectory duration (2s) --
+# how long "retracting"/"deploying" holds before the mode machine
+# considers the joint move complete. No joint-state feedback subscription
+# exists (or is needed) for this; reusing the same fixed duration that
+# node already commands is the simplest correct source of truth.
+TRANSITION_DURATION_S = 2.0
+
+
+def _aabb_distance(px, py, pz, box):
+    _, x0, x1, y0, y1, z0, z1 = box
+    dx = max(x0 - px, 0.0, px - x1)
+    dy = max(y0 - py, 0.0, py - y1)
+    dz = max(z0 - pz, 0.0, pz - z1)
+    return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+
+def _distance_to_shore(x, y, z):
+    return min(_aabb_distance(x, y, z, box) for box in DRY_BOXES)
 
 
 class VehicleSwitchNode(Node):
     def __init__(self):
         super().__init__('vehicle_switch_node')
-        self._in_water = False
+        self._mode = 'tracks'
+        self._transition_deadline = None
 
         self.track_cmd_pub = self.create_publisher(String, '/cavex/tracks/command', 10)
+        self.mode_pub = self.create_publisher(String, '/cavex/locomotion_mode', 10)
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
 
         self.get_logger().info(
-            f"vehicle_switch_node ready: will retract tracks at "
-            f"x >= {WATER_BOUNDARY_X} (and redeploy on the way back out).")
+            f"vehicle_switch_node ready: tracks -> retracting (buoyant, "
+            f"z>={FLOAT_Z_MIN}) -> props ({TRANSITION_DURATION_S}s) -> "
+            f"deploying (<{SHORE_DISTANCE_M}m from shore) -> tracks "
+            f"({TRANSITION_DURATION_S}s).")
+        self._publish_mode()
+
+    def _publish_mode(self):
+        self.mode_pub.publish(String(data=self._mode))
 
     def _odom_cb(self, msg: Odometry):
         x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
+        z = msg.pose.pose.position.z
+        now = self.get_clock().now()
 
-        now_in_water = x >= WATER_BOUNDARY_X
-        if now_in_water != self._in_water:
-            self._in_water = now_in_water
-            if now_in_water:
+        if self._mode == 'tracks':
+            if z >= FLOAT_Z_MIN and _in_water_box(x, y):
                 self.get_logger().info(
-                    f"Crossing into water at x={x:.2f} -- retracting tracks.")
+                    f"Buoyant at z={z:.2f} -- retracting tracks.")
                 self.track_cmd_pub.publish(String(data='retracted'))
-            else:
+                self._mode = 'retracting'
+                self._transition_deadline = now + rclpy.duration.Duration(
+                    seconds=TRANSITION_DURATION_S)
+                self._publish_mode()
+
+        elif self._mode == 'retracting':
+            if now >= self._transition_deadline:
+                self.get_logger().info("Tracks retracted -- switching to props.")
+                self._mode = 'props'
+                self._publish_mode()
+
+        elif self._mode == 'props':
+            dist = _distance_to_shore(x, y, z)
+            if dist < SHORE_DISTANCE_M:
                 self.get_logger().info(
-                    f"Crossing back out of water at x={x:.2f} -- redeploying tracks.")
+                    f"{dist:.2f}m from shore -- redeploying tracks.")
                 self.track_cmd_pub.publish(String(data='deployed'))
+                self._mode = 'deploying'
+                self._transition_deadline = now + rclpy.duration.Duration(
+                    seconds=TRANSITION_DURATION_S)
+                self._publish_mode()
+
+        elif self._mode == 'deploying':
+            if now >= self._transition_deadline:
+                self.get_logger().info("Tracks deployed -- switching to tracks.")
+                self._mode = 'tracks'
+                self._publish_mode()
 
 
 def main(args=None):
