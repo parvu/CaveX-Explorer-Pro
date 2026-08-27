@@ -114,6 +114,23 @@ Both take an optional duration in seconds (default 60). Both require the
 `gz.transport13`/`gz.msgs10` Python bindings (installed alongside Gazebo
 Harmonic) -- no additional ROS nodes needed beyond the spawned vehicle.
 
+### Phase 3: x500 air-pocket SLAM (planned)
+
+Real request 2026-08-27: an air pocket in the cave whose ceiling sits far
+above what the tracked boat/ROV can reach or usefully map from the water
+or dry floor. For this phase, `cavex_tracked_blueboat` (and its fused
+BlueROV2 hull) stays parked -- on dry ground or floating in the water
+basin, wherever the run left it -- while `x500` (the PX4 quadcopter
+already vendored at `ros2_ws/src/cavex_tracked_vehicle/models/x500/`,
+currently only used as decorative static cargo on the boat's own deck,
+see `cavex_x500_release` topic) takes off on its own and flies/maps the
+air pocket above. Not implemented yet -- x500 has no independent flight
+controller, SLAM node, or launch entry of its own today; this section is
+the placeholder for that work (PX4 SITL or a direct gz-transport thrust
+controller matching Phase 2's own `ApplyLinkWrench` pattern, plus a
+lidar/camera-based SLAM node reusing `cavex_gtsam_slam`'s scan-registration
+code the way Phase 2 does).
+
 ## Known limitations (sim-to-real gap)
 
 **Scan registration is classical, not learned.** `cavex_gtsam_slam`'s
