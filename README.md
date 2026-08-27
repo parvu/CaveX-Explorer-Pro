@@ -1,28 +1,9 @@
 # CaveX Explorer Pro
 
-A cave-exploration robot dashboard: a React/Express web frontend, and a ROS 2
-Jazzy / Gazebo Harmonic simulation stack (`ros2_ws/`). Design rationale,
-verification results, and historical notes live in `history.txt`, not here —
-this file is build/run instructions only.
-
-## Web frontend
-
-Requires Node.js.
-
-```bash
-npm install
-```
-
-Optional: copy `.env.example` to `.env` and set `GEMINI_API_KEY` to enable the
-AI ROS 2 assistant panel; falls back to an offline template generator without
-a key.
-
-```bash
-npm run dev      # dev server (Vite + Express) on http://localhost:3000
-# or, for a production build:
-npm run build
-npm start         # http://localhost:3000
-```
+A cave-exploration robot: a ROS 2 Jazzy / Gazebo Harmonic simulation stack
+(`ros2_ws/`) with a browser-based 3D viewer and control panel (`web_viewer/`).
+Design rationale, verification results, and historical notes live in
+`history.txt`, not here — this file is build/run instructions only.
 
 ## ROS 2 / Gazebo simulation stack
 
@@ -56,6 +37,18 @@ sleep 25
 ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py &
 sleep 15
 ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
+```
+
+Web viewer (browser 3D view + drive controls, at http://localhost:8080) and
+RViz — both optional, start alongside the launches above once Gazebo is up:
+
+```bash
+cd web_viewer
+python3 control_server.py 8080 &
+/usr/lib/x86_64-linux-gnu/gz/launch7/gz-launch websocket.gzlaunch &
+cd ..
+
+rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz --ros-args -p use_sim_time:=true &
 ```
 
 ### Phase 2: BlueROV2 GTSAM-SLAM (flooded section)
