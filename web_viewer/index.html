@@ -69,13 +69,15 @@
 
     // Real request 2026-08-26: "camera looking at the boat" -- a fixed
     // resetCameraPose() snapshot only helps at load time, and the boat moves
-    // (it's been driven all over the map this session). Track it live instead:
-    // BOAT_NAME's real pose already comes through on every dynamic_pose/info
-    // update below (same message that moves the 3D model itself), so the
-    // camera is repositioned at a fixed offset behind/above the boat and
-    // pointed at it on every one of those updates, not just once.
-    var BOAT_NAME = 'cavex_tracked_blueboat';
-    var CAMERA_OFFSET = new THREE.Vector3(-8, -8, 6);
+    // (it's been driven all over the map this session). Tracked it live for
+    // a while (repositioned the camera at a fixed offset behind/above the
+    // boat on every dynamic_pose/info update), but real request 2026-08-27:
+    // that fought the user's own manual pan/zoom/rotate every single frame,
+    // snapping the view back before any manual adjustment could stick.
+    // Model poses (including the boat's) still update normally below --
+    // only the camera auto-follow is gone; resetCameraPose() at load is now
+    // the only thing that ever moves the camera, same as a fresh RViz/
+    // Foxglove view the user is expected to navigate themselves.
 
     // Create the pos subscriber
     var poseSub = new Topic({
@@ -89,12 +91,6 @@
               && entity.parent !== scene.modelManipulator.object) {
             scene.updatePose(entity, msg.pose[i].position,
               msg.pose[i].orientation);
-          }
-          if (msg.pose[i].name === BOAT_NAME) {
-            var p = msg.pose[i].position;
-            var boatPos = new THREE.Vector3(p.x, p.y, p.z);
-            scene.camera.position.copy(boatPos).add(CAMERA_OFFSET);
-            scene.camera.lookAt(boatPos);
           }
         }
       }
