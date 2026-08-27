@@ -51,6 +51,24 @@ cd ..
 rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz --ros-args -p use_sim_time:=true &
 ```
 
+Foxglove (browser RViz-equivalent 3D view: TF, `/map`, costmap, sensors) —
+`tracked_vehicle_slam.launch.py` already starts `foxglove_bridge` (port
+8765). The web client itself is a separate, persistent Docker container
+(survives across launches, only needs starting once):
+
+```bash
+sudo dockerd > /tmp/dockerd.log 2>&1 &
+sleep 3
+sudo docker run -d --name foxglove-studio --restart unless-stopped \
+  -p 8766:8080 ghcr.io/collabora/foxglove-studio:latest
+```
+
+Then open http://localhost:8766 (or click "open Foxglove" in the web
+viewer) — pre-connects to the bridge automatically via the page's own link.
+Not `ghcr.io/foxglove/studio` — that image now requires a Foxglove account;
+this is a public mirror of the last fully open-source release, no account
+needed.
+
 ### Phase 2: BlueROV2 GTSAM-SLAM (flooded section)
 
 Real request, 2026-08-26: `cavex_sonar` and the CurrentFactor subsystem

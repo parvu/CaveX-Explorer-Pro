@@ -731,6 +731,21 @@
       <button onclick="manualCmd('speed_up')">spd +</button>
       <button onclick="manualCmd('speed_down')">spd -</button>
       <button id="manualToggle" onclick="toggleManual()">man: OFF</button>
+      <!-- Real request 2026-08-27: RViz-equivalent 3D view (TF, /map,
+           costmap, sensors) via Foxglove, opened in its own tab --
+           app.foxglove.dev requires a Foxglove account sign-in now (their
+           hosted app moved to a closed/gated model), so this points at a
+           self-hosted Foxglove Studio instance instead (ghcr.io/collabora/
+           foxglove-studio -- the last open-source release, run via `sudo
+           docker run -d --name foxglove-studio --restart unless-stopped -p
+           8766:8080 ghcr.io/collabora/foxglove-studio:latest`), no account
+           needed. Pre-connects to foxglove_bridge (tracked_vehicle_slam.
+           launch.py, port 8765) via the same URL data-source scheme the
+           hosted app used -- confirmed live, same open-source codebase. -->
+      <a href="http://localhost:8766/?ds=foxglove-websocket&ds.url=ws%3A%2F%2Flocalhost%3A8765"
+         target="_blank" rel="noopener">
+        <button type="button">open Foxglove</button>
+      </a>
     </div>
 
     <script>

@@ -496,6 +496,33 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
+    # Real request 2026-08-27: an RViz-equivalent 3D view (TF, /map, costmap,
+    # sensors) in the browser, via Foxglove -- exposes this node's real ROS2
+    # graph over a websocket (default port 8765) that Foxglove's web client
+    # connects to directly (web_viewer/index.html links to it, opened in its
+    # own tab -- app.foxglove.dev requires an account sign-in now, so that
+    # link points at a self-hosted Foxglove Studio instead). No topic
+    # allow/deny-list here: exposes everything on the graph, same as what
+    # RViz itself can already subscribe to locally.
+    #
+    # The self-hosted Foxglove Studio web client this bridge feeds is a
+    # separate, persistent Docker container (not a ROS node, and `docker run`
+    # needs a real sudo password this launch file can't supply
+    # non-interactively) -- start it once, it survives across launches
+    # (--restart unless-stopped):
+    #   sudo dockerd > /tmp/dockerd.log 2>&1 &
+    #   sudo docker run -d --name foxglove-studio --restart unless-stopped \
+    #     -p 8766:8080 ghcr.io/collabora/foxglove-studio:latest
+    # Then open http://localhost:8766 (or click "open Foxglove" in
+    # web_viewer/index.html).
+    foxglove_bridge = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time, 'port': 8765}],
+    )
+
     bootstrap_nudge_node_action = Node(
         package='cavex_tracked_vehicle',
         executable='bootstrap_nudge_node.py',
@@ -620,6 +647,7 @@ def generate_launch_description():
         start_explore_after_nudge,
         dead_end_backtrack_node,
         cmd_vel_gz_bridge,
+        foxglove_bridge,
         bootstrap_nudge,
         ate_evaluator,
         tracked_vehicle_ground_truth_odom,
