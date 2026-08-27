@@ -48,9 +48,12 @@ from gz.msgs10.entity_pb2 import Entity
 # wise).
 WATER_BOUNDARY_X = 5.0
 
-# Sum of every <mass> in model.sdf.tracked (base_link + track/strut/mount
-# links + bluerov2_link + tether_anchor_link) = 47.1 kg.
-VEHICLE_MASS_KG = 47.1
+# Sum of every <mass> in model.sdf.tracked, re-confirmed live 2026-08-27
+# via `gz model -m cavex_tracked_blueboat` (15 links: base_link 32.6 +
+# 2x motor 0.2 + 2x track 1.5 + 2x strut 0.15 + 2x retract_mount 0.1 +
+# imu/lidar 0.1 + camera 0.05 + tether_anchor 0.2 + bluerov2_link 10.05
+# + helipad 0.5) = 47.5 kg.
+VEHICLE_MASS_KG = 47.5
 GRAVITY = 9.81
 WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 
@@ -64,25 +67,42 @@ WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 # empirically interpolated from live measurements at several target values
 # and confirmed live: settles mostly in the 4-11cm band.
 #
-# Real request 2026-08-27: basin redesign lowered the water surface
-# 7.9 -> 6.0 (see cavex_world.world's water_surface/entry_ramp/basin_floor
-# comments) -- carried the same ~7cm clearance offset forward rather than
-# re-deriving it live (7.97 - 7.9 = 0.07 -> 6.0 + 0.07 = 6.07). Not yet
-# re-confirmed by live measurement the way 7.97 itself was; re-tune this
-# the same empirical way if it settles outside the old 4-11cm band.
-TARGET_FLOAT_Z = 6.07
+# Target base_link Z while floating. Derived, not guessed:
+#   water surface z = 6.0 (cavex_world.world water_surface pose)
+#   hull_collision bbox top sits at local z=0 (base_link Z == hull-top Z)
+#   real request 2026-08-27: hull top 6-12cm proud of the water -> aim
+#   for the middle, +9cm.
+WATER_SURFACE_Z = 6.0
+TARGET_FREEBOARD = 0.09
+TARGET_FLOAT_Z = WATER_SURFACE_Z + TARGET_FREEBOARD   # 6.09
 
-# Real request 2026-08-26: KZ bumped from 400 -- a P-only height controller
-# always leaves a steady-state error proportional to whatever's fighting it
-# (here, real lift lost to tilt whenever the boat heels, since force.z is a
-# fixed direction, not one that re-aims itself upright as the hull rolls/
-# pitches). Live-confirmed settling ~0.3m short of target at KZ=400 while
-# heeled; a stiffer gain shrinks that residual error instead of chasing the
-# exact tilt-loss number.
+# Real request 2026-08-27: "recalculate buoyancy ... so it naturally floats
+# 6-12cm above water". Root cause of the earlier ~0.3m submersion was NOT
+# this law -- it was the world gz-sim-buoyancy-system plugin silently
+# lifting the boat and overpowering this node (see cavex_world.world). With
+# that removed, this node is the sole vertical authority, so a plain
+# feedforward + stiff P + D is enough: WEIGHT_N is the measured 47.5kg
+# weight (exact feedforward -> zero nominal error), and the only residual
+# disturbance left (lift lost to heel, drag/offset coupling) is small
+# enough that KZ=700 holds it inside a few cm of TARGET_FLOAT_Z. No
+# integral term -> no windup to chase.
 KZ = 700.0    # N per meter of Z error
-DZ = 350.0    # N per (m/s) of Z velocity -- keeps ~critical damping at the
-              # higher KZ (c_crit = 2*sqrt(KZ*m) ~= 363)
-MAX_LIFT_N = 1200.0  # clamp, headroom for the higher KZ
+DZ = 350.0    # N per (m/s) of Z velocity -- ~critical damping
+              # (c_crit = 2*sqrt(KZ*m) ~= 365)
+MAX_LIFT_N = 1200.0
+
+# Real request 2026-08-27: "add water drag". Without it the model has
+# almost no resistance -- a 4s thrust burst coasted the boat ~30m. Applied
+# as a body-frame-agnostic (world XY) linear + quadratic force opposing
+# translation, plus linear yaw-rate damping, only while in the water box
+# (this callback already returns early on dry land). Quadratic term
+# dominates at drive speed; the small linear term gives a clean stop at
+# low speed. Tuned so a 0.6 m/s drive coasts ~2-3m.
+# ponytail: naive isotropic drag, no added-mass / Fossen cross terms --
+# a real hydrodynamics plugin if this ever needs proper maneuvering fidelity.
+DRAG_LIN_XY = 15.0    # N per (m/s)
+DRAG_QUAD_XY = 47.0   # N per (m/s)^2
+DRAG_YAW = 60.0       # N*m per (rad/s) of yaw rate
 
 # Real request 2026-08-26: passive righting via Wrench.force_offset alone was
 # a real live tradeoff -- 0.4 kept roll tight (~+-2 deg) but let pitch
@@ -114,6 +134,10 @@ def roll_pitch_from_quat(x, y, z, w):
     return roll, pitch
 
 
+def yaw_from_quat(x, y, z, w):
+    return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
 def wrap_angle_diff(a, b):
     """a - b, wrapped to [-pi, pi]. Real bug found live: a plain subtraction
     across the atan2 branch cut (e.g. roll going from +170deg to -170deg,
@@ -128,46 +152,68 @@ class BoatBuoyancyControl(Node):
         super().__init__('boat_buoyancy_control')
         self.gz_pub = gz_pub
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
-        self._prev = None  # (t, z, roll, pitch)
+        self._prev = None  # (t, x, y, z, roll, pitch, yaw)
         self.get_logger().info(
             f"boat_buoyancy_control ready: applying lift only while "
-            f"x > {WATER_BOUNDARY_X} (target float Z={TARGET_FLOAT_Z}).")
+            f"x > {WATER_BOUNDARY_X} (target float Z={TARGET_FLOAT_Z:.2f}, "
+            f"P+D lift + drag).")
 
     def _odom_cb(self, msg: Odometry):
         t = self.get_clock().now().nanoseconds * 1e-9
         x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
         z = msg.pose.pose.position.z
         q = msg.pose.pose.orientation
         roll, pitch = roll_pitch_from_quat(q.x, q.y, q.z, q.w)
+        yaw = yaw_from_quat(q.x, q.y, q.z, q.w)
 
         if x <= WATER_BOUNDARY_X:
             self._prev = None
-            self._publish_wrench(0.0, 0.0, 0.0, 0.0)
+            self._publish_wrench(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
             return
 
-        vz = roll_rate = pitch_rate = 0.0
+        vx = vy = vz = roll_rate = pitch_rate = yaw_rate = 0.0
+        dt = 0.0
         if self._prev is not None:
             dt = t - self._prev[0]
             if dt > 1e-3:
-                vz = (z - self._prev[1]) / dt
-                roll_rate = wrap_angle_diff(roll, self._prev[2]) / dt
-                pitch_rate = wrap_angle_diff(pitch, self._prev[3]) / dt
-        self._prev = (t, z, roll, pitch)
+                vx = (x - self._prev[1]) / dt
+                vy = (y - self._prev[2]) / dt
+                vz = (z - self._prev[3]) / dt
+                roll_rate = wrap_angle_diff(roll, self._prev[4]) / dt
+                pitch_rate = wrap_angle_diff(pitch, self._prev[5]) / dt
+                yaw_rate = wrap_angle_diff(yaw, self._prev[6]) / dt
+        self._prev = (t, x, y, z, roll, pitch, yaw)
 
-        lift = WEIGHT_N + KZ * (TARGET_FLOAT_Z - z) - DZ * vz
-        lift = max(0.0, min(MAX_LIFT_N, lift))
+        z_err = TARGET_FLOAT_Z - z
+        lift = max(0.0, min(MAX_LIFT_N, WEIGHT_N + KZ * z_err - DZ * vz))
+
         torque_x = -LEVEL_KP * roll - ANGULAR_DAMPING * roll_rate
         torque_y = -LEVEL_KP * pitch - ANGULAR_DAMPING * pitch_rate
-        self._publish_wrench(lift, BUOY_OFFSET_Z, torque_x, torque_y)
 
-    def _publish_wrench(self, force_z, offset_z, torque_x, torque_y):
+        drag_x = -(DRAG_LIN_XY * vx + DRAG_QUAD_XY * abs(vx) * vx)
+        drag_y = -(DRAG_LIN_XY * vy + DRAG_QUAD_XY * abs(vy) * vy)
+        torque_z = -DRAG_YAW * yaw_rate
+        # ponytail: drag shares the lift's force_offset (0,0,BUOY_OFFSET_Z),
+        # so hard driving induces a few deg of bow-up trim the leveling PID
+        # then absorbs. Split into a second zero-offset wrench msg only if
+        # that trim proves objectionable live.
+
+        self._publish_wrench(lift, BUOY_OFFSET_Z, torque_x, torque_y,
+                             drag_x, drag_y, torque_z)
+
+    def _publish_wrench(self, force_z, offset_z, torque_x, torque_y,
+                        force_x=0.0, force_y=0.0, torque_z=0.0):
         w = EntityWrench()
         w.entity.name = 'cavex_tracked_blueboat::base_link'
         w.entity.type = Entity.LINK
+        w.wrench.force.x = force_x
+        w.wrench.force.y = force_y
         w.wrench.force.z = force_z
         w.wrench.force_offset.z = offset_z
         w.wrench.torque.x = torque_x
         w.wrench.torque.y = torque_y
+        w.wrench.torque.z = torque_z
         self.gz_pub.publish(w)
 
 

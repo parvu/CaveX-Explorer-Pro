@@ -26,14 +26,18 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
 
 # Real request 2026-08-26: kept a small margin off the joints' true SDF hard
-# stops (0.0/1.4 in blueboat/model.sdf.tracked) -- commanding exactly to the
-# hard limit reproduced a real, live-confirmed gz-sim/DART bug where the
-# joint locks up entirely once driven flush against its limit and then
-# ignores every later command. See the joint's own SDF comment for the full
-# story (widening the limit and adding damping were both tried and made it
-# worse); staying just short of the stop avoids the lock outright.
+# stops -- commanding exactly to the hard limit reproduced a real, live-
+# confirmed gz-sim/DART bug where the joint locks up entirely once driven
+# flush against its limit and then ignores every later command. See the
+# joint's own SDF comment for the full story (widening the limit and adding
+# damping were both tried and made it worse); staying just short of the
+# stop avoids the lock outright.
+# Real request 2026-08-27: RETRACTED extended 1.35 -> 2.95 (SDF upper stop
+# raised 1.4 -> 3.1 to match) so the retracted tracks swing all the way UP
+# INSIDE the hull line instead of stopping outboard-and-up. Still 0.15 rad
+# short of the 3.1 hard stop.
 DEPLOYED = 0.05
-RETRACTED = 1.35
+RETRACTED = 2.95
 
 
 class TrackRetractControl(Node):

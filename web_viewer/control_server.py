@@ -25,6 +25,7 @@ static files, same port by default, now also serving /api/*.)
 """
 import sys
 import os
+import time
 import posixpath
 import http.server
 import urllib.parse
@@ -85,7 +86,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(f"unknown command {cmd!r}".encode())
             return
-        pub.publish(StringMsg(data=cmd))
+        # gz-transport drops the first message or two after a fresh
+        # publisher<->subscriber discovery, which made single-shot button
+        # presses (esp. the D-pad's own "manual_on" enable) silently no-op
+        # until pressed again. Every command here is idempotent, so just
+        # send it a few times spaced out to beat that startup drop.
+        msg = StringMsg(data=cmd)
+        for i in range(3):
+            pub.publish(msg)
+            if i < 2:
+                time.sleep(0.03)
         self.send_response(204)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
