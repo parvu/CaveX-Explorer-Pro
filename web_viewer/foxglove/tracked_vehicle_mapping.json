@@ -1,0 +1,72 @@
+{
+  "configById": {
+    "3D!cavex": {
+      "cameraState": {
+        "perspective": true,
+        "distance": 10.53,
+        "phi": 60,
+        "thetaOffset": 45,
+        "targetOffset": [0, 0, 0],
+        "target": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 5000
+      },
+      "followMode": "follow-position",
+      "followTf": "map",
+      "scene": { "backgroundColor": "#1e1e1e" },
+      "transforms": { "showLabel": true, "axisScale": 1 },
+      "topics": {
+        "/map": { "visible": true, "colorMode": "raw", "alpha": 0.7 },
+        "/local_costmap/costmap": { "visible": true, "colorMode": "raw", "alpha": 0.7 },
+        "/global_costmap/costmap": { "visible": false, "colorMode": "raw", "alpha": 0.7 },
+        "/lidar/points": {
+          "visible": true,
+          "colorField": "intensity",
+          "colorMode": "colormap",
+          "colorMap": "rainbow",
+          "pointSize": 2
+        },
+        "/cloud_obstacles": {
+          "visible": true,
+          "colorField": "intensity",
+          "colorMode": "colormap",
+          "colorMap": "rainbow",
+          "pointSize": 2
+        },
+        "/cavex/slam/odom": {
+          "visible": true,
+          "type": "arrow",
+          "arrowScale": [0.5, 0.1, 0.1],
+          "color": "#ff1900"
+        },
+        "/explore/frontiers": { "visible": true },
+        "/tf": { "visible": true }
+      },
+      "publish": { "type": "point", "poseTopic": "/move_base_simple/goal" },
+      "imageMode": {},
+      "layers": {}
+    },
+    "Image!cavex": {
+      "cameraTopic": "/camera/color/image_raw",
+      "enabledMarkerTopics": [],
+      "mode": "fit",
+      "synchronize": false,
+      "flipHorizontal": false,
+      "flipVertical": false,
+      "rotation": 0,
+      "minValue": 0,
+      "maxValue": 1
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": { "speed": 1 },
+  "layout": {
+    "first": "3D!cavex",
+    "second": "Image!cavex",
+    "direction": "row",
+    "splitPercentage": 75
+  }
+}

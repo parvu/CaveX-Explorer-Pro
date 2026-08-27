@@ -66,8 +66,13 @@ sudo docker run -d --name flora --restart unless-stopped -p 8766:8080 flora
 
 Then open http://localhost:8766 (or click "open Foxglove" in the web
 viewer) — pre-connects to the bridge automatically via the page's own
-link. On first connect the dashboard is empty; add a 3D panel (same idiom
-as RViz's own "Add Display"). This is [Flora](https://github.com/flora-suite/flora),
+link. On first connect the dashboard is empty; either add panels manually
+(same idiom as RViz's own "Add Display"), or import
+`web_viewer/foxglove/tracked_vehicle_mapping.json` (Layouts tab → import,
+or drag the file onto the window) for a layout mirroring
+`tracked_vehicle_mapping.rviz`: 3D panel (TF, `/map`, local costmap, lidar
+points, obstacle cloud, SLAM path, explore frontiers) + camera image
+panel. This is [Flora](https://github.com/flora-suite/flora),
 an actively-maintained open-source fork of Foxglove Studio — not
 `app.foxglove.dev` (requires a Foxglove account now) and not a self-hosted
 build of the frozen last-open-source Foxglove release (protocol/encoding
