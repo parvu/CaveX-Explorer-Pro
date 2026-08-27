@@ -904,5 +904,61 @@
         </visual>
       </link>
     </model>
+
+    <!-- Ceilings, real request 2026-08-27 ("trim original cave world to
+         cave floor patch and its vertical walls"): the walls above only
+         close the SIDES of each walled region -- their own top edge (dry
+         floor walls z=8.9, water walls z=6.5) was still wide open above,
+         so the vehicle (or camera) could simply fly out over the top of
+         any wall into the real cave_world mesh's own much taller, uneven
+         open space. These are collision-only (no <visual> -- an opaque
+         ceiling box would block every camera/RViz/web-viewer view looking
+         down into the walled region, which defeats the purpose), one per
+         walled footprint, bottom surface flush with its own walls' top
+         edge (no gap): dry regions bottom=8.9 (center_z=9.4, thickness 1,
+         same three patches' own x/y footprints as their floor/wall
+         counterparts above -- overlap between them is harmless, same
+         convention as the floors themselves), water region bottom=6.5
+         (center_z=7.0, footprint matches water_surface/the water walls:
+         x[5,70] y[-12,25]). -->
+    <model name="cave_floor_patch_ceiling">
+      <static>true</static>
+      <pose>15 0 9.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>110 24 1</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <model name="cave_floor_patch_scaled_ceiling">
+      <static>true</static>
+      <pose>-90 -31.4 9.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>60 29 1</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <model name="cave_floor_patch_bridge_ceiling">
+      <static>true</static>
+      <pose>-50 -17 9.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>24 58 1</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <model name="water_ceiling">
+      <static>true</static>
+      <pose>37.5 6.5 7.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>65 37 1</size></box></geometry>
+        </collision>
+      </link>
+    </model>
   </world>
 </sdf>
