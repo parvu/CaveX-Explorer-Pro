@@ -32,14 +32,21 @@ from builtin_interfaces.msg import Duration
 DEPLOYED = 0.05
 RETRACTED = 1.35
 
-# Same constant vehicle_switch_node.py and boat_buoyancy_control.py use.
-WATER_BOUNDARY_X = 15.0
-# boat_buoyancy_control.py's own TARGET_FLOAT_Z is 8.15 (surface at 7.9,
-# floor at 5.9, floating above the surface per real request 2026-08-26);
-# this margin below it is "close enough to floating", not "exactly at the
-# target" (the float controller has some live-verified residual bob
-# around its target).
-FLOAT_Z_MIN = 7.5
+# Real bug found live 2026-08-27 ("not moving on manual"): both constants
+# below were stale after the basin redesign (see cavex_world.world's
+# entry_ramp/basin_floor/water_surface comments and boat_thruster_control.py's
+# own matching fix, found and fixed in the same investigation).
+# WATER_BOUNDARY_X here no longer needs to match vehicle_switch_node.py's
+# own 5.0 exactly (that one gates track retraction/deploy commands off
+# ground truth alone; this one additionally requires floating, so a small
+# x-margin past the tracks' own boundary is fine) -- matches
+# boat_thruster_control.py's 6.0.
+WATER_BOUNDARY_X = 6.0
+# boat_buoyancy_control.py's own TARGET_FLOAT_Z is now 6.07 (surface at
+# 6.0, was 7.97/7.9) -- this threshold must stay below that or the joint
+# animation would never fire. Matches boat_thruster_control.py's own
+# 5.95 (just above the shallow entry zone's real dry-floor top, 5.9).
+FLOAT_Z_MIN = 5.95
 
 
 class TrackRetractControl(Node):

@@ -34,8 +34,27 @@ from gz.transport13 import Node as GzNode
 from gz.msgs10.twist_pb2 import Twist
 from gz.msgs10.double_pb2 import Double
 
-WATER_BOUNDARY_X = 15.0
-FLOAT_Z_MIN = 7.5  # same threshold track_retract_control.py uses
+# Real bug found live 2026-08-27 ("not moving on manual"): the basin
+# redesign (see cavex_world.world's entry_ramp/basin_floor comments)
+# retracts tracks at x>=5 (vehicle_switch_node.py) but this gate stayed at
+# the old shelf-region value of 15.0 -- a real dead zone existed between
+# them, x[5,15], where the vehicle has neither ground traction (tracks
+# retracted) nor thrust (not yet past this gate). Real request lowered
+# this to 6.0, just past the tracks' own retract boundary, closing that
+# gap.
+WATER_BOUNDARY_X = 6.0
+
+# Real bug found live 2026-08-27, same investigation: this gated on
+# "actually floating near target height", tuned to the OLD water surface
+# (7.9, TARGET_FLOAT_Z=7.97) -- 7.5 as a floor-vs-floating discriminator.
+# The basin redesign lowered the surface to 6.0 (TARGET_FLOAT_Z=6.07 in
+# boat_buoyancy_control.py), so the vehicle can never reach z=7.5 any
+# more; this alone would have kept thrust gated off even with
+# WATER_BOUNDARY_X fixed above. Lowered to 5.95 -- just above the shallow
+# entry zone's real dry-floor top (5.9), the same "off the floor, not
+# resting on it" intent as the original 7.5 vs 5.9-old-floor gap, scaled
+# to the new heights.
+FLOAT_Z_MIN = 5.95  # was tuned to track_retract_control.py's old value
 
 # Real motor y-offset from model.sdf.tracked (motor_port_joint/motor_stbd_joint
 # poses, +-0.295).
