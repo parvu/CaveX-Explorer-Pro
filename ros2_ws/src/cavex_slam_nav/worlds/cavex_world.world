@@ -274,7 +274,15 @@
       <graded_buoyancy>
         <default_density>1000</default_density>
         <density_change>
-          <above_depth>7.9</above_depth>
+          <!-- Real request 2026-08-27: water region redesigned into a real
+               3m-deep basin (surface z=6, floor z=3) instead of the old
+               2m-deep shelf sitting on the real cave floor (surface z=7.9,
+               floor z=5.9) -- see the basin/wall models below for the full
+               story. This vehicle doesn't use this plugin directly (see
+               boat_buoyancy_control.py), but bluerov2's own thruster-driven
+               sub still would if ever spawned independently again, so kept
+               in sync with the new surface height. -->
+          <above_depth>6.0</above_depth>
           <density>1</density>
         </density_change>
       </graded_buoyancy>
@@ -468,102 +476,77 @@
       </link>
     </model>
 
-    <!-- Shoreline ramp: the dry-section floor (cave_floor_patch, flat top
-         z=5.9) met the water region (water_surface, x [15,35] y [-12,12]
-         z=7.9) as an abrupt 2m-deep step right at x=15 -- real request to
-         reshape the floor so it meets the water's own z at the boundary
-         instead. A box <size> can't be a smooth curve, so this is a single
-         flat, tilted box whose TOP SURFACE is a straight ramp.
+    <!-- Real request 2026-08-27: water region redesigned into a real 3m-deep
+         basin (surface z=6, floor z=3) instead of the old 2m-deep shelf
+         sitting on the unmodified real cave floor (surface z=7.9,
+         floor z=5.9). Replaces the old two-ramp system below (shoreline_ramp
+         climbing UP from the dry floor to a shelf edge, water_entry_ramp
+         diving back DOWN into shallow water at the same z=5.9 floor) --
+         that whole shape only made sense for a shallow shelf, not a basin.
 
-         MOVED after live-testing: the first version spanned x [15,23] --
-         INSIDE the water box -- rising to within 0.3m of the surface right
-         where the ROV's own circling demo orbited, and it got stuck on the
-         ramp's collision volume. Real fix, not a smaller version of the
-         same mistake: moved the whole ramp to x [6,14.5], entirely OUTSIDE
-         the water parallelepiped (water starts at x=15), so none of its
-         solid collision geometry can be in the water region's own
-         navigable volume at all. Top surface still runs from (x=6, z=5.9)
-         -- meeting cave_floor_patch's real height, no seam gap -- up to
-         (x=14.5, z=7.6) -- close to the water's z=7.9 right at the
-         boundary, matching the original request -- with a further 0.3m
-         margin to x=15 itself. Pitch = atan2(rise, run) =
-         atan2(-1.7, 8.5) = -0.1974 rad (-11.31 deg); box center offset
-         from the top-surface midpoint by Ry(pitch) @ (0,0,-thickness/2)
-         to account for the box's own thickness after rotation. Verified
-         this time by checking ALL FOUR corners (top AND bottom, not just
-         the top surface line) -- the largest x-extent among them is
-         14.696, confirmed still short of the x=15 boundary with margin,
-         before writing this in. Same friction/contact convention as its
-         neighbors.
+         Single entry_ramp now carries the real floor smoothly from the
+         confirmed dry-floor anchor (x=15, z=5.9 -- same point this file's
+         own water-boundary history already validated has real cave mesh,
+         see the water region's own comment above) down to the new basin
+         floor (x=30, z=3) below. x [5,15] stays on cave_floor_patch's own
+         existing flat z=5.9 top -- already real synthetic-floor collision,
+         nothing new needed there -- giving a genuinely shallow (surface
+         z=6, floor z=5.9: 0.1m) entry right at the water's new west edge
+         (x=5, WATER_BOUNDARY_X in boat_buoyancy_control.py/
+         vehicle_switch_node.py) that gets smoothly deeper along the ramp,
+         not an abrupt step. Real request acknowledged this region (x<15)
+         has no real cave MESH geometry -- confirmed void, see the water
+         region comment's own live vertex-proximity check -- so it will
+         look like driving/floating in open space with no walls or ceiling
+         visible; only the synthetic floor collision is real here, not the
+         visuals.
 
-         Y EXTENDED to match water_surface's own y-extension (12 -> 25,
-         same real request, same asymmetric-extend convention: lower bound
-         kept at -12, only the upper edge pushed to 25). center_y=6.5,
-         size_y=37 -- tilt/x-profile unchanged, only lengthens the ramp
-         along its own long axis. -->
-    <model name="shoreline_ramp">
+         Pitch = atan2(rise, run) = atan2(-2.9, 15) = -0.1910 rad
+         (-10.94 deg); box center offset from the top-surface midpoint by
+         Ry(pitch) @ (0,0,-thickness/2), same method (and same live corner-
+         check) as the two ramps this replaces. Top-surface corners land at
+         (15.19, 5.90) and (30.19, 3.00) -- the far end deliberately
+         overlaps 0.19m into basin_floor below, same "overlap so there's no
+         seam gap" convention as cave_floor_patch_bridge. -->
+    <model name="entry_ramp">
       <static>true</static>
-      <pose>10.3481 6.5 6.2597 0 -0.1974 0</pose>
+      <pose>22.5949 6.5 3.9591 0 -0.1910 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>8.668 37 1</size></box></geometry>
+          <geometry><box><size>15.2778 37 1</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>8.668 37 1</size></box></geometry>
-          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+          <geometry><box><size>15.2778 37 1</size></box></geometry>
+          <material><ambient>0.2 0.22 0.28 1</ambient><diffuse>0.2 0.22 0.28 1</diffuse></material>
         </visual>
       </link>
     </model>
 
-    <!-- Real bug found and fixed, 2026-08-26 ("fill the gap between dry
-         and water so the boat doesn't fall between them"): the boat
-         (cavex_tracked_blueboat) has no Hydrodynamics/Buoyancy of its
-         own (only bluerov2 does, per the Buoyancy plugin's own <enable>
-         list below -- and bluerov2 is now a decorative fused link, not
-         an independent physics body), so it needs continuous floor
-         contact wherever it drives; there's no buoyant force to catch a
-         fall. shoreline_ramp above climbs from cave_floor_patch's real
-         flat height (x=6, z=5.9) up to (x=14.5, z=7.6) but then simply
-         ENDS there -- 1.7m above cave_floor_patch's own flat top, which
-         continues underneath at z=5.9 for the whole water region
-         (x up to 70). A vehicle driving off the ramp's end had nothing
-         to land on until that flat floor, 1.7m straight down: a real
-         free-fall gap, not a rendering artifact.
-
-         This second ramp continues the surface DOWN from exactly where
-         shoreline_ramp's own top surface ends (x=14.5, z=7.6 -- same
-         point, confirmed via the same corner-derivation method used for
-         shoreline_ramp itself, see the python check that reproduced its
-         real published numbers before trusting this one) to
-         cave_floor_patch's real flat height (x=20, z=5.9) -- inside the
-         water region (water starts at x=15) but short and steep enough
-         (~17deg) to stay clear of the region's own edges. Slightly
-         overlaps shoreline_ramp's own end (same "overlap so there's no
-         seam gap" convention as cave_floor_patch_bridge) and its bottom
-         corners dip slightly into cave_floor_patch's own solid box --
-         harmless for two static, non-moving colliders. Submerged the
-         whole way (surface stays below water_surface's z=7.9), which is
-         physically correct: this vehicle has no buoyancy, so it drives
-         ALONG the cave floor into the flooded section, it doesn't float
-         on top of it. -->
-    <model name="water_entry_ramp">
+    <!-- Basin floor: the new 3m-deep basin's real bottom (z=3), since
+         cave_floor_patch's own collision box only goes down to z=4.9 (top
+         5.9, thickness 1) -- below that, nothing until ground_plane's
+         z=-200 safety net. Starts at x=28 (2m overlap into entry_ramp's own
+         far/bottom end at x=30.19, same seam convention) and runs to x=70,
+         the water box's real east edge (east_boundary_wall). Spans the
+         full y[-12,25] water width. -->
+    <model name="basin_floor">
       <static>true</static>
-      <pose>17.1023 6.5 6.2723 0 0.2998 0</pose>
+      <pose>49 6.5 2.5 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>5.7567 37 1</size></box></geometry>
+          <geometry><box><size>42 37 1</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>5.7567 37 1</size></box></geometry>
-          <material><ambient>0.2 0.22 0.28 1</ambient><diffuse>0.2 0.22 0.28 1</diffuse></material>
+          <geometry><box><size>42 37 1</size></box></geometry>
+          <material><ambient>0.15 0.17 0.22 1</ambient><diffuse>0.15 0.17 0.22 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -636,17 +619,21 @@
          GUI teleport checks at (20,20) and (20,25) showed the vehicle
          visibly past the water plane's old edge. This plane is purely
          cosmetic -- the gz-sim-buoyancy-system plugin above gates on Z
-         depth only (<above_depth>7.9</above_depth>), not X/Y region -- so
-         this is a visual sync fix, not a physics change. Kept the lower
-         bound at -12 (still the cave_floor_patch-derived, validated edge)
-         and only pushed the upper edge out: center_y=(-12+25)/2=6.5,
-         size_y=25-(-12)=37. -->
+         depth only, not X/Y region -- so this is a visual sync fix, not a
+         physics change.
+
+         Real request 2026-08-27: basin redesign lowered the surface
+         7.9 -> 6.0 and widened the west edge 15 -> 5 (see entry_ramp/
+         basin_floor above and boat_buoyancy_control.py's WATER_BOUNDARY_X,
+         which this plane's own x-span must keep matching). x[5,70]
+         size_x=65, center_x=37.5; y unchanged, [-12,25] size_y=37,
+         center_y=6.5. -->
     <model name="water_surface">
       <static>true</static>
-      <pose>25 6.5 7.9 0 0 0</pose>
+      <pose>37.5 6.5 6.0 0 0 0</pose>
       <link name="surface">
         <visual name="water_visual">
-          <geometry><plane><size>20 37</size></plane></geometry>
+          <geometry><plane><size>65 37</size></plane></geometry>
           <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
         </visual>
       </link>
@@ -681,72 +668,238 @@
          until the vehicle sails clean off the mapped world with no
          reference to recover orientation/position by (reads as "tumbles",
          since boat_buoyancy_control's righting torque has nothing wrong to
-         correct -- the vehicle is still upright, just gone). Widened this
-         wall's x-span from [15,35] to [15,70] (cave_floor_patch's own real
-         x extent, the largest x boat_buoyancy_control could plausibly still
-         apply lift over) and added matching south/east walls below to
-         actually close the box. West (x=15) intentionally left open --
-         shoreline_ramp already handles that edge as a real dry/wet
-         transition, not a hard boundary. -->
+         correct -- the vehicle is still upright, just gone).
+
+         Real request 2026-08-27: basin redesign widened water's west edge
+         15 -> 5 and deepened the whole column 5.9-8.9 -> 3-6.5 (basin floor
+         at z=3 up to just above the new z=6 surface) -- see entry_ramp/
+         basin_floor above. x-span now [5,70] (size_x=65, center_x=37.5),
+         z-span z[3,6.5] (size_z=3.5, center_z=4.75). West (x=5) still
+         intentionally open -- entry_ramp now handles that edge. -->
     <model name="north_boundary_wall">
       <static>true</static>
-      <pose>42.5 25 7.4 0 0 0</pose>
+      <pose>37.5 25 4.75 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>55 1 3</size></box></geometry>
+          <geometry><box><size>65 1 3.5</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>55 1 3</size></box></geometry>
+          <geometry><box><size>65 1 3.5</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>
     </model>
 
     <!-- South boundary wall -- see north_boundary_wall's own comment for the
-         full story (2026-08-27 tumble/out-of-bounds bug). Mirrors it at
-         cave_floor_patch's real south edge (y=-12) instead of y=25, same
-         x[15,70] span and z[5.9,8.9] height/friction convention. -->
+         full story (2026-08-27 tumble/out-of-bounds bug, then basin
+         redesign). Mirrors it at cave_floor_patch's real south edge
+         (y=-12) instead of y=25, same x[5,70]/z[3,6.5] span. -->
     <model name="south_boundary_wall">
       <static>true</static>
-      <pose>42.5 -12 7.4 0 0 0</pose>
+      <pose>37.5 -12 4.75 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>55 1 3</size></box></geometry>
+          <geometry><box><size>65 1 3.5</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>55 1 3</size></box></geometry>
+          <geometry><box><size>65 1 3.5</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>
     </model>
 
     <!-- East boundary wall -- see north_boundary_wall's own comment for the
-         full story (2026-08-27 tumble/out-of-bounds bug). Closes the far
-         (east) end of cave_floor_patch's own x extent (x=70), thin in x
-         this time, spanning the full north/south box: y[-12,25]
-         (size_y=37, center_y=6.5 -- same convention water_surface already
-         uses), same z[5.9,8.9] height/friction convention. -->
+         full story (2026-08-27 tumble/out-of-bounds bug, then basin
+         redesign). Closes the far (east) end of cave_floor_patch's own x
+         extent (x=70), thin in x this time, spanning the full north/south
+         box: y[-12,25] (size_y=37, center_y=6.5), z[3,6.5]. -->
     <model name="east_boundary_wall">
       <static>true</static>
-      <pose>70 6.5 7.4 0 0 0</pose>
+      <pose>70 6.5 4.75 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>1 37 3</size></box></geometry>
+          <geometry><box><size>1 37 3.5</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>1 37 3</size></box></geometry>
+          <geometry><box><size>1 37 3.5</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Dry-floor perimeter walls, real request 2026-08-27 ("add wall to
+         border cave floor patch"): the three dry-floor slabs
+         (cave_floor_patch, cave_floor_patch_scaled, cave_floor_patch_bridge
+         -- see their own comments for extents/overlaps) had no containment
+         at all on their outer edges, same class of bug as the water
+         region's own boundary gap above -- drive off any of them and there
+         is nothing until ground_plane's z=-200 safety net. Computed
+         programmatically (not by hand): unioned each patch's 4 edges,
+         subtracted whatever's covered by an overlapping neighbor patch or
+         by the (already-walled) water box, kept only the genuinely open
+         remainder. Same z[5.9,8.9] (center_z=7.4, size_z=3) height/
+         friction convention as the original north_boundary_wall, since
+         this is dry floor (no basin here). East edge of cave_floor_patch
+         itself (x=70) needs no separate wall -- already covered by
+         east_boundary_wall above, whose y[-12,25] span includes
+         cave_floor_patch's own y[-12,12]. -->
+    <model name="cave_floor_patch_north_wall">
+      <static>true</static>
+      <!-- y=12, x[-40,5] (cave_floor_patch's own north edge, west of where
+           the water box's north wall picks up at x=5) merged with
+           cave_floor_patch_bridge's own north edge x[-62,-38] (same y=12
+           line, contiguous through their 2m x-overlap) -> combined
+           x[-62,5], center_x=-28.5, size_x=67. -->
+      <pose>-28.5 12 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>67 1 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>67 1 3</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="cave_floor_patch_south_wall">
+      <static>true</static>
+      <!-- y=-12, x[-38,5] -- cave_floor_patch's own south edge, west of the
+           water box's own south wall (which picks up at x=5), east of
+           where cave_floor_patch_bridge's own extent ends (x=-38). -->
+      <pose>-16.5 -12 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>43 1 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>43 1 3</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="cave_floor_patch_scaled_north_wall">
+      <static>true</static>
+      <!-- y=-16.9, x[-120,-62] -- cave_floor_patch_scaled's own north edge,
+           west of where cave_floor_patch_bridge's own extent begins
+           (x=-62). -->
+      <pose>-91 -16.9 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>58 1 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>58 1 3</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="cave_floor_patch_scaled_south_wall">
+      <static>true</static>
+      <!-- y=-45.9, x[-120,-62] -- cave_floor_patch_scaled's own south edge,
+           same x-span as its north wall above. -->
+      <pose>-91 -45.9 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>58 1 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>58 1 3</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="cave_floor_patch_scaled_west_wall">
+      <static>true</static>
+      <!-- x=-120, y[-45.9,-16.9] -- cave_floor_patch_scaled's own west edge:
+           the real far end of the spawn corridor (vehicle spawns at
+           x=-88.78, well east of this wall). -->
+      <pose>-120 -31.4 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1 29 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1 29 3</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="cave_floor_patch_bridge_east_wall">
+      <static>true</static>
+      <!-- x=-38, y[-46,-12] -- cave_floor_patch_bridge's own east edge,
+           south of where it starts overlapping cave_floor_patch (y=-12 up
+           to y=12 there is inside cave_floor_patch's own solid box, not a
+           real edge). -->
+      <pose>-38 -29 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1 34 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1 34 3</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="cave_floor_patch_bridge_west_wall">
+      <static>true</static>
+      <!-- x=-62, y[-16.9,12] -- cave_floor_patch_bridge's own west edge,
+           north of where it starts overlapping cave_floor_patch_scaled
+           (y=-45.9 up to y=-16.9 there is inside scaled's own solid box,
+           not a real edge). -->
+      <pose>-62 -2.45 7.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1 28.9 3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1 28.9 3</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>

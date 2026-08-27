@@ -40,7 +40,13 @@ from gz.transport13 import Node as GzNode
 from gz.msgs10.entity_wrench_pb2 import EntityWrench
 from gz.msgs10.entity_pb2 import Entity
 
-WATER_BOUNDARY_X = 15.0
+# Real request 2026-08-27: basin redesign moved this to match
+# vehicle_switch_node.py's own WATER_BOUNDARY_X (15.0 -> 5.0) -- see that
+# file's own comment and cavex_world.world's entry_ramp/basin_floor for the
+# full story (a real basin bottom now exists under x[5,15] too, so the
+# earlier void concern that kept this at 15.0 no longer applies physics-
+# wise).
+WATER_BOUNDARY_X = 5.0
 
 # Sum of every <mass> in model.sdf.tracked (base_link + track/strut/mount
 # links + bluerov2_link + tether_anchor_link) = 47.1 kg.
@@ -57,7 +63,14 @@ WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 # from 8.15's own settle offset undershot badly at first try) -- 7.97 is
 # empirically interpolated from live measurements at several target values
 # and confirmed live: settles mostly in the 4-11cm band.
-TARGET_FLOAT_Z = 7.97
+#
+# Real request 2026-08-27: basin redesign lowered the water surface
+# 7.9 -> 6.0 (see cavex_world.world's water_surface/entry_ramp/basin_floor
+# comments) -- carried the same ~7cm clearance offset forward rather than
+# re-deriving it live (7.97 - 7.9 = 0.07 -> 6.0 + 0.07 = 6.07). Not yet
+# re-confirmed by live measurement the way 7.97 itself was; re-tune this
+# the same empirical way if it settles outside the old 4-11cm band.
+TARGET_FLOAT_Z = 6.07
 
 # Real request 2026-08-26: KZ bumped from 400 -- a P-only height controller
 # always leaves a steady-state error proportional to whatever's fighting it

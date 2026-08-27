@@ -27,7 +27,15 @@ from std_msgs.msg import String
 # briefly moved to 0.0 when the water region got extended to x=0; reverted
 # back to 15.0 along with that region after live-testing confirmed x<15 is
 # a real void in the cave mesh, not just unverified.
-WATER_BOUNDARY_X = 15.0
+#
+# Real request 2026-08-27: basin redesign moved the water region's west
+# edge again, this time to x=5.0 -- with an explicit entry_ramp/basin_floor
+# now providing the collision that x<15 always lacked (see cavex_world.
+# world's own comment on entry_ramp), the earlier void concern no longer
+# blocks extending this far; the region still has no real cave MESH
+# geometry there (visuals only), but that's a cosmetic gap, not a physics
+# one any more.
+WATER_BOUNDARY_X = 5.0
 
 
 class VehicleSwitchNode(Node):
