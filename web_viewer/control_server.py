@@ -68,7 +68,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, fmt, *args):
-        if '/api/' in (args[0] if args else ''):
+        if '/api/' in self.path:
             super().log_message(fmt, *args)
 
 

@@ -248,9 +248,32 @@ local_costmap:
       # weight also reverted above). If wall-hugging reappears at these
       # values, re-tune from this baseline rather than restoring the old
       # 1.8/1.5 pair outright -- that combination is what caused this stall.
+      #
+      # Real, live-diagnosed follow-up (2026-08-27): even at inflation_radius
+      # 0.35, this vehicle's local pure-FREE_SPACE (cost==0) patch could still
+      # be as small as ONE cell -- confirmed live via direct costmap
+      # inspection (BFS flood-fill through cost==0 cells only, starting at
+      # the robot's own position, found exactly 1 connected free cell and 1
+      # frontier-adjacent border) -- explore_lite's own frontier_search BFS
+      # requires exact FREE_SPACE to expand at all (map_[nbr] <= map_[idx],
+      # starting from a cost-0 seed), so it had nowhere to go even with real
+      # open area (2.5-5.9m of real lethal-free clearance) right there,
+      # because that whole area sat at nonzero (inflated, not lethal) cost.
+      # inflation_radius alone (the MAXIMUM distance inflation extends) isn't
+      # what's wrong here -- cost_scaling_factor (how FAST cost decays with
+      # distance from an obstacle: cost = 253*exp(-cost_scaling_factor *
+      # distance)) was too low, leaving a wide band of nonzero cost that
+      # never reached true 0 except right at the radius edge. Raised
+      # 3.0 -> 5.0 (steeper decay, reaches real FREE_SPACE closer to each
+      # wall) while leaving inflation_radius itself at 0.35 (same hard
+      # maximum-extent safety limit as before, untouched). Deliberately NOT
+      # the already-tried-and-reverted 1.5 value from the corridor-centering
+      # history above -- that was the wrong direction (SLOWER decay, LESS
+      # area reaching true 0) and is what caused the MPPI stall this same
+      # comment block documents; this change moves the opposite way.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
+        cost_scaling_factor: 5.0
         inflation_radius: 0.35
       always_send_full_costmap: True
 
@@ -291,9 +314,14 @@ global_costmap:
       # adjacent cells -- confirmed live via /explore/frontiers actually
       # publishing 2 real markers where it previously found none, same
       # map, same run, only this parameter changed.
+      #
+      # Real, live-diagnosed follow-up (2026-08-27): see local_costmap's own
+      # matching comment above for the full story -- same fix, same reason
+      # (cost_scaling_factor too low left a wide nonzero-cost band that
+      # rarely reached true FREE_SPACE, even with real open space nearby).
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
+        cost_scaling_factor: 5.0
         inflation_radius: 0.35
       always_send_full_costmap: True
 

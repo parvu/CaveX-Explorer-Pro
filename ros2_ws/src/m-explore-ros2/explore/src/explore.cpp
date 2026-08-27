@@ -62,6 +62,7 @@ Explore::Explore()
 {
   double timeout;
   double min_frontier_size;
+  double robot_exclusion_radius;
   this->declare_parameter<float>("planner_frequency", 1.0);
   this->declare_parameter<float>("progress_timeout", 30.0);
   this->declare_parameter<bool>("visualize", false);
@@ -70,6 +71,14 @@ Explore::Explore()
   this->declare_parameter<float>("gain_scale", 1.0);
   this->declare_parameter<float>("min_frontier_size", 0.5);
   this->declare_parameter<bool>("return_to_init", false);
+  // Real, live-diagnosed problem (2026-08-27, see frontier_search.cpp's own
+  // comment on this same parameter for the full story): a frontier blob
+  // wrapping around the robot's own position (self-occlusion cells merged
+  // with a real nearby unexplored area) can have a centroid landing almost
+  // on the robot, inside Nav2's own xy_goal_tolerance -- every such goal
+  // "completes" instantly with zero real driving. Default 0.0 keeps this a
+  // strict no-op (identical to upstream behavior) unless a caller opts in.
+  this->declare_parameter<float>("robot_exclusion_radius", 0.0);
 
   this->get_parameter("planner_frequency", planner_frequency_);
   this->get_parameter("progress_timeout", timeout);
@@ -80,6 +89,7 @@ Explore::Explore()
   this->get_parameter("min_frontier_size", min_frontier_size);
   this->get_parameter("return_to_init", return_to_init_);
   this->get_parameter("robot_base_frame", robot_base_frame_);
+  this->get_parameter("robot_exclusion_radius", robot_exclusion_radius);
 
   progress_timeout_ = timeout;
   move_base_client_ =
@@ -88,7 +98,8 @@ Explore::Explore()
 
   search_ = frontier_exploration::FrontierSearch(costmap_client_.getCostmap(),
                                                  potential_scale_, gain_scale_,
-                                                 min_frontier_size, logger_);
+                                                 min_frontier_size, logger_,
+                                                 robot_exclusion_radius);
 
   if (visualize_) {
     marker_array_publisher_ =
@@ -193,7 +204,7 @@ void Explore::visualizeFrontiers(
     m.scale.y = 0.1;
     m.scale.z = 0.1;
     m.points = frontier.points;
-    if (goalOnBlacklist(frontier.centroid)) {
+    if (goalOnBlacklist(frontier.target)) {
       m.color = red;
     } else {
       m.color = blue;
@@ -230,6 +241,32 @@ void Explore::makePlan()
 {
   // find frontiers
   auto pose = costmap_client_.getRobotPose();
+
+  // Real, live-diagnosed problem (2026-08-27): Costmap2DClient::getRobotPose()
+  // (costmap_client.cpp) silently swallows a momentary TF exception
+  // (ConnectivityException/ExtrapolationException -- confirmed live to fire
+  // whenever icp_odometry has a brief lock hiccup, even with a recovery
+  // watchdog that fixes it within seconds) and returns a default-constructed
+  // Pose instead of propagating the failure. That default pose's position is
+  // world-origin (0,0,0) -- nowhere near this robot's real map coordinates --
+  // so every downstream step (frontier_search seeded from the wrong spot,
+  // Nav2 goals sent to garbage coordinates, "Robot out of costmap bounds")
+  // was actually reacting to a silently-failed pose lookup, not a real
+  // planning problem. A default geometry_msgs::msg::Pose's orientation is
+  // (0,0,0,0) -- an invalid, unnormalized quaternion no real TF lookup could
+  // ever produce -- so it's a reliable, already-present sentinel for exactly
+  // this failure, without needing to change getRobotPose()'s own signature.
+  // Skip this cycle entirely and retry on the next timer tick (typically
+  // within ~2s at this node's own planner_frequency) instead of acting on a
+  // garbage position.
+  if (pose.orientation.x == 0.0 && pose.orientation.y == 0.0 &&
+      pose.orientation.z == 0.0 && pose.orientation.w == 0.0) {
+    RCLCPP_WARN(logger_, "Skipping this planning cycle -- robot pose lookup "
+                         "failed (TF not ready), not a real \"no frontiers\" "
+                         "state. Will retry next cycle.");
+    return;
+  }
+
   // get frontiers sorted according to cost
   auto frontiers = search_.searchFrom(pose.position);
   RCLCPP_DEBUG(logger_, "found %lu frontiers", frontiers.size());
@@ -255,7 +292,7 @@ void Explore::makePlan()
   auto frontier =
       std::find_if_not(frontiers.begin(), frontiers.end(),
                        [this](const frontier_exploration::Frontier& f) {
-                         return goalOnBlacklist(f.centroid);
+                         return goalOnBlacklist(f.target);
                        });
   if (frontier == frontiers.end()) {
     RCLCPP_WARN(logger_, "All frontiers traversed/tried out, stopping.");
@@ -265,7 +302,18 @@ void Explore::makePlan()
     stop(true);
     return;
   }
-  geometry_msgs::msg::Point target_position = frontier->centroid;
+  // Real, live-diagnosed problem (2026-08-27, see frontier_search.h's own
+  // comment on Frontier::target for the full story): centroid is a plain
+  // arithmetic average of every member cell -- fine for a roughly convex
+  // blob, but a naive average of an irregular or wall-hugging frontier can
+  // land in unknown/inflated space with no real cell nearby, which Nav2's
+  // planner then can't terminate a plan at ("Failed to create plan with
+  // tolerance..."), confirmed live, repeatedly, across several different
+  // real frontiers once the earlier robot-adjacency centroid bug was fixed
+  // and genuinely distant targets started actually being tried. `target` is
+  // always a real, actual frontier cell (guaranteed adjacent to real free
+  // space) -- combines both fixes.
+  geometry_msgs::msg::Point target_position = frontier->target;
 
   // time out if we are not making any progress
   bool same_goal = same_point(prev_goal_, target_position);

@@ -285,34 +285,61 @@ def generate_launch_description():
     speed_tuning_defaults = os.path.join(
         get_package_share_directory('cavex_tracked_vehicle'),
         'config', 'tracked_vehicle_speed_tuning.parm')
-    ardupilot_sitl_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(pkg_ardupilot_sitl, 'launch', 'sitl_dds_udp.launch.py')
-        ),
-        launch_arguments={
-            'command': 'ardurover',
-            'model': 'rover',
-            'defaults': f'{rover_defaults},{dds_udp_defaults},{speed_tuning_defaults}',
-            'synthetic_clock': 'False',
-            'use_sim_time': 'False',
-        }.items(),
-    )
+    # UNPLUGGED FOR NOW (real request, 2026-08-27): ArduPilot's Rover SITL
+    # instance never clears its AHRS prearm check in this environment (stuck
+    # repeating "PreArm: AHRS: not using configured AHRS type"), so it never
+    # arms and never actually drives the vehicle -- confirmed live, repeatedly,
+    # this whole session. Autonomous driving already runs entirely through the
+    # gz-transport bypass instead (cmd_vel_gz_bridge.py, tracked_vehicle_slam.
+    # launch.py), same as manual control (manual_gui_bridge.py) -- so
+    # ardurover + this node were pure dead weight: a real CPU/DDS-participant
+    # cost (ardurover, mavproxy, micro_ros_agent, this node) contributing to
+    # this environment's already-severe CPU oversubscription, for a control
+    # path nothing downstream actually uses right now. Left commented rather
+    # than deleted -- easy to re-enable once the AHRS issue is fixed and the
+    # ArduPilot path is worth reconnecting.
+    # ardupilot_sitl_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         os.path.join(pkg_ardupilot_sitl, 'launch', 'sitl_dds_udp.launch.py')
+    #     ),
+    #     launch_arguments={
+    #         'command': 'ardurover',
+    #         'model': 'rover',
+    #         'defaults': f'{rover_defaults},{dds_udp_defaults},{speed_tuning_defaults}',
+    #         'synthetic_clock': 'False',
+    #         'use_sim_time': 'False',
+    #     }.items(),
+    # )
 
-    cmd_vel_to_ardupilot = Node(
-        package='cavex_tracked_vehicle',
-        executable='cmd_vel_to_ardupilot.py',
-        name='cmd_vel_to_ardupilot',
-        output='screen',
-        parameters=[{'use_sim_time': True}],
-    )
+    # cmd_vel_to_ardupilot = Node(
+    #     package='cavex_tracked_vehicle',
+    #     executable='cmd_vel_to_ardupilot.py',
+    #     name='cmd_vel_to_ardupilot',
+    #     output='screen',
+    #     parameters=[{'use_sim_time': True}],
+    # )
 
-    track_cmd_vel_bridge_node = Node(
-        package='cavex_tracked_vehicle',
-        executable='track_cmd_vel_bridge.py',
-        name='track_cmd_vel_bridge',
-        output='screen',
-        parameters=[{'use_sim_time': True}],
-    )
+    # DISABLED (real, live-diagnosed conflict, 2026-08-27): this node relays
+    # ArduPilot's real control-law output onto the SAME gz-transport
+    # /model/cavex_tracked_blueboat/cmd_vel topic manual_gui_bridge.py and
+    # cmd_vel_gz_bridge.py (tracked_vehicle_slam.launch.py) already drive
+    # directly, bypassing ArduPilot -- see manual_gui_bridge.py's and
+    # cmd_vel_gz_bridge.py's own docstrings for why: ArduPilot's Rover SITL
+    # never clears its AHRS prearm check in this environment, so this node
+    # was continuously republishing a near-zero, meaningless "filtered"
+    # velocity that drowned out the working bypass's real commands (same
+    # "two competing publishers on one topic" confound this file's own
+    # history already flagged once for manual testing -- this is the
+    # autonomous-driving instance of the identical bug). Node/package left
+    # intact; only this launch entry is removed, easy to re-enable once the
+    # ArduPilot AHRS issue is actually fixed.
+    # track_cmd_vel_bridge_node = Node(
+    #     package='cavex_tracked_vehicle',
+    #     executable='track_cmd_vel_bridge.py',
+    #     name='track_cmd_vel_bridge',
+    #     output='screen',
+    #     parameters=[{'use_sim_time': True}],
+    # )
 
     track_retract_control = Node(
         package='cavex_tracked_vehicle',
@@ -414,9 +441,6 @@ def generate_launch_description():
         robot_state_publisher,
         spawn_x500_cargo,
         gz_bridge,
-        ardupilot_sitl_launch,
-        cmd_vel_to_ardupilot,
-        track_cmd_vel_bridge_node,
         track_retract_control,
         vehicle_switch_node,
         manual_gui_bridge,

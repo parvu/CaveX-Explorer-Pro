@@ -15,6 +15,7 @@ find_package(ros_gz_sim REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(ardupilot_msgs REQUIRED)
+find_package(rtabmap_msgs REQUIRED)
 
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
@@ -43,6 +44,8 @@ install(PROGRAMS
   cavex_tracked_vehicle/manual_gui_bridge.py
   cavex_tracked_vehicle/boat_buoyancy_control.py
   cavex_tracked_vehicle/boat_thruster_control.py
+  cavex_tracked_vehicle/bootstrap_nudge_node.py
+  cavex_tracked_vehicle/cmd_vel_gz_bridge.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

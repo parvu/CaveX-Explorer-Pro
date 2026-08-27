@@ -2,7 +2,9 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, IncludeLaunchDescription, TimerAction
+from launch.actions import EmitEvent, IncludeLaunchDescription, RegisterEventHandler, TimerAction
+from launch.event_handlers import OnProcessIO
+from launch.events.process import ShutdownProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -118,6 +120,21 @@ def generate_launch_description():
             'qos': 2,
             'Icp/PointToPlane': 'true',
             'Icp/VoxelSize': '0.1',
+            # Real, live-diagnosed problem (2026-08-27, see bootstrap_nudge_node.py's
+            # own module docstring for the full story): once icp_odometry loses
+            # tracking it gets permanently stuck ("RegistrationIcp cannot do
+            # registration with a null guess", ratio pinned at 0.0 forever) --
+            # it has no prior guess transform left to seed a fresh registration
+            # attempt, and default behavior never resets that state on its own.
+            # This is RTAB-Map's own documented parameter for exactly this
+            # situation: reset odometry's internal state (drop the stale guess
+            # requirement) after this many CONSECUTIVE frames it couldn't
+            # compute odometry for, so a later attempt can re-bootstrap from
+            # scratch instead of staying wedged forever. Small value (a few
+            # frames at this node's ~2-5Hz update rate, not many seconds) --
+            # this is a genuine dead end being cleared, not a normal transient
+            # to tolerate.
+            'Odom/ResetCountdown': '3',
         }],
         remappings=[
             ('scan_cloud', '/lidar/points'),
@@ -287,9 +304,44 @@ def generate_launch_description():
     # a normal-looking connection), which is why the first fix looked
     # complete at the time it landed but didn't actually resolve
     # autonomous exploration on its own.
-    explore_node = TimerAction(
-        period=320.0,
-        actions=[Node(
+    # Real, live-diagnosed problem (2026-08-27), found once bootstrap_nudge_node
+    # (below) became adaptive: this fixed 320s delay was originally sized to
+    # match the OLD fixed-300s nudge (wait for that nudge's driving window to
+    # finish, then a little more). Now that the nudge stops in seconds on a
+    # normal run, this same fixed 320s delay instead leaves the vehicle sitting
+    # completely still for most of that window -- and standing still that long
+    # turned out to be enough for icp_odometry to LOSE the very lock the nudge
+    # just gave it (confirmed live: icp_inliers_ratio held a stable 0.966 for
+    # ~380 consecutive readings while idle, then dropped to lost=true around
+    # the 700s mark), breaking odom->base_link TF and producing exactly the
+    # "map and base_link are not part of the same tree" error explore_node
+    # itself then logs when it tries to start. Not a race, not a costmap
+    # timing issue -- the delay itself was the bug once the nudge got fast.
+    # Fix: start explore_node the moment bootstrap_nudge_node actually exits
+    # (see RegisterEventHandler below) instead of guessing a fixed delay that
+    # no longer matches how long the nudge really runs.
+    # Real, live-diagnosed THIRD variant of this same problem: even with
+    # EXPLORE_START_GRACE_S above, explore_node's first search can still land
+    # on a costmap snapshot too sparse to have any frontier YET (the
+    # bootstrap nudge now drives so briefly that the initially-mapped bubble
+    # is tiny) -- and explore.cpp's own "No frontiers found, stopping." is a
+    # PERMANENT stop with no self-retry (this file's older comment on
+    # explore_node above already found this reading the vendored source
+    # directly). Confirmed live, twice: costmap genuinely had 900+ free cells
+    # bordering unknown space within seconds of explore_node giving up, and
+    # simply restarting the process picked up a real goal immediately.
+    # Bounded auto-retry below reproduces that exact manual fix automatically
+    # instead of needing a human to notice and restart it: watches
+    # explore_node's own stdout for that exact message and respawns it after
+    # another grace period, capped at MAX_EXPLORE_RETRIES so a genuine
+    # "actually done exploring" stop (no more real frontiers anywhere) still
+    # ends up stopped for good, same as before this existed -- it just no
+    # longer gets stuck on a false stop from an immature costmap.
+    MAX_EXPLORE_RETRIES = 2
+    EXPLORE_RETRY_DELAY_S = 20.0
+
+    def _make_explore_node():
+        return Node(
             package='explore_lite',
             executable='explore',
             name='explore_node',
@@ -302,9 +354,57 @@ def generate_launch_description():
                 'planner_frequency': 0.5,
                 'progress_timeout': 30.0,
                 'robot_base_frame': frame_id,
+                # Real, live-diagnosed problem (2026-08-27): explore_lite's own
+                # frontier centroid can land almost on the robot when a
+                # frontier blob wraps around it (lidar self-occlusion merged
+                # with real nearby unexplored space) -- confirmed live,
+                # goals sent ~0.16m from the robot, well inside Nav2's
+                # xy_goal_tolerance (0.25m), so every goal "completed"
+                # instantly with zero real driving. Patched explore_lite
+                # itself (frontier_search.cpp, vendored in this workspace)
+                # to exclude cells within this radius from a frontier's
+                # centroid/size calculation while still traversing them for
+                # connectivity -- see that file's own comment for the full
+                # mechanism. 0.6 = 2x this vehicle's own robot_radius (0.3,
+                # tracked_vehicle_nav2_params.yaml), covering its real
+                # footprint plus margin without swallowing genuinely close
+                # real frontiers.
+                'robot_exclusion_radius': 0.6,
             }],
-        )],
-    )
+        )
+
+    def _spawn_explore_node(retry_count=0):
+        node = _make_explore_node()
+        entities = [node]
+        if retry_count < MAX_EXPLORE_RETRIES:
+            # Real bug caught testing this live: RCLCPP_WARN (what explore.cpp
+            # uses for "No frontiers found, stopping.") writes to stderr by
+            # rclcpp's own default, not stdout -- an on_stdout-only handler here
+            # never saw it and the retry silently never fired. Watch both.
+            #
+            # Second real bug caught testing this live, right after fixing the
+            # first: a retry here just STARTS a new explore_node Node action --
+            # ros2 launch does not stop the old one for you, so each retry left
+            # the previous, already-given-up instance running forever. Confirmed
+            # live: three separate explore_node processes ended up alive at
+            # once, all still subscribed to the same costmap/move_base topics,
+            # extra CPU load on top of the actual problem. Explicitly shut the
+            # stale instance down before spawning its replacement.
+            def _on_io(event, retry_count=retry_count):
+                text = bytes(event.text).decode(errors='replace')
+                if 'No frontiers found, stopping.' not in text:
+                    return None
+                return [
+                    EmitEvent(event=ShutdownProcess(
+                        process_matcher=lambda action, n=node: action is n)),
+                    TimerAction(
+                        period=EXPLORE_RETRY_DELAY_S,
+                        actions=_spawn_explore_node(retry_count + 1),
+                    ),
+                ]
+            entities.append(RegisterEventHandler(OnProcessIO(
+                target_action=node, on_stdout=_on_io, on_stderr=_on_io)))
+        return entities
 
     # Real request: "implement dead end algorithm: backtrack until another
     # opening or corridor is found." Nav2's own stock BackUp recovery (see
@@ -364,20 +464,95 @@ def generate_launch_description():
     # earlier "150 messages should be comfortably more than enough" comment
     # was wrong: it reasoned from sim-time-equivalent distance, not
     # accounting for how little sim-time 30 *real* seconds actually
-    # advances at RTF~0.03 (roughly 1 sim-second). 1500 messages at 5Hz
-    # (300 real seconds / 5 minutes) is calibrated against this
-    # environment's real, observed worst-case RTF (~0.017) to reliably
-    # cover the ~15 sim-seconds of continuous driving this project's own
-    # manual verification runs needed to get icp_odometry's ratio above
-    # its registration threshold in this same cave section.
+    # advances at RTF~0.03 (roughly 1 sim-second). A fixed 1500-message/300s
+    # burst (calibrated against this environment's real, observed
+    # worst-case RTF ~0.017) reliably bootstrapped icp_odometry, but pinned
+    # EVERY launch to that worst case even on a good-RTF run, and kept
+    # driving blind after bootstrap had already succeeded, competing with
+    # any other /cmd_vel publisher for however much of the 300s remained.
+    #
+    # Smaller nudge: bootstrap_nudge_node.py drives at the same linear.x=0.3
+    # but watches icp_odometry's own /odom_info (rtabmap_msgs/OdomInfo)
+    # live and stops the instant icp_inliers_ratio reports real bootstrap
+    # success, instead of always waiting out the worst case. 300s is kept
+    # as MAX_DURATION_S inside that node -- a safety ceiling, not a target
+    # -- so a genuinely bad-RTF run is no worse off than the old fixed
+    # nudge; a normal run now stops far sooner.
+    # Real, live-diagnosed problem: autonomous /cmd_vel (Nav2's collision_monitor
+    # output, and dead_end_backtrack_node's own direct publishes) was reaching
+    # cmd_vel_to_ardupilot.py correctly, but ArduPilot's Rover SITL never arms in
+    # this environment (stuck repeating "PreArm: AHRS: not using configured AHRS
+    # type" -- confirmed live in the SITL console) -- so every autonomous command
+    # was silently swallowed and the vehicle never physically moved, while
+    # manual_gui_bridge's own gz-transport bypass (below) worked fine. Gives
+    # autonomous driving the same working bypass; see cmd_vel_gz_bridge.py's own
+    # module docstring for the full mechanism, including how it yields to manual
+    # control instead of fighting it for the same gz-transport topic.
+    cmd_vel_gz_bridge = Node(
+        package='cavex_tracked_vehicle',
+        executable='cmd_vel_gz_bridge.py',
+        name='cmd_vel_gz_bridge',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
+    bootstrap_nudge_node_action = Node(
+        package='cavex_tracked_vehicle',
+        executable='bootstrap_nudge_node.py',
+        name='bootstrap_nudge_node',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
     bootstrap_nudge = TimerAction(
         period=5.0,
-        actions=[ExecuteProcess(
-            cmd=['ros2', 'topic', 'pub', '-r', '5', '--times', '1500',
-                 '/cmd_vel', 'geometry_msgs/msg/Twist',
-                 '{linear: {x: 0.3}}'],
-            output='screen',
-        )],
+        actions=[bootstrap_nudge_node_action],
+    )
+
+    # explore_node starts shortly after bootstrap_nudge_node's INITIAL
+    # bootstrap completes (whether that's a few seconds in on a normal run or
+    # the full 300s ceiling on a bad-RTF one) instead of a fixed delay sized
+    # for the old, always-300s nudge -- see explore_node's own comment above
+    # for that half of the bug.
+    #
+    # Real, live-diagnosed SECOND half of the same bug (found when the naive
+    # "start explore_node the instant the nudge exits" version was tried
+    # first): the old 320s delay wasn't only there to outlast the nudge, it
+    # was ALSO covering a separate, already-documented race -- explore_node
+    # connects to Nav2's move_base server and can run its first frontier
+    # search before RTAB-Map has published a stable `map` frame from the
+    # nudge's own real motion (see this file's much older comment on
+    # explore_node above, "Real, live-diagnosed premature-stop bug", for the
+    # original discovery of that race). With the nudge now bootstrapping in
+    # ~1-2s, starting explore_node with zero delay reproduces that exact race
+    # again -- confirmed live: "No frontiers found, stopping" fired within
+    # ~40s of the nudge exiting, while the costmap genuinely had free cells
+    # bordering unknown space moments later. EXPLORE_START_GRACE_S is a
+    # small, fixed cushion for RTAB-Map to publish that stable map frame --
+    # unlike the old 320s, this is on top of an adaptive nudge exit, not
+    # instead of one, so it stays small regardless of this environment's RTF.
+    #
+    # Real, live-diagnosed THIRD half of this same story: bootstrap_nudge_node
+    # no longer exits after its initial bootstrap -- it stays alive as a
+    # watchdog for the whole launch, re-driving whenever icp_odometry loses
+    # lock again later (see bootstrap_nudge_node.py's own module docstring for
+    # why that's necessary). Since there's no more process exit to key off,
+    # watch its stdout for the distinct "initial bootstrap complete" line
+    # instead (same OnProcessIO technique already used for explore_node's own
+    # auto-retry below).
+    EXPLORE_START_GRACE_S = 20.0
+
+    def _on_bootstrap_stdout(event):
+        text = bytes(event.text).decode(errors='replace')
+        if 'initial bootstrap complete' not in text:
+            return None
+        return [TimerAction(period=EXPLORE_START_GRACE_S, actions=_spawn_explore_node(0))]
+
+    start_explore_after_nudge = RegisterEventHandler(
+        event_handler=OnProcessIO(
+            target_action=bootstrap_nudge_node_action,
+            on_stdout=_on_bootstrap_stdout,
+            on_stderr=_on_bootstrap_stdout,
+        )
     )
 
     # Task 13: ATE measurement harness. tracked_vehicle_ground_truth_odom.py
@@ -442,8 +617,9 @@ def generate_launch_description():
         rtabmap,
         slam_pose_publisher,
         nav2_bringup_launch,
-        explore_node,
+        start_explore_after_nudge,
         dead_end_backtrack_node,
+        cmd_vel_gz_bridge,
         bootstrap_nudge,
         ate_evaluator,
         tracked_vehicle_ground_truth_odom,

@@ -14,11 +14,13 @@ using nav2_costmap_2d::NO_INFORMATION;
 
 FrontierSearch::FrontierSearch(nav2_costmap_2d::Costmap2D* costmap,
                                double potential_scale, double gain_scale,
-                               double min_frontier_size, rclcpp::Logger logger)
+                               double min_frontier_size, rclcpp::Logger logger,
+                               double robot_exclusion_radius)
   : costmap_(costmap)
   , potential_scale_(potential_scale)
   , gain_scale_(gain_scale)
   , min_frontier_size_(min_frontier_size)
+  , robot_exclusion_radius_(robot_exclusion_radius)
   , logger_(logger)
 {
 }
@@ -105,6 +107,8 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
   output.centroid.y = 0;
   output.size = 1;
   output.min_distance = std::numeric_limits<double>::infinity();
+  unsigned int centroid_contributors = 0;  // cells actually folded into centroid/size below
+  double target_min_distance = std::numeric_limits<double>::infinity();
 
   // record initial contact point for frontier
   unsigned int ix, iy;
@@ -136,26 +140,61 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
         costmap_->indexToCells(nbr, mx, my);
         costmap_->mapToWorld(mx, my, wx, wy);
 
-        geometry_msgs::msg::Point point;
-        point.x = wx;
-        point.y = wy;
-        output.points.push_back(point);
-
-        // update frontier size
-        output.size++;
-
-        // update centroid of frontier
-        output.centroid.x += wx;
-        output.centroid.y += wy;
-
         // determine frontier's distance from robot, going by closest gridcell
         // to robot
         double distance = sqrt(pow((double(reference_x) - double(wx)), 2.0) +
                                pow((double(reference_y) - double(wy)), 2.0));
+
+        // Real, live-diagnosed problem (2026-08-27): a frontier blob that
+        // wraps around the robot's own position (lidar self-occlusion cells
+        // immediately around/behind the vehicle, merged into a real larger
+        // unexplored region nearby) can have a centroid -- the simple average
+        // of every member cell, used below as the actual navigation target --
+        // that lands almost ON the robot even though the real unexplored
+        // cells extend well past robot_exclusion_radius_ in various
+        // directions. Confirmed live: explore_node kept sending goals ~0.16m
+        // from the robot's real position (well inside Nav2's xy_goal_tolerance
+        // of 0.25m), so every goal "completed" instantly with zero real
+        // driving, over and over. Cells this close to the robot are still
+        // walked (kept in the BFS below, still flagged so they're not
+        // reconsidered) so the frontier's connectivity and coverage-area
+        // reporting are unaffected -- they're just excluded from the
+        // centroid/size/points accumulation that decides WHERE to drive,
+        // pulling the actual goal out toward the real unexplored bulk instead
+        // of the self-occlusion cells nearest the vehicle. min_distance/middle
+        // (the frontier's real closest-approach point) are intentionally left
+        // untouched -- unrelated to this bug, still meant to reflect the true
+        // nearest cell for any other cost-function use.
         if (distance < output.min_distance) {
           output.min_distance = distance;
           output.middle.x = wx;
           output.middle.y = wy;
+        }
+
+        if (distance >= robot_exclusion_radius_) {
+          geometry_msgs::msg::Point point;
+          point.x = wx;
+          point.y = wy;
+          output.points.push_back(point);
+
+          // update frontier size
+          output.size++;
+
+          // update centroid of frontier
+          output.centroid.x += wx;
+          output.centroid.y += wy;
+          centroid_contributors++;
+
+          // closest REAL frontier cell (always an actual, reachable frontier
+          // cell -- never a synthetic average) that's still far enough from
+          // the robot -- see this struct's own comment on `target` in
+          // frontier_search.h for why this replaced centroid as the actual
+          // navigation goal.
+          if (distance < target_min_distance) {
+            target_min_distance = distance;
+            output.target.x = wx;
+            output.target.y = wy;
+          }
         }
 
         // add to queue for breadth first search
@@ -164,9 +203,19 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
     }
   }
 
-  // average out frontier centroid
-  output.centroid.x /= output.size;
-  output.centroid.y /= output.size;
+  // average out frontier centroid. Edge case: every member cell fell within
+  // robot_exclusion_radius_ (a genuinely tiny, close blob, no larger area
+  // beyond it) -- output.size/centroid never got a real contribution above,
+  // so dividing here would land on the costmap origin, not a sane point.
+  // Fall back to the frontier's own real closest-approach cell (middle,
+  // tracked unconditionally above) instead.
+  if (centroid_contributors == 0) {
+    output.centroid = output.middle;
+    output.target = output.middle;
+  } else {
+    output.centroid.x /= output.size;
+    output.centroid.y /= output.size;
+  }
   return output;
 }
 

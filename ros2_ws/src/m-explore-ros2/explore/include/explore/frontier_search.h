@@ -16,6 +16,20 @@ struct Frontier {
   geometry_msgs::msg::Point initial;
   geometry_msgs::msg::Point centroid;
   geometry_msgs::msg::Point middle;
+  // Real, live-diagnosed problem (2026-08-27): explore.cpp used to navigate to
+  // `centroid` (a plain arithmetic average of every member cell) -- fine for a
+  // roughly convex blob, but a naive average of an irregularly-shaped or
+  // wall-hugging frontier can land in unknown/inflated space with no real,
+  // reachable cell nearby, which Nav2's planner then can't terminate a plan
+  // at ("Failed to create plan with tolerance..."), confirmed live,
+  // repeatedly, across several different real frontiers. `target` is the
+  // closest ACTUAL frontier cell (guaranteed real, adjacent to real free
+  // space, by definition of being a frontier cell at all) that is also at
+  // least robot_exclusion_radius_ away from the robot -- combines the fix
+  // for that bug with the earlier robot-adjacency fix (see this struct's
+  // `centroid` field's own history in frontier_search.cpp) in one target
+  // point. This is what explore.cpp actually navigates to now.
+  geometry_msgs::msg::Point target;
   std::vector<geometry_msgs::msg::Point> points;
 };
 
@@ -33,7 +47,8 @@ public:
    * @param costmap Reference to costmap data to search.
    */
   FrontierSearch(nav2_costmap_2d::Costmap2D* costmap, double potential_scale,
-                 double gain_scale, double min_frontier_size, rclcpp::Logger logger);
+                 double gain_scale, double min_frontier_size, rclcpp::Logger logger,
+                 double robot_exclusion_radius = 0.0);
 
   /**
    * @brief Runs search implementation, outward from the start position
@@ -81,6 +96,7 @@ private:
   unsigned int size_x_, size_y_;
   double potential_scale_, gain_scale_;
   double min_frontier_size_;
+  double robot_exclusion_radius_;
   rclcpp::Logger logger_;
 };
 }  // namespace frontier_exploration
