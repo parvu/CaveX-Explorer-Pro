@@ -26,7 +26,7 @@
     <parent link="base_link"/>
     <child link="left_track_retract_mount"/>
     <axis xyz="1 0 0"/>
-    <limit lower="0.0" upper="3.1" effort="50" velocity="1.0"/>
+    <limit lower="0.0" upper="3.1" effort="50" velocity="3.0"/>
   </joint>
 
   <link name="right_track_retract_mount"/>
@@ -34,7 +34,7 @@
     <parent link="base_link"/>
     <child link="right_track_retract_mount"/>
     <axis xyz="1 0 0"/>
-    <limit lower="0.0" upper="3.1" effort="50" velocity="1.0"/>
+    <limit lower="0.0" upper="3.1" effort="50" velocity="3.0"/>
   </joint>
 
   <ros2_control name="GazeboSimSystem" type="system">

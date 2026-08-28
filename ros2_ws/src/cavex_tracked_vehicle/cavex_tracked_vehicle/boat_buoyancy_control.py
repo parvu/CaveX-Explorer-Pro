@@ -48,12 +48,12 @@ from gz.msgs10.entity_pb2 import Entity
 # wise).
 WATER_BOUNDARY_X = 5.0
 
-# Sum of every <mass> in model.sdf.tracked, re-confirmed live 2026-08-27
-# via `gz model -m cavex_tracked_blueboat` (15 links: base_link 32.6 +
-# 2x motor 0.2 + 2x track 1.5 + 2x strut 0.15 + 2x retract_mount 0.1 +
-# imu/lidar 0.1 + camera 0.05 + tether_anchor 0.2 + bluerov2_link 10.05
-# + helipad 0.5) = 47.5 kg.
-VEHICLE_MASS_KG = 47.5
+# Sum of every <mass> in model.sdf.tracked. Was 47.5 kg over 15 links
+# (base_link 32.6 + 2x motor 0.2 + 2x track 1.5 + 2x strut 0.15 + 2x
+# retract_mount 0.1 + imu/lidar 0.1 + camera 0.05 + tether_anchor 0.2 +
+# bluerov2_link 10.05 + helipad 0.5). 2026-08-28: x500 fused in as a
+# fixed decor child link (+2.064 kg) -> 49.56 kg.
+VEHICLE_MASS_KG = 49.56
 GRAVITY = 9.81
 WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 
@@ -70,26 +70,31 @@ WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 # Target base_link Z while floating. Derived, not guessed:
 #   water surface z = 6.0 (cavex_world.world water_surface pose)
 #   hull_collision bbox top sits at local z=0 (base_link Z == hull-top Z)
-#   real request 2026-08-27: hull top 6-12cm proud of the water -> aim
-#   for the middle, +9cm.
-WATER_SURFACE_Z = 6.0
-TARGET_FREEBOARD = 0.09
-TARGET_FLOAT_Z = WATER_SURFACE_Z + TARGET_FREEBOARD   # 6.09
+#   real request 2026-08-28: hull top exactly 6cm proud of the water.
+WATER_SURFACE_Z = 7.0   # cavex_world.world water_surface pose (raised 6.0 -> 7.0 on 2026-08-28)
+TARGET_FREEBOARD = 0.06
+TARGET_FLOAT_Z = WATER_SURFACE_Z + TARGET_FREEBOARD   # 7.06
 
-# Real request 2026-08-27: "recalculate buoyancy ... so it naturally floats
-# 6-12cm above water". Root cause of the earlier ~0.3m submersion was NOT
-# this law -- it was the world gz-sim-buoyancy-system plugin silently
-# lifting the boat and overpowering this node (see cavex_world.world). With
-# that removed, this node is the sole vertical authority, so a plain
-# feedforward + stiff P + D is enough: WEIGHT_N is the measured 47.5kg
-# weight (exact feedforward -> zero nominal error), and the only residual
-# disturbance left (lift lost to heel, drag/offset coupling) is small
-# enough that KZ=700 holds it inside a few cm of TARGET_FLOAT_Z. No
-# integral term -> no windup to chase.
+# Root cause of the earlier "won't settle / floats too high" was NOT this
+# law: (1) the world gz-sim-buoyancy-system plugin was silently lifting the
+# boat -- removed (see cavex_world.world); (2) the water_ceiling collision
+# box was catching the mast/x500 -- raised; (3) test-only: gz set_pose on
+# the boat leaves the DetachableJoint-attached x500 behind, and the
+# stretched joint's constraint forces pin base_link (a -3000N test wrench
+# could not move it) -- teleport x500 with the boat, or drive in.
+#
+# feedforward WEIGHT_N (measured 47.5kg) + stiff P (KZ) + D (DZ) gets
+# within ~3cm; a tightly-bounded integral removes the residual (mostly the
+# ~20N of x500 weight transmitted through the helipad joint) so it settles
+# exactly at TARGET_FLOAT_Z. The clamp (|I| <= KI_CLAMP) caps the integral
+# term at +-KI*KI_CLAMP = +-36N -- enough for that offset, far too small to
+# run away even if some larger disturbance appears.
 KZ = 700.0    # N per meter of Z error
+KI = 200.0    # N per (meter*second) of accumulated Z error
+KI_CLAMP = 0.50  # |integral| bound -> KI term bounded to +-100 N
 DZ = 350.0    # N per (m/s) of Z velocity -- ~critical damping
               # (c_crit = 2*sqrt(KZ*m) ~= 365)
-MAX_LIFT_N = 1200.0
+MAX_LIFT_N = 800.0  # headroom over the ~486N hover point, not a rocket
 
 # Real request 2026-08-27: "add water drag". Without it the model has
 # almost no resistance -- a 4s thrust burst coasted the boat ~30m. Applied
@@ -153,10 +158,24 @@ class BoatBuoyancyControl(Node):
         self.gz_pub = gz_pub
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
         self._prev = None  # (t, x, y, z, roll, pitch, yaw)
+        self._z_i = 0.0    # bounded Z-error integral (see KI / KI_CLAMP)
+        # gz-sim ApplyLinkWrench applies a plain /world/.../wrench message
+        # for exactly ONE physics step, and the /wrench/persistent topic
+        # ACCUMULATES a new entry per message (never dedupes by entity ->
+        # republishing at any rate makes the force run away). So the odom
+        # callback only COMPUTES the wrench; this ~physics-rate timer
+        # re-publishes the current one every step, giving a continuous
+        # force without accumulation.
+        self._wrench = None
+        self.create_timer(1.0 / 250.0, self._republish)
         self.get_logger().info(
             f"boat_buoyancy_control ready: applying lift only while "
             f"x > {WATER_BOUNDARY_X} (target float Z={TARGET_FLOAT_Z:.2f}, "
-            f"P+D lift + drag).")
+            f"P+I+D lift + drag, 250Hz re-publish).")
+
+    def _republish(self):
+        if self._wrench is not None:
+            self.gz_pub.publish(self._wrench)
 
     def _odom_cb(self, msg: Odometry):
         t = self.get_clock().now().nanoseconds * 1e-9
@@ -169,6 +188,7 @@ class BoatBuoyancyControl(Node):
 
         if x <= WATER_BOUNDARY_X:
             self._prev = None
+            self._z_i = 0.0
             self._publish_wrench(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
             return
 
@@ -186,7 +206,10 @@ class BoatBuoyancyControl(Node):
         self._prev = (t, x, y, z, roll, pitch, yaw)
 
         z_err = TARGET_FLOAT_Z - z
-        lift = max(0.0, min(MAX_LIFT_N, WEIGHT_N + KZ * z_err - DZ * vz))
+        if dt > 1e-3:
+            self._z_i = max(-KI_CLAMP, min(KI_CLAMP, self._z_i + z_err * dt))
+        lift_raw = WEIGHT_N + KZ * z_err + KI * self._z_i - DZ * vz
+        lift = max(0.0, min(MAX_LIFT_N, lift_raw))
 
         torque_x = -LEVEL_KP * roll - ANGULAR_DAMPING * roll_rate
         torque_y = -LEVEL_KP * pitch - ANGULAR_DAMPING * pitch_rate
@@ -214,7 +237,7 @@ class BoatBuoyancyControl(Node):
         w.wrench.torque.x = torque_x
         w.wrench.torque.y = torque_y
         w.wrench.torque.z = torque_z
-        self.gz_pub.publish(w)
+        self._wrench = w  # applied every step by _republish()
 
 
 def main(args=None):

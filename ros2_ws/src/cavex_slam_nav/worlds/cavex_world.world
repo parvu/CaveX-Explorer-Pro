@@ -196,33 +196,37 @@
         <mode>speed</mode>
       </plugin>
     </gui>
-    <physics name="4ms" type="ode">
+    <physics name="4ms" type="bullet">
       <max_step_size>0.004</max_step_size>
       <real_time_factor>1.0</real_time_factor>
-      <!-- Raised ODE solver iterations 50 (gz-sim default) -> 200: the
-           tracked vehicle's track collision boxes need real anisotropic
-           friction (mu2=50+, see model.sdf.tracked's own track collision
-           comment) to convert commanded track speed into correct real
-           speed, not just correct direction -- but at the gz-sim default
-           iteration count, any mu2 above ~5-10 caused real, measured RTF
-           collapse (0.6+ -> ~0.09) on this world's dense, irregular cave-
-           floor mesh (box-vs-uneven-mesh contact at high friction is a
-           known ODE solver stiffness source; the gz-sim reference
-           tracked-vehicle example that uses mu2=150 successfully runs on
-           a flat <plane> ground, not a mesh like this one). More solver
-           iterations per step is the standard fix for exactly this
-           class of stiff-contact convergence problem. -->
-      <ode>
-        <solver>
-          <iters>200</iters>
-        </solver>
-      </ode>
+      <!-- Real bug fixed 2026-08-28: engine switched ODE -> bullet-
+           featherstone (see the Physics system plugin below). Two hard
+           facts found via `gz sim -v4`:
+           (1) gz-sim Harmonic ships NO ODE engine plugin, so <physics
+               type="ode"> silently ran on dartsim -- the old <ode><solver>
+               <iters>200</iters> block here was a dead no-op the whole
+               time.
+           (2) dartsim cannot build collision from an SDF <mesh> ("Mesh
+               construction from an SDF has not been implemented yet for
+               dartsim"), so cave_world's mesh collision AND the boat's
+               blueboat_hull_collision.stl had NO collision body -- the
+               vehicle was floating/resting on primitive boxes only.
+           bullet-featherstone loads both mesh collisions with no error,
+           and RTF on this world went 0.014 -> ~0.98 (the "RTF collapse"
+           this comment used to blame on ODE solver iters was really
+           dartsim struggling with this world). -->
     </physics>
 
     <!-- Ported from Gazebo Classic (gzserver/gazebo_ros) to Gazebo Harmonic
          (gz-sim). Adding any explicit <plugin> disables gz-sim's implicit
-         default plugin set, so everything needed has to be listed here. -->
-    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+         default plugin set, so everything needed has to be listed here.
+         <engine><filename> selects the physics engine (equivalent to
+         `gz sim --physics-engine ...`). -->
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics">
+      <engine>
+        <filename>gz-physics-bullet-featherstone-plugin</filename>
+      </engine>
+    </plugin>
     <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
     <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
@@ -354,27 +358,52 @@
          was abandoned rather than patched further given time already
          invested; if resuming work there, redo the vertex-density check
          from this comment before trusting anything in that zone. -->
-    <!-- Real bug fixed 2026-08-27: this slab's z=5.9 top ran the full
-         x[-40,70], i.e. straight under the whole flooded basin -- so a
-         boat "floating" anywhere in the water was really just resting on
-         this slab 0.1m under the surface, and the 3m basin depth
-         (entry_ramp -> basin_floor at z=3) was unreachable. Clipped to
-         x[-40,10]: it now only carries the DRY approach up to the water's
-         west shore (x=10, where entry_ramp takes over). size_x 110 -> 50,
-         center_x 15 -> -15. -->
+    <!-- 2026-08-27: clipped from x[-40,70] to the DRY approach only so the
+         flooded basin has real depth.
+         2026-08-28: flat part ends at x=-10; cave_entry_ramp below carries
+         x[-10,5] down from z=5.9 to the basin floor z=3.0, so a vehicle
+         drives smoothly from dry cave floor into deep water rather than off
+         a ledge. Flat size_x 45 -> 30, center_x -17.5 -> -25. -->
     <model name="cave_floor_patch">
       <static>true</static>
-      <pose>-15 0 5.4 0 0 0</pose>
+      <pose>-25 0 5.4 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>50 24 1</size></box></geometry>
+          <geometry><box><size>30 24 1</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>50 24 1</size></box></geometry>
+          <geometry><box><size>30 24 1</size></box></geometry>
+          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Real request 2026-08-28: launch-ramp entrance. Its TOP surface
+         connects cave_floor_patch's z-top (5.9, at x=-10) up to the
+         water_surface level (7.0, at x=5) -- a gentle rise so the vehicle
+         drives from the dry cave floor up to the waterline and floats off,
+         rather than dropping to the basin bottom. Top corners verified
+         (x=-10, z=5.90) and (x=5, z=7.00): run 15m, rise +1.1m, pitch
+         -0.0732 rad (-4.19deg), top length 15.0403. y[-12,12] to match
+         cave_floor_patch's dry corridor. The deep basin_floor (z=3.0)
+         sits well below and is only the bottom of the 4m water column. -->
+    <model name="cave_entry_ramp">
+      <static>true</static>
+      <pose>-2.4634 0 5.9513 0 -0.0732 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>15.0403 24 1</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>15.0403 24 1</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>
@@ -452,84 +481,48 @@
       </link>
     </model>
 
-    <!-- Real request 2026-08-27: water region redesigned into a real 3m-deep
-         basin (surface z=6, floor z=3) instead of the old 2m-deep shelf
-         sitting on the unmodified real cave floor (surface z=7.9,
-         floor z=5.9). Replaces the old two-ramp system below (shoreline_ramp
-         climbing UP from the dry floor to a shelf edge, water_entry_ramp
-         diving back DOWN into shallow water at the same z=5.9 floor) --
-         that whole shape only made sense for a shallow shelf, not a basin.
-
-         Single entry_ramp now carries the real floor smoothly from the
-         confirmed dry-floor anchor (x=15, z=5.9 -- same point this file's
-         own water-boundary history already validated has real cave mesh,
-         see the water region's own comment above) down to the new basin
-         floor (x=30, z=3) below. x [5,15] stays on cave_floor_patch's own
-         existing flat z=5.9 top -- already real synthetic-floor collision,
-         nothing new needed there -- giving a genuinely shallow (surface
-         z=6, floor z=5.9: 0.1m) entry right at the water's new west edge
-         (x=5, WATER_BOUNDARY_X in boat_buoyancy_control.py/
-         vehicle_switch_node.py) that gets smoothly deeper along the ramp,
-         not an abrupt step. Real request acknowledged this region (x<15)
-         has no real cave MESH geometry -- confirmed void, see the water
-         region comment's own live vertex-proximity check -- so it will
-         look like driving/floating in open space with no walls or ceiling
-         visible; only the synthetic floor collision is real here, not the
-         visuals.
-
-         Pitch = atan2(rise, run) = atan2(-2.9, 15) = -0.1910 rad
-         (-10.94 deg); box center offset from the top-surface midpoint by
-         Ry(pitch) @ (0,0,-thickness/2), same method (and same live corner-
-         check) as the two ramps this replaces.
-
-         Real request 2026-08-27: "shorten cave floor ramp up to x=10" --
-         the flat cave_floor_patch entry now only carries x[5,10] (was
-         x[5,15]); the ramp's shallow top corner moved x=15 -> x=10, deep
-         corner x=30.19 -> x=30.00 (meeting basin_floor, whose west edge
-         moved to x=28 for the water-east-edge trim below). New run 20m,
-         rise -2.9m: pitch = atan2(-2.9, 20) = -0.1440 rad (-8.25 deg),
-         top length 20.2092. Top-surface corners verified live at
-         (10.00, 5.90) and (30.00, 3.00). -->
-    <model name="entry_ramp">
+    <!-- Real request 2026-08-28: plain flat-bottom basin (a parallelepiped),
+         floor top z=3.0 across the whole x[5,40] y[-12,25] water_surface
+         footprint. Surface z=7.0 -> a uniform 4m water column. The dry
+         approach descends into it via cave_entry_ramp (x[-10,5], 5.9->3.0),
+         whose deep end meets this floor flush at x=5. -->
+    <model name="basin_floor">
       <static>true</static>
-      <pose>20.0717 6.5 3.9552 0 -0.1440 0</pose>
+      <pose>22.5 6.5 2.5 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>20.2092 37 1</size></box></geometry>
+          <geometry><box><size>35 37 1</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>20.2092 37 1</size></box></geometry>
-          <material><ambient>0.2 0.22 0.28 1</ambient><diffuse>0.2 0.22 0.28 1</diffuse></material>
+          <geometry><box><size>35 37 1</size></box></geometry>
+          <material><ambient>0.15 0.17 0.22 1</ambient><diffuse>0.15 0.17 0.22 1</diffuse></material>
         </visual>
       </link>
     </model>
 
-    <!-- Basin floor: the 3m-deep basin's real bottom (z=3), since
-         cave_floor_patch's own collision box only goes down to z=4.9 (top
-         5.9, thickness 1) -- below that, nothing until ground_plane's
-         z=-200 safety net. Starts at x=28 (2m overlap into entry_ramp's own
-         far/bottom end at x=30, same seam convention) and runs to x=40,
-         the water box's real east edge (east_boundary_wall).
-         Real request 2026-08-27: water east edge trimmed x=70 -> x=40, so
-         this floor's east end followed (x[28,70] -> x[28,40]): size_x
-         42 -> 12, center_x 49 -> 34. Spans the full y[-12,25] water width. -->
-    <model name="basin_floor">
+    <!-- Real request 2026-08-28: short ramp at the water's west edge so the
+         floor drops smoothly from the waterline into the deep basin instead
+         of stepping straight to z=3.0. Top surface (x=5, z=7.0) -> (x=10,
+         z=5.0): run 5m, drop 2m, pitch 0.3805 rad (21.8deg), length 5.3852.
+         Corners verified. Bridges cave_entry_ramp's water end (x=5, z=7.0)
+         toward basin_floor (z=3.0); y[-12,12] corridor. -->
+    <model name="basin_entry_ramp">
       <static>true</static>
-      <pose>34 6.5 2.5 0 0 0</pose>
+      <pose>7.3143 0 5.5358 0 0.3805 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>12 37 1</size></box></geometry>
+          <geometry><box><size>5.3852 24 1</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>12 37 1</size></box></geometry>
+          <geometry><box><size>5.3852 24 1</size></box></geometry>
           <material><ambient>0.15 0.17 0.22 1</ambient><diffuse>0.15 0.17 0.22 1</diffuse></material>
         </visual>
       </link>
@@ -613,10 +606,13 @@
          Real request 2026-08-27: east edge trimmed x=70 -> x=40. x[5,40]
          size_x=35, center_x=22.5; y unchanged, [-12,25] size_y=37,
          center_y=6.5. Must stay matched to vehicle_switch_node.py's
-         WATER_BOX and the four boundary walls below. -->
+         WATER_BOX and the four boundary walls below.
+         Real request 2026-08-28: surface raised z 6.0 -> 7.0 (water column
+         now 4m deep, floor z=3.0). boat_buoyancy_control.py WATER_SURFACE_Z
+         and vehicle_switch_node.py FLOAT_Z_MIN follow. -->
     <model name="water_surface">
       <static>true</static>
-      <pose>22.5 6.5 6.0 0 0 0</pose>
+      <pose>22.5 6.5 7.0 0 0 0</pose>
       <link name="surface">
         <visual name="water_visual">
           <geometry><plane><size>35 37</size></plane></geometry>
@@ -663,19 +659,21 @@
          x=70 -> x=40, so this wall followed: x-span [5,40] (size_x=35,
          center_x=22.5), z-span z[3,6.5] (size_z=3.5, center_z=4.75). West
          (x=5) still intentionally open -- entry_ramp now handles that edge. -->
+    <!-- 2026-08-28: raised to clear the new z=7.0 surface: z[3,9] (size_z
+         3.5 -> 6.0, center_z 4.75 -> 6.0). -->
     <model name="north_boundary_wall">
       <static>true</static>
-      <pose>22.5 25 4.75 0 0 0</pose>
+      <pose>22.5 25 6.0 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>35 1 3.5</size></box></geometry>
+          <geometry><box><size>35 1 6.0</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>35 1 3.5</size></box></geometry>
+          <geometry><box><size>35 1 6.0</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>
@@ -688,17 +686,17 @@
          x[5,40]/z[3,6.5] span. -->
     <model name="south_boundary_wall">
       <static>true</static>
-      <pose>22.5 -12 4.75 0 0 0</pose>
+      <pose>22.5 -12 6.0 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>35 1 3.5</size></box></geometry>
+          <geometry><box><size>35 1 6.0</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>35 1 3.5</size></box></geometry>
+          <geometry><box><size>35 1 6.0</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>
@@ -713,17 +711,17 @@
          driven boat now stops against. -->
     <model name="east_boundary_wall">
       <static>true</static>
-      <pose>40 6.5 4.75 0 0 0</pose>
+      <pose>40 6.5 6.0 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>1 37 3.5</size></box></geometry>
+          <geometry><box><size>1 37 6.0</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>1 37 3.5</size></box></geometry>
+          <geometry><box><size>1 37 6.0</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>
@@ -821,9 +819,11 @@
          height. Raised to match the dry-cave ceilings (bottom z=9,
          center 9.5): still stops a (non-flying) vehicle leaving over the
          top, with real headroom for the superstructure. -->
+    <!-- 2026-08-28: raised 9.5 -> 12.0 for the new z=7.0 surface plus mast
+         + buoyancy-overshoot headroom (boat floats ~7.06, mast top ~8). -->
     <model name="water_ceiling">
       <static>true</static>
-      <pose>22.5 6.5 9.5 0 0 0</pose>
+      <pose>22.5 6.5 12.0 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry><box><size>35 37 1</size></box></geometry>

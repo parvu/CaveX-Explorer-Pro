@@ -33,7 +33,7 @@ single real state machine, owned here, that's the one source of truth:
 "Buoyant" is z >= FLOAT_Z_MIN (boat_buoyancy_control.py's lift has it up
 near its target float height, not still resting on the cave floor).
 "Close to shore" is real distance to the nearest dry-floor collision
-geometry (cave_floor_patch/_scaled/_bridge, entry_ramp), NOT a fixed X
+geometry (cave_floor_patch/_scaled/_bridge), NOT a fixed X
 coordinate -- since the dry-floor footprint is an irregular multi-patch
 shape (see cavex_world.world), not a simple x-threshold. Both
 transitions send the existing /cavex/tracks/command String
@@ -62,7 +62,9 @@ from std_msgs.msg import String
 # real footprint (WATER_BOX below, matching the boundary walls actually
 # built in cavex_world.world) -- not an arbitrary coordinate, the same
 # real known geometry the shore-distance check below already uses.
-FLOAT_Z_MIN = 5.95
+# 2026-08-28: water surface raised 6.0 -> 7.0 (boat_buoyancy_control.py
+# TARGET_FLOAT_Z now 7.06), so this "is it actually floating" gate follows.
+FLOAT_Z_MIN = 6.95
 # Real request 2026-08-27: water east edge trimmed x=70 -> x=40 (see
 # cavex_world.world's water_surface / *_boundary_wall / basin_floor). This
 # box must stay matched to those walls.
@@ -78,22 +80,18 @@ def _in_water_box(x, y):
 # not a fixed X coordinate.
 #
 # Real bug fixed 2026-08-27: these AABBs previously claimed the SUBMERGED
-# floor as "shore" -- cave_floor_patch ran x[-40,70] at z-top 5.9 and the
-# entry_ramp box spanned its whole descending length down to z=2. A boat
-# floating at z~6.1 anywhere over the basin was then <1m (vertically) from
-# one of them and flip-flopped tracks<->props forever. "Shore" is only
-# where the drivable floor is near the surface (deployed tracks could
-# actually reach it): cave_floor_patch's east edge is clipped to the
-# ramp's shallow top (x=10), and entry_ramp is represented by just its
-# near-surface west end (x[10,13], z[5.3,5.9]). The deep ramp/basin is
-# NOT shore.
+# floor as "shore" -- so a floating boat flip-flopped tracks<->props
+# forever. "Shore" is only where the drivable dry floor is near the
+# surface. 2026-08-28: cave_floor_patch flat top now ends at x=-10;
+# cave_entry_ramp (x[-10,5], z 5.9->3.0) carries the descent into the
+# basin. "Shore" = the ramp's shallow top, x ~ -10..-7 near z=5.9.
 SHORE_DISTANCE_M = 1.0
 DRY_BOXES = [
     # name, x0, x1, y0, y1, z0, z1
-    ('cave_floor_patch', -40.0, 10.0, -12.0, 12.0, 4.9, 5.9),
+    ('cave_floor_patch', -40.0, -10.0, -12.0, 12.0, 4.9, 5.9),
+    ('cave_entry_ramp_shallow', -10.0, -7.0, -12.0, 12.0, 5.3, 5.9),
     ('cave_floor_patch_scaled', -120.0, -60.0, -45.9, -16.9, 4.9, 5.9),
     ('cave_floor_patch_bridge', -62.0, -38.0, -46.0, 12.0, 4.9, 5.9),
-    ('entry_ramp_shallow', 10.0, 13.0, -12.0, 25.0, 5.3, 5.9),
 ]
 
 # Matches track_retract_control.py's own JointTrajectory duration (2s) --

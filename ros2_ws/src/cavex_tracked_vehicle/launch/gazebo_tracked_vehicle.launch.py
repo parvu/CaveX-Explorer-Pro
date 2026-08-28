@@ -181,63 +181,12 @@ def generate_launch_description():
     # any more -- see perception branch for the full, functional,
     # independently-tethered BlueROV2.
 
-    # Real request 2026-08-26: helipad_link moved from local x=0.3 to x=0.1 (see its own
-    # comment -- part of the water-floating CoG fix, this cargo riding far forward and
-    # high up was producing a real nose-down pitch trim once floating), then back out to
-    # x=0.25 once boat_buoyancy_control.py's active pitch-leveling torque gave real
-    # authority to correct trim without relying on mass placement alone. This spawn's
-    # own x below updated to match (boat_x + 0.25).
-    #
-    # Carried PX4 x500 quadcopter (real, vendored fuel.gazebosim.org/PX4/models/x500)
-    # on model.sdf.tracked's real helipad_link (local x=0.25,
-    # z=0.005 deck-top -- flush, no support post, see helipad_link's own
-    # comment). helipad_deck_visual/collision is a 0.01-thick disc centered
-    # on that link origin (no further local offset), so its own top surface
-    # is at local z=0.005+0.005=0.01 -- world z = 6.65 (tracked vehicle
-    # spawn) + 0.01 = 6.66.
-    #
-    # x500's own real landing-gear feet sit at local z~=-0.227 relative to
-    # its own origin (models/x500/model.sdf's real collision box poses), so
-    # spawning its origin at 6.66 + 0.227 = 6.887 puts the feet exactly at
-    # the helipad surface -- per this session's request that the legs
-    # actually sit on the pad, this is now spawned at that exact resting
-    # height rather than dropped onto it from above. (An earlier version of
-    # this spawn added +0.3m of drop margin to defend against the
-    # DetachableJoint not preserving the exact spawn-time offset if the
-    # model free-fell before the plugin attached it -- live-verified that
-    # settle height varied 0.237m -> 0.014m of loss between otherwise-
-    # identical launches. Spawning already at the target height removes the
-    # free-fall these numbers were about in the first place: there's
-    # nothing left to fall before the joint fixes it.)
-    #
-    # REAL BUG FOUND AND FIXED: commit e76a9205 (cave scaled 2x) updated the
-    # boat's own spawn (-35,0 -> -88.78,-31.4) and bluerov2's spawn
-    # (-35.1,0 -> -88.88,-31.4) to match, but never touched this spawn --
-    # confirmed via `git show e76a9205` on this file. x500 was spawning at
-    # the OLD pre-scale location, ~54m/~31m away from where the boat and its
-    # helipad actually are post-scale -- nowhere near the helipad, most
-    # likely landing in empty space or unrelated geometry in the now-2x cave
-    # and just free-falling under gravity with nothing for the
-    # DetachableJoint to actually hold. Same relative-offset math as before,
-    # now against the moved helipad (x = boat_x + 0.25, y = boat_y): x = -88.78 + 0.25 =
-    # -88.53, y = -31.4 (matching the boat, same convention bluerov2's own spawn
-    # above already uses). z is unchanged -- it never depended on the cave
-    # scale (see README's "Cave scaled 2x": vehicle-size/local-height
-    # parameters were deliberately left unscaled).
-    # Unlike bluerov2 above, x500 still has to spawn BEFORE the boat --
-    # see the spawn-order comment above LaunchDescription(). Same
-    # placeholder scope as before: no PX4 SITL/flight-control integration
-    # here, see model.sdf.tracked's own comment on this drone's
-    # DetachableJoint block.
-    spawn_x500_cargo = Node(
-        package='ros_gz_sim',
-        executable='create',
-        arguments=['-world', 'cavex_world', '-file',
-                   os.path.join(pkg_cavex_tracked, 'models', 'x500', 'model.sdf'),
-                   '-name', 'x500',
-                   '-x', '-88.53', '-y', '-31.4', '-z', '6.887'],
-        output='screen',
-    )
+    # x500 quadcopter is no longer a separate spawned model. Real request
+    # 2026-08-28: it is now a fixed DECOR child link (x500_link) of
+    # model.sdf.tracked -- visuals + ~2.06kg mass only, no DetachableJoint.
+    # See that file's own x500_link comment. This removes spawn_x500_cargo,
+    # its BEFORE-the-boat spawn ordering, and the /cavex/x500_release/detach
+    # path entirely.
 
     # gz_bridge: ONE combined parameter_bridge process (real, structural fix,
     # not a Task 7/12 code bug -- see gazebo_tracked_vehicle_bridge.yaml's own
@@ -406,6 +355,21 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
+    # Land locomotion. The engine is bullet-featherstone (for real cave-mesh
+    # collision + RTF), under which gz-sim's TrackedVehicle/TrackController
+    # plugins produce NO motion (they steer via track-link velocity + surface
+    # friction, a dartsim-only path). This node drives base_link directly
+    # from the same cmd_vel while /cavex/locomotion_mode is 'tracks'/
+    # 'retracting' -- exact complement of boat_thruster_control's props gate.
+    # Same /odom_ground_truth dependency as the nodes above.
+    skid_steer_control = Node(
+        package='cavex_tracked_vehicle',
+        executable='skid_steer_control.py',
+        name='skid_steer_control',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
     # ros2_control's controllers are declared to the controller_manager the
     # gz_ros2_control plugin starts on model spawn, but nothing loads/activates
     # them by itself (same real, empirically-confirmed requirement as the
@@ -444,30 +408,23 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Spawn order: x500 -> boat (kept from an earlier session). x500 spawns
-    # before the boat because it's still rigidly DetachableJoint-attached,
-    # whose Configure() (running when the boat's own model loads) needs
-    # the child model to already exist. bluerov2 no longer spawns
-    # separately at all -- it's a fixed child link of the boat's own
-    # model now (see model.sdf.tracked's bluerov2_link comment).
+    # bluerov2 and x500 no longer spawn separately -- both are fixed child
+    # links of the boat's own model now (see model.sdf.tracked's
+    # bluerov2_link / x500_link comments). The boat spawns directly once
+    # gz_sim is up.
     return LaunchDescription([
         set_plugin_path,
         set_resource_path,
         gz_sim,
         robot_state_publisher,
-        spawn_x500_cargo,
+        spawn_entity,
         gz_bridge,
         track_retract_control,
         vehicle_switch_node,
         manual_gui_bridge,
         boat_buoyancy_control,
         boat_thruster_control,
-        RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=spawn_x500_cargo,
-                on_exit=[spawn_entity],
-            )
-        ),
+        skid_steer_control,
         RegisterEventHandler(
             event_handler=OnProcessExit(
                 target_action=spawn_entity,
