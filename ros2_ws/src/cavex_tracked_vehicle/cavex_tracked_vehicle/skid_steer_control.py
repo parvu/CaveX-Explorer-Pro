@@ -204,6 +204,18 @@ class SkidSteerControl(Node):
             self._wrenches = ()
             return
 
+        # --- discontinuity guard: a teleport / gz set_pose jumps the state
+        # in one tick. Don't finite-difference across it (huge fake
+        # velocities) and re-capture the held heading so the yaw hold
+        # doesn't crank the vehicle back to a stale heading. ---
+        if self._prev is not None:
+            jump = (abs(x - self._prev[1]) > 0.5 or abs(y - self._prev[2]) > 0.5
+                    or abs(wrap(yaw - self._prev[5])) > 0.35)
+            if jump:
+                self._prev = None
+                self._vx = self._vy = self._wz = 0.0
+                self._yaw_hold = None
+
         # --- measured velocities: finite-difference + EMA (odom is noisy) ---
         rvx = rvy = roll_rate = pitch_rate = rwz = 0.0
         if self._prev is not None:
