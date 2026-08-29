@@ -92,7 +92,13 @@ FMAX_LAT = 800.0       # N
 TMAX_YAW = 1900.0      # N*m
 
 # --- slope feedforward ---
-GRAV_FF_N = 460.0      # ~ m*g; forward assist = GRAV_FF_N*sin(pitch)
+# forward assist / brake = GRAV_FF_N * sin(pitch_slow), where pitch_slow
+# is a heavily low-passed pitch. Using the RAW pitch here let bumps pump a
+# fore/aft force oscillation that drove a pitch oscillation (unreal pitch,
+# worse in reverse). GRAV_FF_N is ~15% over m*g so a parked vehicle on the
+# entry ramp holds station instead of creeping downhill.
+GRAV_FF_N = 570.0
+PITCH_SLOW_ALPHA = 0.03  # EMA weight for the slope estimate (~1 s settle)
 
 # --- upright hold ---
 ROLL_KP = 800.0        # N*m per rad of roll
@@ -142,6 +148,7 @@ class SkidSteerControl(Node):
         self._wrench = None
         self._prev = None                       # (t, x, y, roll, pitch, yaw)
         self._vx = self._vy = self._wz = 0.0    # filtered world vx/vy, yaw rate
+        self._pitch_slow = 0.0                   # heavily LP'd pitch for slope FF
         self.create_subscription(String, '/cavex/locomotion_mode', self._mode_cb, 10)
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
         self.create_timer(1.0 / 250.0, self._republish)
@@ -175,6 +182,7 @@ class SkidSteerControl(Node):
             # non-persistent and shared with boat_buoyancy_control).
             self._prev = None
             self._vx = self._vy = self._wz = 0.0
+            self._pitch_slow = 0.0
             self._wrench = None
             return
 
@@ -193,6 +201,8 @@ class SkidSteerControl(Node):
         self._vx = a * rvx + (1 - a) * self._vx
         self._vy = a * rvy + (1 - a) * self._vy
         self._wz = a * rwz + (1 - a) * self._wz
+        pa = PITCH_SLOW_ALPHA
+        self._pitch_slow = pa * pitch + (1 - pa) * self._pitch_slow
 
         c, s = math.cos(yaw), math.sin(yaw)
         fwd = self._vx * c + self._vy * s      # body forward speed
@@ -202,7 +212,7 @@ class SkidSteerControl(Node):
         e_fwd = cmd_v - fwd
         f_fwd = (_ff(e_fwd, FF_FWD, FF_DEADBAND_V)
                  + MASS / TAU_FWD * e_fwd
-                 + GRAV_FF_N * math.sin(pitch))
+                 + GRAV_FF_N * math.sin(self._pitch_slow))
         f_fwd = clamp(f_fwd, -FMAX_FWD, FMAX_FWD)
 
         # --- lateral servo (target = 0; relaxed while turning) ---
