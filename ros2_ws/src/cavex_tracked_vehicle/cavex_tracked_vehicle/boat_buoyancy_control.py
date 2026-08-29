@@ -47,7 +47,12 @@ from gz.msgs10.entity_pb2 import Entity
 # full story (a real basin bottom now exists under x[5,15] too, so the
 # earlier void concern that kept this at 15.0 no longer applies physics-
 # wise).
-WATER_BOUNDARY_X = 0.0
+# 2026-08-29: 0.0 -> -0.3 -- water_entry_ramp's wet foot is at x~-0.22,
+# z~5.78; buoyancy must engage right there so the vehicle is supported the
+# instant it noses off the ramp instead of free-falling ~2.8 m to
+# basin_floor (z=3.0) and getting popped back up. Matches vehicle_switch_
+# node.py's WATER_BOX x0.
+WATER_BOUNDARY_X = -0.3
 
 # Sum of every <mass> in model.sdf.tracked. Was 47.5 kg over 15 links
 # (base_link 32.6 + 2x motor 0.2 + 2x track 1.5 + 2x strut 0.15 + 2x

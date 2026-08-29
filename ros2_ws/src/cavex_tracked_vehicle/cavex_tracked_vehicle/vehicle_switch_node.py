@@ -68,7 +68,10 @@ FLOAT_Z_MIN = 5.95
 # Real request 2026-08-27: water east edge trimmed x=70 -> x=40 (see
 # cavex_world.world's water_surface / *_boundary_wall / basin_floor). This
 # box must stay matched to those walls.
-WATER_BOX = (0.0, 40.0, -12.0, 25.0)  # x0, x1, y0, y1
+WATER_BOX = (-0.3, 40.0, -12.0, 25.0)  # x0, x1, y0, y1
+# 2026-08-29: x0 0.0 -> -0.3 to match boat_buoyancy_control.py's
+# WATER_BOUNDARY_X -- tracks retract as soon as the vehicle reaches the
+# wet foot of water_entry_ramp (x~-0.22), not 0.3 m later.
 
 
 def _in_water_box(x, y):
