@@ -78,8 +78,16 @@ TAU_LAT_TURN = 1.20    # s  (relaxed while a turn is commanded, so the
 TAU_YAW = 0.35         # s
 W_TURN_RELAX = 0.4     # rad/s of |cmd_w| over which TAU_LAT -> TAU_LAT_TURN
 
-# --- clamps ---
-FMAX_FWD = 950.0       # N
+# --- target clamps ---
+# The spd+ button (manual_gui_bridge) scales the command up to 2.4 m/s;
+# on the rugged cave-mesh floor that speed launches the vehicle off floor
+# relief and it tumbles. Cap the servo target to what the tracks can hold
+# on rough ground regardless of what's commanded.
+CMD_V_MAX = 1.1        # m/s
+CMD_W_MAX = 1.6        # rad/s
+
+# --- force/torque clamps ---
+FMAX_FWD = 800.0       # N  (lowered with CMD_V_MAX -- less to slam with)
 FMAX_LAT = 800.0       # N
 TMAX_YAW = 1900.0      # N*m
 
@@ -87,11 +95,11 @@ TMAX_YAW = 1900.0      # N*m
 GRAV_FF_N = 460.0      # ~ m*g; forward assist = GRAV_FF_N*sin(pitch)
 
 # --- upright hold (ROLL only; pitch follows terrain) ---
-ROLL_KP = 700.0        # N*m per rad of roll
-ROLL_KD = 120.0        # N*m per (rad/s) of roll rate
-PITCH_KD = 120.0       # N*m per (rad/s) of pitch rate (no angle spring)
-LEVEL_MAX = 600.0
-LEVEL_DEADBAND = 0.9   # rad (~52 deg); past this it's on its side, stop
+ROLL_KP = 800.0        # N*m per rad of roll
+ROLL_KD = 220.0        # N*m per (rad/s) of roll rate  (raised -- catch a
+PITCH_KD = 260.0       # N*m per (rad/s) of pitch rate  bump/launch faster)
+LEVEL_MAX = 800.0
+LEVEL_DEADBAND = 1.3   # rad (~75 deg); keep fighting further before giving up
 
 # --- odom-rate finite-difference filter ---
 VEL_LPF_ALPHA = 0.30   # EMA weight (lower = smoother, more lag)
@@ -154,7 +162,8 @@ class SkidSteerControl(Node):
 
         with _lock:
             mode = _state["mode"]
-            cmd_v, cmd_w = _state["cmd_v"], _state["cmd_w"]
+            cmd_v = clamp(_state["cmd_v"], -CMD_V_MAX, CMD_V_MAX)
+            cmd_w = clamp(_state["cmd_w"], -CMD_W_MAX, CMD_W_MAX)
 
         if mode not in ACTIVE_MODES:
             # Go silent (don't stream zero wrenches -- the topic is
