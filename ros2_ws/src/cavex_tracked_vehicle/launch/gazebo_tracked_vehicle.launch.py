@@ -1,21 +1,13 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (IncludeLaunchDescription, RegisterEventHandler,
-                             SetEnvironmentVariable)
+from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
+                             RegisterEventHandler, SetEnvironmentVariable)
+from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-
-# This project's existing convention (see ardupilot_gazebo_env.sh, and
-# model.sdf.tracked's own gz_ros2_control <parameters> comment pre-Task-7): a
-# repo-absolute path, not portable across machines/CI. Kept as one constant
-# here rather than baked into multiple strings. (Fixed: used to point at the
-# now-deleted cavex-tracked-blueboat-ardupilot worktree from before that
-# branch was merged into main -- harmless in practice since
-# ardupilot_gazebo_env.sh's own correct entries already precede this one on
-# the resulting search path, but stale and worth keeping accurate.)
-WORKTREE_ROOT = '/home/parvu/CaveX-Explorer-Pro'
 
 # Task 4/5/6's real, confirmed spawned model name -- NOT cavex_tracked_vehicle
 # (the brief's Interfaces section names the package, not the spawned model;
@@ -32,6 +24,19 @@ def generate_launch_description():
     urdf_stub_file = os.path.join(pkg_cavex_tracked, 'urdf', 'cavex_tracked_vehicle.urdf')
     ros2_control_yaml = os.path.join(pkg_cavex_tracked, 'config', 'cavex_tracked_vehicle_ros2_control.yaml')
     combined_bridge_yaml = os.path.join(pkg_cavex_tracked, 'config', 'gazebo_tracked_vehicle_bridge.yaml')
+    core_bridge_yaml = os.path.join(pkg_cavex_tracked, 'config', 'gazebo_tracked_vehicle_bridge_core.yaml')
+
+    # sensors:=false (manual-drive runs) swaps the parameter_bridge to a
+    # config with no /imu, /lidar, /camera entries. With those sensors at
+    # always_on=0 in model.sdf.tracked, no subscriber = the gz-sim-sensors
+    # system never renders them -- measured live 2026-08-29 as the dominant
+    # gz sim CPU cost on this world. Leave true for the SLAM stack, which
+    # needs the point cloud / RGB-D / imu.
+    declare_sensors = DeclareLaunchArgument(
+        'sensors', default_value='true',
+        description='Bridge + render the camera/lidar/imu sensors. Set false '
+                    'for manual-drive runs to recover real-time factor.')
+    sensors = LaunchConfiguration('sensors')
     sdf_template_file = os.path.join(pkg_cavex_tracked, 'models', 'blueboat', 'model.sdf.tracked')
 
     # model.sdf.tracked's gz_ros2_control <parameters> tag can't use xacro's
@@ -49,35 +54,19 @@ def generate_launch_description():
     with open(generated_sdf_file, 'w') as f:
         f.write(sdf_content)
 
-    # ardupilot_gazebo_env.sh's two env vars, set here as SetEnvironmentVariable
-    # actions so they reach the `gz sim` subprocess the IncludeLaunchDescription
-    # below launches (sourcing the .sh file before `ros2 launch` runs would
-    # only affect this launch-file process's own env, not necessarily every
-    # subprocess it spawns via `ros2 launch`'s process-execution machinery --
-    # setting them as launch actions is the reliable path). Also prepends
-    # cavex_tracked_vehicle's installed `models` dir to GZ_SIM_RESOURCE_PATH --
-    # Task 5's report found this exact directory (not its parent) is required
-    # for model.sdf.tracked's `models://blueboat/...` mesh URIs to resolve.
-    #
-    # Task 8 addition: pkg_cavex_slam's installed `models` dir, real, live
-    # necessary fix found running this exact launch file after vendoring the
-    # cave mesh -- cavex_world.world's new `<include><uri>model://cave_world`
-    # failed with "Unable to find uri[model://cave_world]" even though
-    # ardupilot_gazebo_env.sh (sourced manually) already covers this path,
-    # because this launch file builds its own GZ_SIM_RESOURCE_PATH from
-    # scratch (see comment above) rather than inheriting the sourced shell's
-    # env for the `gz sim` subprocess -- this line was simply missing before
-    # cave_world existed for it to need to resolve.
-    set_plugin_path = SetEnvironmentVariable(
-        'GZ_SIM_SYSTEM_PLUGIN_PATH',
-        os.path.join(WORKTREE_ROOT, 'ardupilot_gazebo', 'build') + ':' +
-        os.environ.get('GZ_SIM_SYSTEM_PLUGIN_PATH', ''))
+    # GZ_SIM_RESOURCE_PATH for the `gz sim` subprocess, set as a launch
+    # action (not a sourced .sh) so it reaches the subprocess reliably.
+    # Needs BOTH project model dirs explicitly: cavex_tracked_vehicle's
+    # installed `models` dir (this exact dir, not its parent) for
+    # model.sdf.tracked's `model://blueboat/...` + `model://x500/...` mesh
+    # URIs, and cavex_slam_nav's `models` dir for cavex_world.world's
+    # `<include><uri>model://cave_world`. ArduPilot removed 2026-08-29 --
+    # the ardupilot_gazebo build/models/worlds fragments went with it, as
+    # did GZ_SIM_SYSTEM_PLUGIN_PATH (only ArduPilotPlugin.so needed it).
     set_resource_path = SetEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
         os.path.join(pkg_cavex_tracked, 'models') + ':' +
         os.path.join(pkg_cavex_slam, 'models') + ':' +
-        os.path.join(WORKTREE_ROOT, 'ardupilot_gazebo', 'models') + ':' +
-        os.path.join(WORKTREE_ROOT, 'ardupilot_gazebo', 'worlds') + ':' +
         os.environ.get('GZ_SIM_RESOURCE_PATH', ''))
 
     # Structure copied from cavex_slam_nav/launch/gazebo_walker.launch.py
@@ -212,83 +201,17 @@ def generate_launch_description():
         name='gz_bridge',
         arguments=['--ros-args', '-p', f'config_file:={combined_bridge_yaml}'],
         output='screen',
+        condition=IfCondition(sensors),
+    )
+    gz_bridge_core = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        name='gz_bridge',
+        arguments=['--ros-args', '-p', f'config_file:={core_bridge_yaml}'],
+        output='screen',
+        condition=UnlessCondition(sensors),
     )
 
-    # Real launch arg (confirmed via `ros2 launch ardupilot_sitl
-    # sitl_dds_udp.launch.py --show-args`): 'command' selects the SITL binary,
-    # 'ardurover' is a valid choice; 'model:=rover' + comma-joined
-    # 'defaults:=rover.parm,dds_udp.parm' is ArduPilot's own multi-file
-    # defaults syntax and is what actually turns DDS on (dds_udp.parm sets
-    # DDS_ENABLE 1 / DDS_UDP_PORT 2019) -- same combination Task 3 verified
-    # live end-to-end.
-    pkg_ardupilot_sitl = get_package_share_directory('ardupilot_sitl')
-    rover_defaults = os.path.join(pkg_ardupilot_sitl, 'config', 'default_params', 'rover.parm')
-    dds_udp_defaults = os.path.join(pkg_ardupilot_sitl, 'config', 'default_params', 'dds_udp.parm')
-    # Project-specific speed-controller tuning (CRUISE_SPEED/CRUISE_THROTTLE/
-    # ATC_SPEED_P/I/D/MOT_SLEWRATE) for this heavy tracked vehicle -- a
-    # THIRD defaults file, applied after rover.parm so its values win, kept
-    # separate from the vendored ardupilot/ tree rather than editing that
-    # shared upstream file directly. See that file's own header comment for
-    # the real root cause this addresses (ArduPilot's own GUIDED velocity
-    # loop under-throttling at this vehicle's low commanded speeds).
-    speed_tuning_defaults = os.path.join(
-        get_package_share_directory('cavex_tracked_vehicle'),
-        'config', 'tracked_vehicle_speed_tuning.parm')
-    # UNPLUGGED FOR NOW (real request, 2026-08-27): ArduPilot's Rover SITL
-    # instance never clears its AHRS prearm check in this environment (stuck
-    # repeating "PreArm: AHRS: not using configured AHRS type"), so it never
-    # arms and never actually drives the vehicle -- confirmed live, repeatedly,
-    # this whole session. Autonomous driving already runs entirely through the
-    # gz-transport bypass instead (cmd_vel_gz_bridge.py, tracked_vehicle_slam.
-    # launch.py), same as manual control (manual_gui_bridge.py) -- so
-    # ardurover + this node were pure dead weight: a real CPU/DDS-participant
-    # cost (ardurover, mavproxy, micro_ros_agent, this node) contributing to
-    # this environment's already-severe CPU oversubscription, for a control
-    # path nothing downstream actually uses right now. Left commented rather
-    # than deleted -- easy to re-enable once the AHRS issue is fixed and the
-    # ArduPilot path is worth reconnecting.
-    # ardupilot_sitl_launch = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource(
-    #         os.path.join(pkg_ardupilot_sitl, 'launch', 'sitl_dds_udp.launch.py')
-    #     ),
-    #     launch_arguments={
-    #         'command': 'ardurover',
-    #         'model': 'rover',
-    #         'defaults': f'{rover_defaults},{dds_udp_defaults},{speed_tuning_defaults}',
-    #         'synthetic_clock': 'False',
-    #         'use_sim_time': 'False',
-    #     }.items(),
-    # )
-
-    # cmd_vel_to_ardupilot = Node(
-    #     package='cavex_tracked_vehicle',
-    #     executable='cmd_vel_to_ardupilot.py',
-    #     name='cmd_vel_to_ardupilot',
-    #     output='screen',
-    #     parameters=[{'use_sim_time': True}],
-    # )
-
-    # DISABLED (real, live-diagnosed conflict, 2026-08-27): this node relays
-    # ArduPilot's real control-law output onto the SAME gz-transport
-    # /model/cavex_tracked_blueboat/cmd_vel topic manual_gui_bridge.py and
-    # cmd_vel_gz_bridge.py (tracked_vehicle_slam.launch.py) already drive
-    # directly, bypassing ArduPilot -- see manual_gui_bridge.py's and
-    # cmd_vel_gz_bridge.py's own docstrings for why: ArduPilot's Rover SITL
-    # never clears its AHRS prearm check in this environment, so this node
-    # was continuously republishing a near-zero, meaningless "filtered"
-    # velocity that drowned out the working bypass's real commands (same
-    # "two competing publishers on one topic" confound this file's own
-    # history already flagged once for manual testing -- this is the
-    # autonomous-driving instance of the identical bug). Node/package left
-    # intact; only this launch entry is removed, easy to re-enable once the
-    # ArduPilot AHRS issue is actually fixed.
-    # track_cmd_vel_bridge_node = Node(
-    #     package='cavex_tracked_vehicle',
-    #     executable='track_cmd_vel_bridge.py',
-    #     name='track_cmd_vel_bridge',
-    #     output='screen',
-    #     parameters=[{'use_sim_time': True}],
-    # )
 
     track_retract_control = Node(
         package='cavex_tracked_vehicle',
@@ -426,12 +349,13 @@ def generate_launch_description():
     # bluerov2_link / x500_link comments). The boat spawns directly once
     # gz_sim is up.
     return LaunchDescription([
-        set_plugin_path,
+        declare_sensors,
         set_resource_path,
         gz_sim,
         robot_state_publisher,
         spawn_entity,
         gz_bridge,
+        gz_bridge_core,
         track_retract_control,
         tracked_vehicle_ground_truth_odom,
         vehicle_switch_node,

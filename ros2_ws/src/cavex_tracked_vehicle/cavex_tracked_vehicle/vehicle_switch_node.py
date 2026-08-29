@@ -119,22 +119,59 @@ class VehicleSwitchNode(Node):
         super().__init__('vehicle_switch_node')
         self._mode = 'tracks'
         self._transition_deadline = None
+        # Manual override: once an operator flips the Track up/down switch
+        # (web viewer -> /cavex/track_cmd -> manual_gui_bridge ->
+        # /cavex/tracks/command), the automatic odom-driven state machine
+        # stands down for the rest of the run and the switch owns the
+        # locomotion mode directly: tracks down -> 'tracks' (track motors),
+        # tracks up -> 'props' (boat thrusters). Real request 2026-08-29,
+        # for hand-testing the dry<->water transition.
+        self._manual = False
+        self._last_self_cmd = self.get_clock().now()
 
         self.track_cmd_pub = self.create_publisher(String, '/cavex/tracks/command', 10)
         self.mode_pub = self.create_publisher(String, '/cavex/locomotion_mode', 10)
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
+        self.create_subscription(String, '/cavex/tracks/command', self._track_cmd_cb, 10)
 
         self.get_logger().info(
             f"vehicle_switch_node ready: tracks -> retracting (buoyant, "
             f"z>={FLOAT_Z_MIN}) -> props ({TRANSITION_DURATION_S}s) -> "
             f"deploying (<{SHORE_DISTANCE_M}m from shore) -> tracks "
-            f"({TRANSITION_DURATION_S}s).")
+            f"({TRANSITION_DURATION_S}s). Manual Track switch overrides.")
         self._publish_mode()
 
     def _publish_mode(self):
         self.mode_pub.publish(String(data=self._mode))
 
+    def _send_track_cmd(self, cmd):
+        self._last_self_cmd = self.get_clock().now()
+        self.track_cmd_pub.publish(String(data=cmd))
+
+    def _track_cmd_cb(self, msg: String):
+        # Ignore the echo of our own state-machine commands (published via
+        # _send_track_cmd); anything else on this topic is the operator.
+        dt = (self.get_clock().now() - self._last_self_cmd).nanoseconds * 1e-9
+        if dt < 1.0:
+            return
+        if msg.data == 'retracted':
+            target = 'props'
+        elif msg.data == 'deployed':
+            target = 'tracks'
+        else:
+            return
+        if not self._manual:
+            self.get_logger().info("Manual Track switch -- automatic mode machine standing down.")
+        self._manual = True
+        self._transition_deadline = None
+        if self._mode != target:
+            self._mode = target
+            self.get_logger().info(f"Manual switch -> {target}.")
+            self._publish_mode()
+
     def _odom_cb(self, msg: Odometry):
+        if self._manual:
+            return
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
         z = msg.pose.pose.position.z
@@ -144,7 +181,7 @@ class VehicleSwitchNode(Node):
             if z >= FLOAT_Z_MIN and _in_water_box(x, y):
                 self.get_logger().info(
                     f"Buoyant at z={z:.2f} -- retracting tracks.")
-                self.track_cmd_pub.publish(String(data='retracted'))
+                self._send_track_cmd('retracted')
                 self._mode = 'retracting'
                 self._transition_deadline = now + rclpy.duration.Duration(
                     seconds=TRANSITION_DURATION_S)
@@ -161,7 +198,7 @@ class VehicleSwitchNode(Node):
             if dist < SHORE_DISTANCE_M:
                 self.get_logger().info(
                     f"{dist:.2f}m from shore -- redeploying tracks.")
-                self.track_cmd_pub.publish(String(data='deployed'))
+                self._send_track_cmd('deployed')
                 self._mode = 'deploying'
                 self._transition_deadline = now + rclpy.duration.Duration(
                     seconds=TRANSITION_DURATION_S)

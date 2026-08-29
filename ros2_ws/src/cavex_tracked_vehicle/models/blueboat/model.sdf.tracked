@@ -768,7 +768,10 @@
       <sensor name="imu_sensor" type="imu">
         <pose degrees="true">0 0 0 180 0 0</pose>
         <always_on>1</always_on>
-        <update_rate>1000.0</update_rate>
+        <!-- Was 1000 Hz for ArduPilot's FDM (now removed). 250 Hz is
+             plenty for rtabmap IMU-aided odometry and cuts ~750 sensor
+             updates/s of wall-clock churn (matters badly at low RTF). -->
+        <update_rate>250.0</update_rate>
         <!-- REAL BUG FOUND AND FIXED: no override here meant gz-sim stamped
              the bridged /imu message's frame_id from the scene graph's own
              scoped name (world/model/link/sensor path), not the plain link
@@ -857,7 +860,15 @@
       <sensor name="lidar_sensor" type="gpu_lidar">
         <pose>0 0 0 0 0 0</pose>
         <visualize>false</visualize>
-        <always_on>1</always_on>
+        <!-- always_on=0: the gz-sim-sensors-system (ogre2) renders this
+             every tick when always_on=1 even with no subscriber -- a
+             GPU depth render against the 2x cave scene. Measured live
+             2026-08-29: camera+lidar always_on pinned gz sim at ~240%
+             CPU / RTF ~0.02 on this box with NOTHING subscribed. With
+             always_on=0 it only renders when a consumer (icp_odometry /
+             rtabmap in the SLAM stack) actually subscribes; a manual
+             drive run leaves it idle. -->
+        <always_on>0</always_on>
         <update_rate>10</update_rate>
         <topic>lidar/points</topic>
         <gz_frame_id>lidar_link</gz_frame_id>
@@ -936,7 +947,11 @@
       </inertial>
       <sensor name="camera_sensor" type="rgbd_camera">
         <pose>0 0 0 0 0 0</pose>
-        <always_on>1</always_on>
+        <!-- always_on=0: see lidar_sensor above. rgbd = RGB + depth, two
+             render passes at 30 Hz -- the single biggest gz sim cost on
+             this world. Renders only when subscribed (SLAM stack); idle
+             on a manual drive run. -->
+        <always_on>0</always_on>
         <update_rate>30.0</update_rate>
         <topic>camera/color</topic>
         <!-- REP 103/145 optical convention (z-forward, x-right, y-down),
@@ -1123,129 +1138,14 @@
          Tasks 11/12 and this dedicated investigation.
     -->
 
-      <!-- ardupilot plugin
-        The original BlueBoat's <control channel="..."> blocks (motor_port_joint /
-        motor_stbd_joint, twin-thruster COMMAND channels) have been removed entirely: those
-        joints no longer exist in this tracked variant (deleted above), and ArduPilotPlugin
-        hard-fails at load ("Couldn't find specified joint") if a <control> block names a
-        missing joint -- confirmed via a real spawn with libArduPilotPlugin.so. This is not a
-        twin-motor boat anymore, so there is no physically-equivalent per-joint servo channel
-        to repoint these at: skid-steer track velocity isn't a servo-angle/thrust output.
-        ArduPilot itself still runs (IMU/NavSat in, no actuator commands out) so autopilot
-        modes/estimation/telemetry keep working; actually driving the vehicle is Task 6's job,
-        which relays ArduPilot's DDS cmd_vel output to the TrackedVehicle plugin's cmd_vel
-        topic -- a separate control path that bypasses ArduPilotPlugin's servo channels
-        entirely, so no <control> block is needed here at all. -->
-    <plugin name="ArduPilotPlugin"
-      filename="ArduPilotPlugin">
-      <fdm_addr>127.0.0.1</fdm_addr>
-      <fdm_port_in>9002</fdm_port_in>
-      <connectionTimeoutMaxCount>5</connectionTimeoutMaxCount>
-      <!-- Real bug 2026-08-28: lock_step=1 makes this model's physics wait
-           on an FDM (SITL) step. ArduPilot SITL is unplugged in this
-           branch (see gazebo_tracked_vehicle.launch.py), so base_link
-           froze: it ignored gravity and every ApplyLinkWrench (a -3000N
-           test force could not move it), which is why boat_buoyancy_control
-           could never settle the hull to its float target. lock_step=0
-           lets the model run free without SITL. -->
-      <lock_step>0</lock_step>
-      <!-- Real request: fix the "moving sideways not forward" bug at its
-           root. Two live-tested attempts at THESE two parameters both
-           failed for THAT symptom and were reverted at the time: (1) this
-           term's yaw 90->0, (2) modelXYZToAirplaneXForwardZDown's yaw
-           0->90. Both left /ap/twist/filtered unchanged, (x=-0.03, y=0.40)
-           for a commanded pure-forward (x=0.4). The REAL root cause of
-           THAT symptom was found by reading ArduPilot's own AP_DDS source
-           directly (ardupilot/libraries/AP_DDS/AP_DDS_Client.cpp,
-           update_topic(TwistStamped&)): /ap/twist/filtered's linear.x/y is
-           ahrs.get_velocity_NED() converted to ROS's ENU convention -- real
-           WORLD-FRAME ground velocity (East/North), not body-frame
-           forward/lateral, despite the message's own frame_id saying
-           base_link. Fixed for real in track_cmd_vel_bridge.py: it now
-           rotates that world-frame velocity into body-frame using the
-           vehicle's LIVE yaw (from /ap/pose/filtered, same AHRS source),
-           not a fixed constant -- verified correct end-to-end.
-
-           SEPARATE bug, same two parameters, root-caused for real this
-           session: ArduPilot's own reported ATTITUDE (yaw, /ap/pose/
-           filtered) was found stuck at a highly stable but consistently
-           wrong ~98-100deg offset from real ground truth, unaffected by
-           EK3_SRC1_YAW (GPS-only vs GPS+compass fallback) -- the classic
-           signature of a fixed upstream coordinate-transform bug, not an
-           EKF convergence problem. Confirmed directly in the vendored
-           ArduPilotPlugin's own source (ardupilot_gazebo/src/
-           ArduPilotPlugin.cc, ~line 1843): the plugin's own TODO comment
-           says wldAToWldG = gazeboXYZToNED.Inverse() "may be incorrect...
-           not evident when using <gazeboXYZToNED>0 0 0 GZ_PI 0
-           0</gazeboXYZToNED> but is when using... 0 0 0 GZ_PI 0 GZ_PI/2"
-           -- i.e. .Inverse() is buggy specifically when gazeboXYZToNED
-           has a non-zero YAW component. This vehicle's gazeboXYZToNED had
-           yaw=90 (GZ_PI/2) -- exactly the flagged buggy case. Per the
-           plugin's own math derivation comment (same file), gazeboXYZToNED
-           is meant to be the UNIVERSAL, vehicle-independent Gazebo-ENU<->
-           ArduPilot-NED relationship (yaw=0 always); any vehicle-specific
-           body-mounting rotation belongs in
-           modelXYZToAirplaneXForwardZDown instead (the plugin's own
-           Zephyr reference example does exactly this for its own 90deg
-           yaw need) -- this vehicle had it backwards, in theory. TESTED
-           FOR REAL this session (live-verified, unlike the earlier revert
-           which only checked /ap/twist/filtered/velocity): swapped yaw
-           from gazeboXYZToNED (90->0) to modelXYZToAirplaneXForwardZDown
-           (0->90), fresh eeprom, checked /ap/pose/filtered (attitude, the
-           correct diagnostic for THIS bug) directly against ground truth.
-           RESULT: zero measurable effect -- ArduPilot's own reported yaw
-           was bit-for-bit identical (~97.17deg) both with and without the
-           swap. Reverted back to the original values below (no benefit,
-           and matches this file's own documented baseline). The TODO-
-           flagged Inverse() bug in ArduPilotPlugin.cc is real (confirmed
-           in the plugin's own source) but does not appear to be the cause
-           of this specific frozen-heading symptom -- or fixing it alone
-           isn't sufficient; the actual mechanism producing the stable-
-           but-wrong ~97-100deg offset remains unexplained. Also tried:
-           EK3_SRC1_YAW GPS-only vs GPS+compass-fallback, SIM_GPS1_LAG_MS/
-           HZ tightening -- none of these three independent, plausible
-           fixes moved this value at all, which is itself a strange,
-           notable data point (suggests something more fundamental is
-           holding the estimate fixed, not just under-corrected). NOT YET
-           TRIED, DEFINITIVE RESULT: set AHRS_EKF_TYPE=10
-           (AP_AHRS::EKFType::SIM) live via MAVLink param_set to bypass
-           EKF/DCM entirely -- /ap/pose/filtered STILL reported ~96.9deg
-           against real ground truth ~-1.6deg, with ZERO EKF/compass/GPS
-           fusion involved at all. This proves conclusively the bug is
-           NOT in EKF fusion logic (ruling out EK3_SRC1_YAW, GPS timing,
-           and everything upstream of this point) -- it's baked into
-           ArduPilot's raw SITL attitude state itself, fed directly by
-           the Gazebo FDM interface (ArduPilotPlugin.cc). But the specific
-           gazeboXYZToNED/modelXYZToAirplaneXForwardZDown yaw-swap tested
-           above did NOT fix it, so the real bug is somewhere else in
-           that plugin's orientation-quaternion computation (possibly the
-           FDM JSON's own "imu"/"quaternion" field construction, a
-           separate code path from the wldAToBdyA Pose3d these two SDF
-           params feed into) -- needs direct C++-level tracing of the
-           plugin's actual quaternion output (add debug logging, rebuild,
-           compare against known Gazebo ground truth at each step) to
-           find the real bug. A bigger, riskier task than a config-only
-           change -- left for a dedicated follow-up. AHRS_EKF_TYPE was
-           reset back to 3 (EK3, normal) after this diagnostic.
-
-           KNOWN OPEN ISSUE (direction-of-motion, DIFFERENT from the
-           attitude-reporting bug above): even with a fully verified-
-           correct command reaching the TrackedVehicle plugin, the
-           vehicle's actual WORLD-frame motion direction was once measured
-           at a consistent ~60deg offset from its own reported heading.
-           This was FIXED this session (separately, see this file's own
-           track collision <surface><friction> comment) -- root cause was
-           missing anisotropic friction (fdir1) on the track collision
-           boxes, not a coordinate-frame bug -- real motion direction is
-           now correct (~5-14deg off-axis, live-verified). That fix and
-           this one address two genuinely different problems that
-           happened to look similar (both showed up as "wrong direction"
-           symptoms): real motion direction (fixed via friction) vs.
-           ArduPilot's own internal heading ESTIMATE (this fix). -->
-      <gazeboXYZToNED degrees="true">0 0 0 180 0 90</gazeboXYZToNED>
-      <modelXYZToAirplaneXForwardZDown degrees="true">0 0 0 180 0 0</modelXYZToAirplaneXForwardZDown>
-      <imuName>imu_link::imu_sensor</imuName>
-    </plugin>
+      <!-- ArduPilotPlugin REMOVED 2026-08-29 (real request "remove
+           ardupilot from the stack"). SITL was already unplugged
+           (all ardupilot nodes commented out in
+           gazebo_tracked_vehicle.launch.py); the plugin only added
+           an idle FDM UDP socket + a frozen-heading AHRS bug
+           (see git history for the full investigation). Drive is
+           skid_steer_control.py / boat_thruster_control.py off
+           /cmd_vel directly -- no autopilot in the loop. -->
 
     <!-- Motorized tether mount: the BlueROV2 is no longer rigidly carried
          (removed: the old rov_davit_link visual mount and the
@@ -1449,14 +1349,18 @@
         <geometry><mesh><uri>model://x500/meshes/5010Base.dae</uri></mesh></geometry></visual>
       <visual name="x500_motor_3"><pose>-0.174 -0.174 0.032 0 0 -0.45</pose>
         <geometry><mesh><uri>model://x500/meshes/5010Base.dae</uri></mesh></geometry></visual>
-      <visual name="x500_prop_0"><pose>0.174 0.174 0.06 0 0 0</pose>
+      <!-- Props sit on their motor bases: same x/y as x500_motor_N, same
+           yaw (-0.45) so the blade root lines up with the motor body, and
+           handedness matches the canonical x500 (models/x500/model.sdf
+           rotor_0..3) -- ccw on the (+,-)/(-,+) diagonal, cw on (+,+)/(-,-). -->
+      <visual name="x500_prop_0"><pose>0.174 0.174 0.06 0 0 -0.45</pose>
+        <geometry><mesh><uri>model://x500/meshes/1345_prop_cw.stl</uri></mesh></geometry></visual>
+      <visual name="x500_prop_1"><pose>-0.174 0.174 0.06 0 0 -0.45</pose>
         <geometry><mesh><uri>model://x500/meshes/1345_prop_ccw.stl</uri></mesh></geometry></visual>
-      <visual name="x500_prop_1"><pose>-0.174 0.174 0.06 0 0 0</pose>
+      <visual name="x500_prop_2"><pose>0.174 -0.174 0.06 0 0 -0.45</pose>
         <geometry><mesh><uri>model://x500/meshes/1345_prop_ccw.stl</uri></mesh></geometry></visual>
-      <visual name="x500_prop_2"><pose>0.174 -0.174 0.06 0 0 0</pose>
-        <geometry><mesh><uri>model://x500/meshes/1345_prop_ccw.stl</uri></mesh></geometry></visual>
-      <visual name="x500_prop_3"><pose>-0.174 -0.174 0.06 0 0 0</pose>
-        <geometry><mesh><uri>model://x500/meshes/1345_prop_ccw.stl</uri></mesh></geometry></visual>
+      <visual name="x500_prop_3"><pose>-0.174 -0.174 0.06 0 0 -0.45</pose>
+        <geometry><mesh><uri>model://x500/meshes/1345_prop_cw.stl</uri></mesh></geometry></visual>
     </link>
     <joint name="x500_joint" type="fixed">
       <parent>base_link</parent>

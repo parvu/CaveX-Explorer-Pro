@@ -1,0 +1,37 @@
+# gazebo_tracked_vehicle_bridge_core.yaml
+#
+# The sensor-free bridge, selected by gazebo_tracked_vehicle.launch.py's
+# `sensors:=false` arg (manual-drive runs). Drops the /imu, /lidar/points
+# and /camera/* GZ_TO_ROS entries that gazebo_tracked_vehicle_bridge.yaml
+# carries: with model.sdf.tracked's camera/lidar sensors at always_on=0,
+# having NO subscriber means the gz-sim-sensors system never renders them
+# -- the single biggest gz sim CPU cost on this world (rgbd @ 30Hz +
+# gpu_lidar raycast vs the 2x cave mesh). Every non-sensor entry below is
+# a verbatim copy from that file -- keep the two in sync.
+
+- topic_name: "/world/cavex_world/pose/info"
+  ros_type_name: "geometry_msgs/msg/PoseArray"
+  gz_type_name: "gz.msgs.Pose_V"
+  direction: GZ_TO_ROS
+
+- topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+
+# track_cmd_vel's ROS2<->gz-transport leg (Task 6): carries
+# track_cmd_vel_bridge.py's /track_cmd_vel (ROS2 Twist) onto the real
+# gz-transport topic /model/cavex_tracked_blueboat/cmd_vel (gz.msgs.Twist).
+- ros_topic_name: "track_cmd_vel"
+  gz_topic_name: "/model/cavex_tracked_blueboat/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
+# Placeholder release path for the carried x500's DetachableJoint
+# (model.sdf.tracked) -- not wired to any automatic trigger yet.
+- ros_topic_name: "cavex/x500_release/detach"
+  gz_topic_name: "/cavex/x500_release/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
