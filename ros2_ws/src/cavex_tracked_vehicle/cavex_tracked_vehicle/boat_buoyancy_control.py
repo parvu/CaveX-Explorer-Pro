@@ -138,6 +138,14 @@ ANGULAR_DAMPING = 60.0  # N*m per (rad/s) of roll/pitch rate (was 40 --
 # x=0.1) helipad/x500 cargo. ANGULAR_DAMPING only opposes RATE, so it can calm
 # oscillation but can't correct a steady offset -- a real P term on the angle
 # itself is what's actually missing to drive the resting trim toward level.
+# When locomotion mode leaves the water set (-> 'tracks'), don't cut the
+# ~500 N of lift dead -- the hull would drop nose-first onto the still-
+# deploying tracks / down the entry ramp (the "abnormal pitch-down on the
+# water->land transition", 2026-08-29). Ramp lift + righting + drag to zero
+# over this window instead; it roughly matches track_retract_control's 2 s
+# deploy trajectory.
+MODE_FADE_S = 2.0
+
 LEVEL_KP = 850.0  # N*m per radian of roll/pitch angle (was 550 -- drive
                   # thrust sits ~0.1 m below the CoM and pitches the hull;
                   # stiffer P holds trim near level under fwd/rev)
@@ -175,7 +183,12 @@ class BoatBuoyancyControl(Node):
         # climbs out of the water (real bug, 2026-08-29). skid_steer and
         # boat_thruster already gate on this same topic; this node was the
         # odd one out, using a raw x>5 check that stays true on the shore.
-        self._mode = 'tracks'
+        # Default 'props' (buoyancy-ON): if no /cavex/locomotion_mode
+        # message ever arrives, a boat in the water region should float,
+        # not silently fade out. The real system always publishes the mode.
+        self._mode = 'props'
+        self._fade = 1.0        # 0..1 buoyancy authority; ramps down over
+        self._fade_t = None     # MODE_FADE_S when mode -> 'tracks'
         self.create_subscription(String, '/cavex/locomotion_mode', self._mode_cb, 10)
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
         self._prev = None  # (t, x, y, z, roll, pitch, yaw)
@@ -210,16 +223,35 @@ class BoatBuoyancyControl(Node):
         roll, pitch = roll_pitch_from_quat(q.x, q.y, q.z, q.w)
         yaw = yaw_from_quat(q.x, q.y, q.z, q.w)
 
-        if self._mode == 'tracks' or x <= WATER_BOUNDARY_X:
+        # Hard cut only once genuinely out of the water region. On land
+        # don't publish a zero wrench -- the topic is non-persistent (each
+        # msg = one physics step) and shared with skid_steer, so a 250 Hz
+        # stream of zeros would land on ~half the steps and halve its real
+        # force/torque (measured live 2026-08-28: yaw stuck ~0.36 vs 1.25).
+        if x <= WATER_BOUNDARY_X:
             self._prev = None
             self._z_i = 0.0
-            # Go SILENT on dry land, don't publish a zero wrench. The topic
-            # is non-persistent (each msg = one physics step), so skid_steer
-            # and this node share it -- a 250Hz stream of zeros here lands on
-            # ~half the steps and halves skid_steer's real force/torque
-            # (measured live 2026-08-28: yaw stuck at ~0.36 vs 1.25 rad/s).
+            self._fade = 0.0
+            self._fade_t = None
             self._wrenches = ()
             return
+
+        # In the water region but locomotion has switched to land tracks:
+        # ramp buoyancy authority down over MODE_FADE_S rather than cutting
+        # it, so the hull settles onto the deploying tracks instead of
+        # dropping nose-first.
+        if self._mode == 'tracks':
+            if self._fade_t is None:
+                self._fade_t = t
+            self._fade = max(0.0, 1.0 - (t - self._fade_t) / MODE_FADE_S)
+            if self._fade <= 0.0:
+                self._prev = None
+                self._z_i = 0.0
+                self._wrenches = ()
+                return
+        else:
+            self._fade = 1.0
+            self._fade_t = None
 
         vx = vy = vz = roll_rate = pitch_rate = yaw_rate = 0.0
         dt = 0.0
@@ -238,14 +270,14 @@ class BoatBuoyancyControl(Node):
         if dt > 1e-3:
             self._z_i = max(-KI_CLAMP, min(KI_CLAMP, self._z_i + z_err * dt))
         lift_raw = WEIGHT_N + KZ * z_err + KI * self._z_i - DZ * vz
-        lift = max(0.0, min(MAX_LIFT_N, lift_raw))
+        lift = self._fade * max(0.0, min(MAX_LIFT_N, lift_raw))
 
-        torque_x = -LEVEL_KP * roll - ANGULAR_DAMPING * roll_rate
-        torque_y = -LEVEL_KP * pitch - ANGULAR_DAMPING * pitch_rate
+        torque_x = self._fade * (-LEVEL_KP * roll - ANGULAR_DAMPING * roll_rate)
+        torque_y = self._fade * (-LEVEL_KP * pitch - ANGULAR_DAMPING * pitch_rate)
 
-        drag_x = -(DRAG_LIN_XY * vx + DRAG_QUAD_XY * abs(vx) * vx)
-        drag_y = -(DRAG_LIN_XY * vy + DRAG_QUAD_XY * abs(vy) * vy)
-        torque_z = -DRAG_YAW * yaw_rate
+        drag_x = self._fade * -(DRAG_LIN_XY * vx + DRAG_QUAD_XY * abs(vx) * vx)
+        drag_y = self._fade * -(DRAG_LIN_XY * vy + DRAG_QUAD_XY * abs(vy) * vy)
+        torque_z = self._fade * -DRAG_YAW * yaw_rate
 
         # TWO wrench messages, not one. The lift + roll/pitch righting act at
         # force_offset.z = BUOY_OFFSET_Z (0.4, above the CoM) -- that offset
