@@ -765,8 +765,11 @@
     <div id="speedControls" style="position: fixed; top: 10px; right: 10px;
         font-family: sans-serif; z-index: 10;
         display: flex; flex-direction: column; gap: 4px;">
-      <button onclick="manualCmd('speed_up')">spd +</button>
-      <button onclick="manualCmd('speed_down')">spd -</button>
+      <button onclick="changeSpeed('speed_up')">spd +</button>
+      <span id="spdVal" style="text-align: center; background: rgba(0,0,0,0.5);
+          color: #fff; padding: 2px 4px; border-radius: 3px;
+          font-family: monospace;">0.80 m/s</span>
+      <button onclick="changeSpeed('speed_down')">spd -</button>
       <button id="manualToggle" onclick="toggleManual()">man: OFF</button>
       <!-- Real request 2026-08-27: RViz-equivalent 3D view (TF, /map,
            costmap, sensors) via Foxglove, opened in its own tab --
@@ -801,6 +804,16 @@
       var manualOn = false;
       function manualCmd(cmd) {
         fetch('/api/manual?cmd=' + cmd);
+      }
+      // Client-side mirror of manual_gui_bridge.py's speed_scale
+      // (BASE_LINEAR_MPS 0.8, step 0.25, clamp [0.25, 3.0], start 1.0).
+      var speedScale = 1.0;
+      function changeSpeed(cmd) {
+        manualCmd(cmd);
+        speedScale += (cmd === 'speed_up') ? 0.25 : -0.25;
+        speedScale = Math.min(3.0, Math.max(0.25, speedScale));
+        document.getElementById('spdVal').textContent =
+          (0.8 * speedScale).toFixed(2) + ' m/s';
       }
       function trackCmd(cmd) {
         fetch('/api/tracks?cmd=' + cmd);
