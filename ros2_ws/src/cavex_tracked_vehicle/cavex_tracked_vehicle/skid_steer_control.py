@@ -113,7 +113,9 @@ ROLL_KD = 220.0        # N*m per (rad/s) of roll rate
 # land exactly through the full-vehicle CoM. Deliberately weak: on the
 # ~8 deg entry ramp it only pulls ~45 N*m toward level, so the hull still
 # mostly follows the ramp while GRAV_FF + the drive servo climb it.
-PITCH_KP = 320.0       # N*m per rad of pitch
+PITCH_KP = 200.0       # N*m per rad of pitch -- lowered from 320: a
+                      # stiffer spring rocked the hull against the tracks
+                      # at rest on the ramp (wobble)
 PITCH_KD = 260.0       # N*m per (rad/s) of pitch rate
 LEVEL_MAX = 800.0
 LEVEL_DEADBAND = 1.3   # rad (~75 deg); keep fighting further before giving up
@@ -215,11 +217,17 @@ class SkidSteerControl(Node):
         lat = -self._vx * s + self._vy * c     # body lateral speed (+left)
 
         # --- forward servo (target = cmd_v) ---
-        e_fwd = cmd_v - fwd
-        f_fwd = (_ff(e_fwd, FF_FWD, FF_DEADBAND_V)
-                 + MASS / TAU_FWD * e_fwd
-                 + GRAV_FF_N * math.sin(self._pitch_slow))
-        f_fwd = clamp(f_fwd, -FMAX_FWD, FMAX_FWD)
+        grav_hold = GRAV_FF_N * math.sin(self._pitch_slow)
+        if abs(cmd_v) < 0.03 and abs(fwd) < 0.06:
+            # PARKED: hold against gravity only. The Coulomb FF term reacts
+            # hard to any tiny residual velocity, and on a slope that's a
+            # stick-slip limit cycle -- the "wobble at stop on the ramp".
+            f_fwd = clamp(grav_hold, -FMAX_FWD, FMAX_FWD)
+        else:
+            e_fwd = cmd_v - fwd
+            f_fwd = clamp(_ff(e_fwd, FF_FWD, FF_DEADBAND_V)
+                          + MASS / TAU_FWD * e_fwd + grav_hold,
+                          -FMAX_FWD, FMAX_FWD)
 
         # --- lateral servo (target = 0; relaxed while turning) ---
         tau_lat = TAU_LAT + (TAU_LAT_TURN - TAU_LAT) * min(1.0, abs(cmd_w) / W_TURN_RELAX)
