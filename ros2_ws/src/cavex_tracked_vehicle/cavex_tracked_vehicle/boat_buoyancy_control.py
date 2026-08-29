@@ -236,22 +236,27 @@ class BoatBuoyancyControl(Node):
             self._wrenches = ()
             return
 
-        # In the water region but locomotion has switched to land tracks:
-        # ramp buoyancy authority down over MODE_FADE_S rather than cutting
-        # it, so the hull settles onto the deploying tracks instead of
-        # dropping nose-first.
-        if self._mode == 'tracks':
-            if self._fade_t is None:
-                self._fade_t = t
-            self._fade = max(0.0, 1.0 - (t - self._fade_t) / MODE_FADE_S)
-            if self._fade <= 0.0:
-                self._prev = None
-                self._z_i = 0.0
-                self._wrenches = ()
-                return
-        else:
-            self._fade = 1.0
-            self._fade_t = None
+        # BIDIRECTIONAL fade of buoyancy authority over MODE_FADE_S, so the
+        # water<->land handoff with skid_steer isn't a force step. mode
+        # 'tracks' -> ramp _fade toward 0 (hull settles onto the tracks
+        # instead of dropping nose-first); mode props/retracting/deploying
+        # -> ramp _fade toward 1 (lift eases in instead of the hull
+        # shooting up off the ramp). The "unreal pitch" on both crossings
+        # was this being a hard 0<->1 step in one direction.
+        target = 0.0 if self._mode == 'tracks' else 1.0
+        dt_fade = t - self._fade_t if self._fade_t is not None else 0.0
+        self._fade_t = t
+        step = min(0.2, dt_fade / MODE_FADE_S) if dt_fade > 0.0 else 0.0
+        if self._fade < target:
+            self._fade = min(target, self._fade + step)
+        elif self._fade > target:
+            self._fade = max(target, self._fade - step)
+
+        if target == 0.0 and self._fade <= 0.0:
+            self._prev = None
+            self._z_i = 0.0
+            self._wrenches = ()
+            return
 
         vx = vy = vz = roll_rate = pitch_rate = yaw_rate = 0.0
         dt = 0.0
