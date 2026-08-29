@@ -44,10 +44,21 @@ from gz.msgs10.double_pb2 import Double
 # poses, +-0.295).
 HALF_SEPARATION = 0.295
 
-THRUST_GAIN_LINEAR = 300.0   # N per (m/s) of commanded linear.x
+# 2026-08-29: was 300 -- with MAX 400 and the water drag tuned as it is, a
+# 0.8 m/s command drove the boat at ~2 m/s and the oversized thrust threw a
+# big bow-up pitch on reverse. 130 gives roughly the commanded speed and a
+# much smaller couple.
+THRUST_GAIN_LINEAR = 130.0   # N per (m/s) of commanded linear.x
 THRUST_GAIN_ANGULAR = 80.0   # N per (rad/s) of commanded angular.z, applied
                               # differentially (see mix below)
-MAX_THRUST_N = 400.0
+MAX_THRUST_N = 260.0
+
+# 2026-08-29: the props sit ~0.1 m below the CoM, so a step change in thrust
+# throws a pitch couple that dips a pontoon (worse before the buoyancy
+# drag/lift split was fixed, still worth softening). Ramp thrust toward its
+# target instead of snapping -- a full 0->240 N (0.8 m/s cmd) now takes
+# ~0.8 s instead of one tick, so the leveling PID keeps up.
+THRUST_SLEW_N_PER_S = 300.0
 
 ACTIVE_MODES = ('props', 'deploying')
 
@@ -87,6 +98,11 @@ def main(args=None):
         f"only while /cavex/locomotion_mode is in {ACTIVE_MODES}.")
 
     timer_period = 0.1
+    slew_step = THRUST_SLEW_N_PER_S * timer_period
+    cur = {"port": 0.0, "stbd": 0.0}
+
+    def _toward(now, target):
+        return now + max(-slew_step, min(slew_step, target - now))
 
     def control_tick():
         with _lock:
@@ -94,16 +110,17 @@ def main(args=None):
             linear_x, angular_z = _state["linear_x"], _state["angular_z"]
 
         if mode not in ACTIVE_MODES:
-            port_thrust = 0.0
-            stbd_thrust = 0.0
+            port_target = stbd_target = 0.0
         else:
             base = THRUST_GAIN_LINEAR * linear_x
             turn = THRUST_GAIN_ANGULAR * angular_z
-            port_thrust = max(-MAX_THRUST_N, min(MAX_THRUST_N, base - turn))
-            stbd_thrust = max(-MAX_THRUST_N, min(MAX_THRUST_N, base + turn))
+            port_target = max(-MAX_THRUST_N, min(MAX_THRUST_N, base - turn))
+            stbd_target = max(-MAX_THRUST_N, min(MAX_THRUST_N, base + turn))
 
-        port_pub.publish(Double(data=port_thrust))
-        stbd_pub.publish(Double(data=stbd_thrust))
+        cur["port"] = _toward(cur["port"], port_target)
+        cur["stbd"] = _toward(cur["stbd"], stbd_target)
+        port_pub.publish(Double(data=cur["port"]))
+        stbd_pub.publish(Double(data=cur["stbd"]))
 
     timer = mode_watcher.create_timer(timer_period, control_tick)
     rclpy.spin(mode_watcher)

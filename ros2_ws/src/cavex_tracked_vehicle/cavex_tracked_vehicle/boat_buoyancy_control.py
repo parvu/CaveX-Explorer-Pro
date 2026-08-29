@@ -72,8 +72,10 @@ WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 #   hull_collision bbox top sits at local z=0 (base_link Z == hull-top Z)
 #   real request 2026-08-28: hull top exactly 6cm proud of the water.
 WATER_SURFACE_Z = 7.0   # cavex_world.world water_surface pose (raised 6.0 -> 7.0 on 2026-08-28)
-TARGET_FREEBOARD = 0.06
-TARGET_FLOAT_Z = WATER_SURFACE_Z + TARGET_FREEBOARD   # 7.06
+TARGET_FREEBOARD = 0.12  # 2026-08-29: doubled 0.06 -> 0.12 (real request -- more
+                         # deck clearance so drive-induced pitch doesn't dip the
+                         # pontoons under)
+TARGET_FLOAT_Z = WATER_SURFACE_Z + TARGET_FREEBOARD   # 7.12
 
 # Root cause of the earlier "won't settle / floats too high" was NOT this
 # law: (1) the world gz-sim-buoyancy-system plugin was silently lifting the
@@ -119,7 +121,8 @@ DRAG_YAW = 60.0       # N*m per (rad/s) of yaw rate
 # was actually missing to calm the oscillation without weakening the static
 # righting stiffness.
 BUOY_OFFSET_Z = 0.4
-ANGULAR_DAMPING = 40.0  # N*m per (rad/s) of roll/pitch rate
+ANGULAR_DAMPING = 60.0  # N*m per (rad/s) of roll/pitch rate (was 40 --
+                       # raised with LEVEL_KP to hold pitch under drive)
 
 # Real request 2026-08-26: "too back heavy" -- live-confirmed a genuine, real
 # mass-imbalance trim (~-7deg pitch, stable, not oscillating), not noise: the
@@ -129,7 +132,9 @@ ANGULAR_DAMPING = 40.0  # N*m per (rad/s) of roll/pitch rate
 # x=0.1) helipad/x500 cargo. ANGULAR_DAMPING only opposes RATE, so it can calm
 # oscillation but can't correct a steady offset -- a real P term on the angle
 # itself is what's actually missing to drive the resting trim toward level.
-LEVEL_KP = 550.0  # N*m per radian of roll/pitch angle
+LEVEL_KP = 850.0  # N*m per radian of roll/pitch angle (was 550 -- drive
+                  # thrust sits ~0.1 m below the CoM and pitches the hull;
+                  # stiffer P holds trim near level under fwd/rev)
 
 
 def roll_pitch_from_quat(x, y, z, w):
@@ -166,7 +171,7 @@ class BoatBuoyancyControl(Node):
         # callback only COMPUTES the wrench; this ~physics-rate timer
         # re-publishes the current one every step, giving a continuous
         # force without accumulation.
-        self._wrench = None
+        self._wrenches = ()
         self.create_timer(1.0 / 250.0, self._republish)
         self.get_logger().info(
             f"boat_buoyancy_control ready: applying lift only while "
@@ -174,8 +179,8 @@ class BoatBuoyancyControl(Node):
             f"P+I+D lift + drag, 250Hz re-publish).")
 
     def _republish(self):
-        if self._wrench is not None:
-            self.gz_pub.publish(self._wrench)
+        for w in self._wrenches:
+            self.gz_pub.publish(w)
 
     def _odom_cb(self, msg: Odometry):
         t = self.get_clock().now().nanoseconds * 1e-9
@@ -194,7 +199,7 @@ class BoatBuoyancyControl(Node):
             # and this node share it -- a 250Hz stream of zeros here lands on
             # ~half the steps and halves skid_steer's real force/torque
             # (measured live 2026-08-28: yaw stuck at ~0.36 vs 1.25 rad/s).
-            self._wrench = None
+            self._wrenches = ()
             return
 
         vx = vy = vz = roll_rate = pitch_rate = yaw_rate = 0.0
@@ -222,27 +227,38 @@ class BoatBuoyancyControl(Node):
         drag_x = -(DRAG_LIN_XY * vx + DRAG_QUAD_XY * abs(vx) * vx)
         drag_y = -(DRAG_LIN_XY * vy + DRAG_QUAD_XY * abs(vy) * vy)
         torque_z = -DRAG_YAW * yaw_rate
-        # ponytail: drag shares the lift's force_offset (0,0,BUOY_OFFSET_Z),
-        # so hard driving induces a few deg of bow-up trim the leveling PID
-        # then absorbs. Split into a second zero-offset wrench msg only if
-        # that trim proves objectionable live.
 
-        self._publish_wrench(lift, BUOY_OFFSET_Z, torque_x, torque_y,
-                             drag_x, drag_y, torque_z)
+        # TWO wrench messages, not one. The lift + roll/pitch righting act at
+        # force_offset.z = BUOY_OFFSET_Z (0.4, above the CoM) -- that offset
+        # is what makes the vertical lift a righting spring. But drag is
+        # HORIZONTAL, and at that same +0.4 offset a drive-speed drag force
+        # (~40 N at 0.8 m/s) becomes a ~24 N*m bow-down (fwd) / stern-down
+        # (rev) pitch couple that buries a pontoon -- the "almost sinking
+        # under drive" report, 2026-08-29. Drag goes in its own message at
+        # offset 0 (through the CoM) so it only decelerates, never pitches.
+        # gz's ApplyLinkWrench sums all messages a link receives in a step.
+        self._publish_wrenches(
+            lift=lift, torque_x=torque_x, torque_y=torque_y,
+            drag_x=drag_x, drag_y=drag_y, torque_z=torque_z)
 
-    def _publish_wrench(self, force_z, offset_z, torque_x, torque_y,
-                        force_x=0.0, force_y=0.0, torque_z=0.0):
-        w = EntityWrench()
-        w.entity.name = 'cavex_tracked_blueboat::base_link'
-        w.entity.type = Entity.LINK
-        w.wrench.force.x = force_x
-        w.wrench.force.y = force_y
-        w.wrench.force.z = force_z
-        w.wrench.force_offset.z = offset_z
-        w.wrench.torque.x = torque_x
-        w.wrench.torque.y = torque_y
-        w.wrench.torque.z = torque_z
-        self._wrench = w  # applied every step by _republish()
+    def _publish_wrenches(self, lift, torque_x, torque_y,
+                          drag_x, drag_y, torque_z):
+        w_lift = EntityWrench()
+        w_lift.entity.name = 'cavex_tracked_blueboat::base_link'
+        w_lift.entity.type = Entity.LINK
+        w_lift.wrench.force.z = lift
+        w_lift.wrench.force_offset.z = BUOY_OFFSET_Z
+        w_lift.wrench.torque.x = torque_x
+        w_lift.wrench.torque.y = torque_y
+
+        w_drag = EntityWrench()
+        w_drag.entity.name = 'cavex_tracked_blueboat::base_link'
+        w_drag.entity.type = Entity.LINK
+        w_drag.wrench.force.x = drag_x
+        w_drag.wrench.force.y = drag_y
+        w_drag.wrench.torque.z = torque_z   # yaw drag, offset-independent
+
+        self._wrenches = (w_lift, w_drag)  # both applied every step by _republish()
 
 
 def main(args=None):
