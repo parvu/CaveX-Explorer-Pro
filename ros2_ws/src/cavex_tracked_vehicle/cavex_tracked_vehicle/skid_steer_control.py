@@ -55,21 +55,22 @@ ACTIVE_MODES = ('tracks', 'retracting')
 
 # Forward: P on speed error. Softened from 800 -- 800 made a stop a ~560N
 # reverse slam.
-KP_V = 450.0            # N per (m/s) of forward-speed error
-MAX_FORCE_N = 700.0     # forward force clamp
+KP_V = 900.0            # N per (m/s) of forward-speed error -- high enough
+                       # that a 0.8 m/s command reaches ~0.6 m/s against
+                       # the isotropic track friction (mu 0.35)
+MAX_FORCE_N = 1050.0    # forward force clamp -- headroom for a ramp climb
 
-# Lateral: damp the body-across velocity so the vehicle doesn't crab on the
-# (near-zero by design) track friction. FADED as a turn is commanded -- a
-# pivot legitimately swings the body's fore/aft ends sideways and full
-# damping there acts as a yaw brake (measured live 2026-08-28) -- but NOT
-# to zero: fully off, the vehicle skidded sideways into walls while
-# manoeuvring (2026-08-29). LAT_FADE_FLOOR keeps ~half the grip through a
-# hard turn; FF_YAW is strong enough to pivot against it.
-K_LAT = 450.0           # N per (m/s) of body-lateral velocity -- back down
-MAX_LAT_N = 350.0       # (from 1100/700): the track collision is now
-W_LAT_CUTOFF = 0.6      # anisotropic (mu2=1.4 across-track), so real
-LAT_FADE_FLOOR = 0.5    # friction does most of the anti-crab work now;
-                        # this just trims residual drift.
+# Lateral: damp the body-across velocity so the vehicle doesn't crab. This
+# is the PRIMARY anti-sideslip mechanism -- the track collision friction is
+# isotropic (fdir1 doesn't work under bullet-featherstone), so it can't
+# resist lateral sliding more than forward driving. FADED as a turn is
+# commanded (a pivot legitimately swings the body's ends sideways and full
+# damping acts as a yaw brake), but never below LAT_FADE_FLOOR -- fully
+# off, the vehicle skidded into walls while manoeuvring.
+K_LAT = 1000.0          # N per (m/s) of body-lateral velocity
+MAX_LAT_N = 700.0
+W_LAT_CUTOFF = 0.6      # rad/s of commanded yaw over which the fade runs
+LAT_FADE_FLOOR = 0.5    # lateral damping never fades below this fraction
 
 # Yaw: feedforward + P-on-rate trim. Two 0.6m track boxes 0.7m apart make
 # pivot resistance high and STIFF (stiction-like, not viscous) -- measured
@@ -79,12 +80,12 @@ LAT_FADE_FLOOR = 0.5    # friction does most of the anti-crab work now;
 # a real pivot then runs a bit faster than commanded, which a manual
 # driver modulates. It's a drag calibration -- re-measure and retune if
 # track mu, box length/spacing or vehicle mass change. KP_W trims.
-FF_YAW = 1100.0
-KP_W = 650.0           # N*m per (rad/s) of yaw-rate error (380 -> 650:
-                      # stiffer braking so releasing a turn doesn't coast
-                      # ~50 deg past; at steady turn the error ~0 so it
-                      # doesn't fight the FF term)
-MAX_TORQUE_NM = 1900.0
+FF_YAW = 1300.0        # 1100 -> 1300: track mu 0.25 -> 0.35 raised the
+                      # pivot-resistance breakaway
+KP_W = 300.0          # N*m per (rad/s) of yaw-rate error -- 700 slammed
+                      # the clamp on filtered-rate noise; the stop-brake
+                      # below handles arresting a real coast
+MAX_TORQUE_NM = 2800.0
 
 # Keep it upright on land. ROLL only -- a tracked vehicle is meant to
 # PITCH freely to follow terrain (ramps, obstacles). Holding pitch to
@@ -112,6 +113,11 @@ GRAV_FF_N = 490.0
 # tumbled, while reverse (nose-up couple) climbed fine. Zero couple = no
 # forward/reverse asymmetry. (2026-08-29)
 CONTACT_Z = -0.168
+
+# EMA weight for the finite-differenced velocity/rate estimates (0..1;
+# lower = smoother, more lag). ~0.3 kills the force-slamming feedback
+# without adding meaningful control lag at this odom rate.
+VEL_LPF_ALPHA = 0.3
 
 LINK = 'cavex_tracked_blueboat::base_link'
 
@@ -147,6 +153,7 @@ class SkidSteerControl(Node):
         self.gz_pub = gz_pub
         self._wrench = None
         self._prev = None  # (t, x, y, roll, pitch, yaw)
+        self._vx = self._vy = self._yaw_rate = 0.0  # LPF state
         self.create_subscription(String, '/cavex/locomotion_mode', self._mode_cb, 10)
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
         self.create_timer(1.0 / 250.0, self._republish)
@@ -176,6 +183,7 @@ class SkidSteerControl(Node):
 
         if mode not in ACTIVE_MODES:
             self._prev = None
+            self._vx = self._vy = self._yaw_rate = 0.0
             # Go SILENT, don't publish a zero wrench -- the /world/.../wrench
             # topic is non-persistent (one msg = one step) and shared with
             # boat_buoyancy_control; a zero stream here would land on ~half
@@ -183,16 +191,25 @@ class SkidSteerControl(Node):
             self._wrench = None
             return
 
-        vx = vy = roll_rate = pitch_rate = yaw_rate = 0.0
+        rvx = rvy = roll_rate = pitch_rate = ryaw_rate = 0.0
         if self._prev is not None:
             dt = t - self._prev[0]
             if dt > 1e-3:
-                vx = (x - self._prev[1]) / dt
-                vy = (y - self._prev[2]) / dt
+                rvx = (x - self._prev[1]) / dt
+                rvy = (y - self._prev[2]) / dt
                 roll_rate = wrap(roll - self._prev[3]) / dt
                 pitch_rate = wrap(pitch - self._prev[4]) / dt
-                yaw_rate = wrap(yaw - self._prev[5]) / dt
+                ryaw_rate = wrap(yaw - self._prev[5]) / dt
         self._prev = (t, x, y, roll, pitch, yaw)
+
+        # Low-pass the finite-differenced rates. Raw, they're noisy enough
+        # (odom is ~10-50 Hz, position/quat jitter) that KP_W and the
+        # stop-brake slammed +-2800 N*m at the noise, which actually spun
+        # the hull -> feedback loop -> "erratic" land drive (2026-08-29).
+        a = VEL_LPF_ALPHA
+        vx = self._vx = a * rvx + (1 - a) * self._vx
+        vy = self._vy = a * rvy + (1 - a) * self._vy
+        yaw_rate = self._yaw_rate = a * ryaw_rate + (1 - a) * self._yaw_rate
 
         c, s = math.cos(yaw), math.sin(yaw)
         fwd = vx * c + vy * s          # body forward speed
@@ -210,11 +227,12 @@ class SkidSteerControl(Node):
 
         tz = FF_YAW * cmd_w + KP_W * (cmd_w - yaw_rate)
         # Stop-brake: releasing a turn leaves the FF term at 0, so a fast
-        # pivot coasted ~55 deg past the stop (2026-08-29). When no turn is
-        # commanded, add an FF-scale counter-torque against any residual
-        # yaw rate to arrest it quickly.
-        if abs(cmd_w) < 0.1 and abs(yaw_rate) > 0.03:
-            tz -= FF_YAW * clamp(yaw_rate / 0.25, -1.0, 1.0)
+        # pivot coasts past the stop. Only engage for a REAL residual spin
+        # (> 0.4 rad/s on the filtered rate -- below that it's noise), and
+        # scale it in gently so it doesn't slam the clamp.
+        if abs(cmd_w) < 0.1 and abs(yaw_rate) > 0.4:
+            tz -= 0.7 * FF_YAW * clamp((yaw_rate - math.copysign(0.4, yaw_rate)) / 0.6,
+                                       -1.0, 1.0)
         tz = clamp(tz, -MAX_TORQUE_NM, MAX_TORQUE_NM)
 
         # Upright hold -- roll only (angle spring + rate damping). Pitch

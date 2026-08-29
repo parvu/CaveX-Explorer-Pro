@@ -118,7 +118,10 @@
     url = location.host;
 
     function init() {
-      scene.grid.visible = true;
+      // gz3d viewer decorations, NOT world geometry: scene.grid is the
+      // green origin grid ("green square") and sun_lightHelper is the
+      // directional-light gizmo ("pointer" / arrow at the origin). Both off.
+      scene.grid.visible = false;
       // The domElement the renderer will be appended to.
       var sceneElement = window.document.getElementById('container');
       if (sceneElement === undefined || sceneElement === null) {
@@ -128,19 +131,13 @@
       sceneElement.appendChild(scene.renderer.domElement);
       scene.setSize(sceneElement.clientWidth, sceneElement.clientHeight);
 
-      /*
-      // Hide sun visual
-      const sunHelper = scene.scene.getObjectByName('sun_lightHelper');
-      if (sunHelper) {
-        sunHelper.visible = false;
-      }
-
-      // Delete ground plane
-      const ground = scene.scene.getObjectByName('ground_plane');
-      if (ground) {
-        scene.remove(ground);
-      }
-      */
+      // Hide the sun light helper gizmo (retry a few times -- the light
+      // object may not be in the scene graph yet on the first frame).
+      (function hideSunHelper(tries) {
+        var h = scene.scene.getObjectByName('sun_lightHelper');
+        if (h) { h.visible = false; return; }
+        if (tries > 0) { setTimeout(function () { hideSunHelper(tries - 1); }, 500); }
+      })(20);
 
       resetCameraPose();
 

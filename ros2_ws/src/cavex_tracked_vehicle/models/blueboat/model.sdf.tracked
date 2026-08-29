@@ -520,17 +520,18 @@
              contact solver and jam the pad edge into the floor. -->
         <surface>
           <friction>
-            <!-- 2026-08-29: anisotropic. mu (along fdir1 = track-X =
-                 drive/pivot direction) stays low so skid_steer_control's
-                 forced base_link can still drive and pivot; mu2 (across
-                 the track = body-Y) is high so the vehicle can't crab /
-                 sideslip into walls on land. fdir1 is in the box's local
-                 frame and the box is unrotated wrt base_link, so it
-                 tracks the hull's heading. -->
+            <!-- 2026-08-29: isotropic 0.55 -- MATCHED to the floor/ramp patch
+                 friction in cavex_world.world (both were mismatched: floor
+                 was mu 1.0, pad 0.25, and the combined contact dragged). Anisotropic mu/mu2 + fdir1
+                 was tried to kill land sideslip but bullet-featherstone
+                 IGNORES fdir1 (confirmed live: mu2=1.4 applied in the
+                 DRIVE direction too, 700 N barely moved the vehicle).
+                 0.35 lets it drive near commanded speed with skid_steer KP_V raised; the
+                 anti-crab job is back on skid_steer_control's own
+                 direction-aware lateral-damping force. -->
             <ode>
-              <mu>0.35</mu>
-              <mu2>1.4</mu2>
-              <fdir1>1 0 0</fdir1>
+              <mu>0.55</mu>
+              <mu2>0.55</mu2>
             </ode>
           </friction>
           <contact>
@@ -719,17 +720,18 @@
              contact solver and jam the pad edge into the floor. -->
         <surface>
           <friction>
-            <!-- 2026-08-29: anisotropic. mu (along fdir1 = track-X =
-                 drive/pivot direction) stays low so skid_steer_control's
-                 forced base_link can still drive and pivot; mu2 (across
-                 the track = body-Y) is high so the vehicle can't crab /
-                 sideslip into walls on land. fdir1 is in the box's local
-                 frame and the box is unrotated wrt base_link, so it
-                 tracks the hull's heading. -->
+            <!-- 2026-08-29: isotropic 0.55 -- MATCHED to the floor/ramp patch
+                 friction in cavex_world.world (both were mismatched: floor
+                 was mu 1.0, pad 0.25, and the combined contact dragged). Anisotropic mu/mu2 + fdir1
+                 was tried to kill land sideslip but bullet-featherstone
+                 IGNORES fdir1 (confirmed live: mu2=1.4 applied in the
+                 DRIVE direction too, 700 N barely moved the vehicle).
+                 0.35 lets it drive near commanded speed with skid_steer KP_V raised; the
+                 anti-crab job is back on skid_steer_control's own
+                 direction-aware lateral-damping force. -->
             <ode>
-              <mu>0.35</mu>
-              <mu2>1.4</mu2>
-              <fdir1>1 0 0</fdir1>
+              <mu>0.55</mu>
+              <mu2>0.55</mu2>
             </ode>
           </friction>
           <contact>
