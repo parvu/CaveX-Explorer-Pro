@@ -366,17 +366,17 @@
          a ledge. Flat size_x 45 -> 30, center_x -17.5 -> -25. -->
     <model name="cave_floor_patch">
       <static>true</static>
-      <pose>-25 0 4.7 0 0 0</pose>
+      <pose>-20 0 4.7 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>30 24 1</size></box></geometry>
+          <geometry><box><size>40 24 1</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>30 24 1</size></box></geometry>
+          <geometry><box><size>40 24 1</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
         </visual>
       </link>
@@ -396,28 +396,6 @@
          cave mesh across the x[-10,5] transition (same role as the
          cave_floor_patch hole-fills), top at z=5.2, ~0.8 m below the mesh
          floor so it only catches what drops through a real hole. -->
-    <!-- 2026-08-29: was a low hole-fill (top z 5.2). Raised to the water
-         level (top z 6.0) and widened to x[-12, 12] so it is the CONTINUOUS
-         drive surface across the whole cave<->water transition -- burying
-         the ~0.8 m step where the cave-mesh floor ends and basin_entry_ramp
-         begins (x~5), which a driven vehicle drove off and flipped on. Its
-         east edge (x=12) overlaps basin_entry_ramp's shore end (also z~6.0)
-         so there is no seam; the west edge (x=-12) overlaps cave_floor_patch
-         territory where the mesh floor is ~6.0 anyway. -->
-    <model name="cave_entry_patch">
-      <static>true</static>
-      <pose>-2.5 0 4.7 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>15 24 1</size></box></geometry>
-          <surface><friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction></surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>15 24 1</size></box></geometry>
-          <material><ambient>0.22 0.20 0.18 1</ambient><diffuse>0.22 0.20 0.18 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
 
 
     <!-- Second floor patch for the cave_world 2x mesh scale (real request --
@@ -526,17 +504,17 @@
          (z=3.0); y[-12,12] corridor. -->
     <model name="basin_entry_ramp">
       <static>true</static>
-      <pose>12.434 0 4.504 0 0.1326 0</pose>
+      <pose>9.9502 0 4.5025 0 0.09967 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>15.1327 24 1</size></box></geometry>
+          <geometry><box><size>20.0998 24 1</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>15.1327 24 1</size></box></geometry>
+          <geometry><box><size>20.0998 24 1</size></box></geometry>
           <material><ambient>0.15 0.17 0.22 1</ambient><diffuse>0.15 0.17 0.22 1</diffuse></material>
         </visual>
       </link>
@@ -632,10 +610,10 @@
            floats off the cave floor directly, no dry ramp. size_x 35->55,
            center_x 22.5->12.5. Shallow over the cave floor for x<5, deep
            basin (floor z=3) for x>5. -->
-      <pose>12.5 6.5 6.0 0 0 0</pose>
+      <pose>20 6.5 6.0 0 0 0</pose>
       <link name="surface">
         <visual name="water_visual">
-          <geometry><plane><size>55 37</size></plane></geometry>
+          <geometry><plane><size>40 37</size></plane></geometry>
           <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
         </visual>
       </link>
@@ -699,28 +677,6 @@
       </link>
     </model>
 
-    <!-- South boundary wall -- see north_boundary_wall's own comment for the
-         full story (2026-08-27 tumble/out-of-bounds bug, then basin
-         redesign, then east-edge trim x=70 -> x=40). Mirrors it at
-         cave_floor_patch's real south edge (y=-12) instead of y=25, same
-         x[5,40]/z[3,6.5] span. -->
-    <model name="south_boundary_wall">
-      <static>true</static>
-      <pose>22.5 -12 6.0 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>35 1 6.0</size></box></geometry>
-          <surface>
-            <contact><ode><max_vel>2.0</max_vel></ode></contact>
-            <friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction>
-          </surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>35 1 6.0</size></box></geometry>
-          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
 
     <!-- East boundary wall -- see north_boundary_wall's own comment for the
          full story (2026-08-27 tumble/out-of-bounds bug, then basin
@@ -747,89 +703,6 @@
       </link>
     </model>
 
-    <!-- Dry-floor perimeter walls (cave_floor_patch_north_wall/south_wall,
-         cave_floor_patch_scaled_north_wall/south_wall/west_wall) added
-         earlier 2026-08-27 to contain the three dry-floor slabs, then
-         ALL removed by a later real request the same day ("remove all
-         cave floor walls"). The dry floor patches themselves
-         (cave_floor_patch, cave_floor_patch_scaled, cave_floor_patch_bridge)
-         and their ceilings above are unaffected -- only side containment
-         is gone. Driving off any dry-floor edge now falls through to
-         ground_plane's z=-200 safety net with nothing in between; the
-         earlier bridge_east_wall/bridge_west_wall removal (see comment
-         below) already established that as an accepted tradeoff for this
-         region rather than a bug to re-fix. -->
-
-    <!-- Real request 2026-08-27: cave_floor_patch_bridge_east_wall (x=-38)
-         and cave_floor_patch_bridge_west_wall (x=-62) removed -- both were
-         "lateral" walls (constant-x, running north-south across the
-         corridor) standing directly in the vehicle's own east-west path
-         from its spawn (-88.78, -31.4, inside cave_floor_patch_scaled) to
-         the water region (x>=5): the corridor runs through
-         cave_floor_patch_scaled -> cave_floor_patch_bridge ->
-         cave_floor_patch -> water, and these two walls sat right across
-         that route at y=-31.4 (bridge_east_wall's own y[-46,-12] span
-         included it), blocking straight travel and forcing a detour north
-         into y[-12,12] before either crossing.
-
-         Known real gap this reopens: cave_floor_patch_bridge's own floor
-         only covers y[-46,12] for x[-62,-38] -- east of x=-38 at y<-12,
-         cave_floor_patch's floor doesn't extend that far south (its own
-         y-range is [-12,12]). Removing the east wall there means a
-         vehicle continuing straight through at y<-12 past x=-38 finds no
-         floor at all until it either turns north into cave_floor_patch's
-         real y-range or falls to ground_plane's z=-200 safety net -- same
-         class of gap this file has documented and accepted before (e.g.
-         entry_ramp's own x<15 void). Left open rather than papered over
-         with more synthetic floor, since the real request was to remove
-         the obstruction, not to guarantee every possible straight-line
-         path. -->
-
-    <!-- Ceilings, real request 2026-08-27 ("trim original cave world to
-         cave floor patch and its vertical walls"): the walls above only
-         close the SIDES of each walled region -- their own top edge (dry
-         floor walls z=8.9, water walls z=6.5) was still wide open above,
-         so the vehicle (or camera) could simply fly out over the top of
-         any wall into the real cave_world mesh's own much taller, uneven
-         open space. These are collision-only (no <visual> -- an opaque
-         ceiling box would block every camera/RViz/web-viewer view looking
-         down into the walled region, which defeats the purpose), one per
-         walled footprint, bottom surface flush with its own walls' top
-         edge (no gap): dry regions bottom=8.9 (center_z=9.4, thickness 1,
-         same three patches' own x/y footprints as their floor/wall
-         counterparts above -- overlap between them is harmless, same
-         convention as the floors themselves), water region bottom=6.5
-         (center_z=7.0, footprint matches water_surface/the water walls:
-         x[5,40] y[-12,25] after the 2026-08-27 east-edge trim x=70 -> x=40). -->
-    <model name="cave_floor_patch_ceiling">
-      <static>true</static>
-      <pose>15 0 9.4 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>110 24 1</size></box></geometry>
-        </collision>
-      </link>
-    </model>
-
-    <model name="cave_floor_patch_scaled_ceiling">
-      <static>true</static>
-      <pose>-90 -31.4 9.4 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>60 29 1</size></box></geometry>
-        </collision>
-      </link>
-    </model>
-
-    <model name="cave_floor_patch_bridge_ceiling">
-      <static>true</static>
-      <pose>-50 -17 9.4 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>24 58 1</size></box></geometry>
-        </collision>
-      </link>
-    </model>
 
     <!-- Real bug fixed 2026-08-28: bottom was z=6.5 (flush with the water
          wall tops). A boat floating at its 6-12cm target draft has its
@@ -839,16 +712,5 @@
          height. Raised to match the dry-cave ceilings (bottom z=9,
          center 9.5): still stops a (non-flying) vehicle leaving over the
          top, with real headroom for the superstructure. -->
-    <!-- 2026-08-29: lowered 12.0 -> 8.5 to follow water_surface down to
-         z=6.0 (boat floats ~6.12, superstructure ~1.5 m -> keep ~2 m). -->
-    <model name="water_ceiling">
-      <static>true</static>
-      <pose>22.5 6.5 8.5 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>35 37 1</size></box></geometry>
-        </collision>
-      </link>
-    </model>
   </world>
 </sdf>

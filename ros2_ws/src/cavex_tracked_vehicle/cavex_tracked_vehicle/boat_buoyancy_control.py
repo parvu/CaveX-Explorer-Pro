@@ -47,7 +47,7 @@ from gz.msgs10.entity_pb2 import Entity
 # full story (a real basin bottom now exists under x[5,15] too, so the
 # earlier void concern that kept this at 15.0 no longer applies physics-
 # wise).
-WATER_BOUNDARY_X = -15.0
+WATER_BOUNDARY_X = 0.0
 
 # Sum of every <mass> in model.sdf.tracked. Was 47.5 kg over 15 links
 # (base_link 32.6 + 2x motor 0.2 + 2x track 1.5 + 2x strut 0.15 + 2x
