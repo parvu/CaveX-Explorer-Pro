@@ -364,20 +364,48 @@
          x[-10,5] down from z=5.9 to the basin floor z=3.0, so a vehicle
          drives smoothly from dry cave floor into deep water rather than off
          a ledge. Flat size_x 45 -> 30, center_x -17.5 -> -25. -->
+    <!-- 2026-08-29: east edge trimmed x=0 -> x=-2 to meet the widened
+         water_surface / basin_floor (both extended west to x=-2) and the
+         new water_entry_ramp. size_x 40 -> 38, center_x -20 -> -21. -->
     <model name="cave_floor_patch">
       <static>true</static>
-      <pose>-20 0 4.7 0 0 0</pose>
+      <pose>-21 0 4.7 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>40 24 1</size></box></geometry>
+          <geometry><box><size>38 24 1</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>40 24 1</size></box></geometry>
+          <geometry><box><size>38 24 1</size></box></geometry>
           <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 2026-08-29: entry ramp from the dry cave-mesh floor (z~6.0 at x=-2)
+         down INTO the flooded chamber: 7 deg descending toward +x for 2 m,
+         top face z~6.07 at x=-2 -> z~5.83 at x=0 (just below water_surface
+         z=6.0). Replaces the deleted cave_entry_ramp; gives the tracked
+         vehicle a graded wet/dry transition instead of a ledge now that the
+         cave-mesh floor triangles over x[0,32] are cut out (cave_world_
+         holed.obj). 12 m wide to span the corridor; pitch 0.1222 rad. -->
+    <model name="water_entry_ramp">
+      <static>true</static>
+      <pose>-1 0 5.8 0 0.1222 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>2 12 0.3</size></box></geometry>
+          <surface>
+            <contact><ode><max_vel>2.0</max_vel></ode></contact>
+            <friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>2 12 0.3</size></box></geometry>
+          <material><ambient>0.22 0.2 0.18 1</ambient><diffuse>0.22 0.2 0.18 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -475,19 +503,22 @@
          footprint. Surface z=7.0 -> a uniform 4m water column. The dry
          approach descends into it via cave_entry_ramp (x[-10,5], 5.9->3.0),
          whose deep end meets this floor flush at x=5. -->
+    <!-- 2026-08-29: west edge x=0 -> x=-2 to underlie the widened
+         water_surface and the foot of water_entry_ramp. size_x 40 -> 42,
+         center_x 20 -> 19. -->
     <model name="basin_floor">
       <static>true</static>
-      <pose>20 6.5 2.5 0 0 0</pose>
+      <pose>19 6.5 2.5 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><box><size>40 37 1</size></box></geometry>
+          <geometry><box><size>42 37 1</size></box></geometry>
           <surface>
             <contact><ode><max_vel>2.0</max_vel></ode></contact>
             <friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction>
           </surface>
         </collision>
         <visual name="visual">
-          <geometry><box><size>40 37 1</size></box></geometry>
+          <geometry><box><size>42 37 1</size></box></geometry>
           <material><ambient>0.15 0.17 0.22 1</ambient><diffuse>0.15 0.17 0.22 1</diffuse></material>
         </visual>
       </link>
@@ -583,11 +614,14 @@
            the water reaches the cave mesh (real request) -- the vehicle
            floats off the cave floor directly, no dry ramp. size_x 35->55,
            center_x 22.5->12.5. Shallow over the cave floor for x<5, deep
-           basin (floor z=3) for x>5. -->
-      <pose>20 6.5 6.0 0 0 0</pose>
+           basin (floor z=3) for x>5.
+           2026-08-29: west edge x=0 -> x=-2 to meet the trimmed
+           cave_floor_patch and cover the new water_entry_ramp. size_x
+           40->42, center_x 20->19. -->
+      <pose>19 6.5 6.0 0 0 0</pose>
       <link name="surface">
         <visual name="water_visual">
-          <geometry><plane><size>40 37</size></plane></geometry>
+          <geometry><plane><size>42 37</size></plane></geometry>
           <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
         </visual>
       </link>
