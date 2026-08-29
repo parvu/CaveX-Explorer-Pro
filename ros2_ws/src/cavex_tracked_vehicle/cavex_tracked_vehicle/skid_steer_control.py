@@ -54,9 +54,14 @@ LINK = 'cavex_tracked_blueboat::base_link'
 MASS = 49.6            # kg, full vehicle (matches boat_buoyancy_control)
 IZZ = 10.0             # kg*m^2, yaw inertia about the CoM (base_link ~6.1
                        # + davit/helipad/x500 children via parallel axis)
-COM_Z = -0.168         # base_link inertial z -- apply forces here so a
-                       # horizontal force gives zero pitch couple on any
-                       # slope (heading-independent, no fwd/rev asymmetry)
+# Apply the drive/lateral force at the TRACK CONTACT PATCH (~0.42 m below
+# base_link origin, the bottom of the deployed track boxes), NOT through
+# the CoM. Through the CoM, the drive force and the ground FRICTION
+# REACTION (which acts down at the contact) form a couple -> fwd nose-dip
+# / rev nose-lift. Collinear at the contact patch -> no couple. The
+# earlier fwd/rev tumble asymmetry at this offset was other bugs since
+# fixed (velocity-servo rewrite, pitch handling, friction normalization).
+COM_Z = -0.42
 
 # --- Coulomb friction feedforward (breakaway) ---
 # The track boxes on the floor patch, combined mu ~0.55. Slide force
