@@ -86,13 +86,22 @@ KP_W = 650.0           # N*m per (rad/s) of yaw-rate error (380 -> 650:
                       # doesn't fight the FF term)
 MAX_TORQUE_NM = 1900.0
 
-# Keep it upright on land (mirror of boat_buoyancy_control.py LEVEL_KP /
-# ANGULAR_DAMPING). Only acts on small tilts -- a deliberate big flip
-# isn't fought.
-LEVEL_KP = 700.0        # N*m per rad of roll/pitch
+# Keep it upright on land. ROLL only -- a tracked vehicle is meant to
+# PITCH freely to follow terrain (ramps, obstacles). Holding pitch to
+# level fought the ~22 deg entry ramp: it needed full throttle to climb,
+# rode nose-high, then the stored fight released as an erratic slide once
+# it crested (report 2026-08-29). Pitch now only gets rate damping (stops
+# a flip-fast oscillation), not an angle spring.
+LEVEL_KP = 700.0        # N*m per rad of ROLL angle
 LEVEL_KD = 120.0        # N*m per (rad/s) of roll/pitch rate
 LEVEL_MAX = 600.0       # righting torque clamp per axis
 LEVEL_DEADBAND = 0.9    # rad (~52deg); past this the vehicle is on its side/back, stop fighting
+
+# Slope feed-forward: climbing a pitch of theta needs ~WEIGHT*sin(theta)
+# just to hold station. Add it directly so the speed P-term isn't forced
+# to saturate on the ramp (and so descents get an equal brake instead of
+# running away). WEIGHT ~ full-vehicle mass * g.
+GRAV_FF_N = 490.0
 
 # Apply traction forces this far below base_link's origin -- the track
 # contact plane. base_link rests ~0.43m above the floor on the tracks;
@@ -186,7 +195,10 @@ class SkidSteerControl(Node):
         fwd = vx * c + vy * s          # body forward speed
         lat = -vx * s + vy * c         # body lateral speed (+left)
 
-        f_fwd = clamp(KP_V * (cmd_v - fwd), -MAX_FORCE_N, MAX_FORCE_N)
+        # pitch > 0 = nose up = climbing -> forward assist; < 0 = descending
+        # -> brake. Keeps the P-term off its rails on the entry ramp.
+        grav_ff = GRAV_FF_N * math.sin(pitch)
+        f_fwd = clamp(KP_V * (cmd_v - fwd) + grav_ff, -MAX_FORCE_N, MAX_FORCE_N)
         lat_fade = max(LAT_FADE_FLOOR, 1.0 - abs(cmd_w) / W_LAT_CUTOFF)
         f_lat = lat_fade * clamp(-K_LAT * lat, -MAX_LAT_N, MAX_LAT_N)
         # body (fwd, lat) -> world
@@ -202,10 +214,13 @@ class SkidSteerControl(Node):
             tz -= FF_YAW * clamp(yaw_rate / 0.25, -1.0, 1.0)
         tz = clamp(tz, -MAX_TORQUE_NM, MAX_TORQUE_NM)
 
-        # upright hold -- skip once well past level (vehicle already on its side)
+        # Upright hold -- roll only (angle spring + rate damping). Pitch
+        # gets rate damping alone so the hull can follow ramp/terrain
+        # slope without the controller fighting it. Skip entirely once
+        # well past level (already on its side/back).
         if abs(roll) < LEVEL_DEADBAND and abs(pitch) < LEVEL_DEADBAND:
             tx = clamp(-LEVEL_KP * roll - LEVEL_KD * roll_rate, -LEVEL_MAX, LEVEL_MAX)
-            ty = clamp(-LEVEL_KP * pitch - LEVEL_KD * pitch_rate, -LEVEL_MAX, LEVEL_MAX)
+            ty = clamp(-LEVEL_KD * pitch_rate, -LEVEL_MAX, LEVEL_MAX)
         else:
             tx = ty = 0.0
 
