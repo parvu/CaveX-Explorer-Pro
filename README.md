@@ -32,7 +32,7 @@ sequences, driving commands, and verification steps for each:
 ### Phase 1: tracked BlueBoat + BlueROV2 (dry cave, ArduPilot)
 
 ```bash
-ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py &
+ros2 launch cavex_tracked_vehicle(_gui) gazebo_tracked_vehicle.launch.py &
 sleep 25
 ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py &
 sleep 15
