@@ -103,12 +103,15 @@ LEVEL_DEADBAND = 0.9    # rad (~52deg); past this the vehicle is on its side/bac
 # running away). WEIGHT ~ full-vehicle mass * g.
 GRAV_FF_N = 490.0
 
-# Apply traction forces this far below base_link's origin -- the track
-# contact plane. base_link rests ~0.43m above the floor on the tracks;
-# CoG is 0.168m below origin, so this is ~0.28m below CoG -> a horizontal
-# force gives a tiny, stable nose-up on accel / nose-down on brake, like a
-# real vehicle, instead of the destabilising couple the origin gave.
-CONTACT_Z = -0.45
+# Apply the drive force THROUGH the CoM (base_link inertial z = -0.168), so
+# a horizontal force makes zero pitch couple regardless of heading or
+# slope. -0.45 (0.28 m below the CoM) was stable on flat ground where the
+# planted tracks countered the couple, but on the entry ramp -- where the
+# tracks bridge the edge and lose ground reaction -- a forward force at
+# that low point pitched the nose down and the slippery bow dug in and
+# tumbled, while reverse (nose-up couple) climbed fine. Zero couple = no
+# forward/reverse asymmetry. (2026-08-29)
+CONTACT_Z = -0.168
 
 LINK = 'cavex_tracked_blueboat::base_link'
 
