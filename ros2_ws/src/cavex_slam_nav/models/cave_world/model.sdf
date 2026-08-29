@@ -27,7 +27,7 @@
       <collision name="collision">
         <geometry>
           <mesh>
-            <uri>model://cave_world/meshes/cave_world.obj</uri>
+            <uri>model://cave_world/meshes/cave_world_holed.obj</uri>
             <scale>2 2 2</scale>
           </mesh>
         </geometry>
@@ -38,7 +38,7 @@
       <visual name="visual">
         <geometry>
           <mesh>
-            <uri>model://cave_world/meshes/cave_world.obj</uri>
+            <uri>model://cave_world/meshes/cave_world_holed.obj</uri>
             <scale>2 2 2</scale>
           </mesh>
         </geometry>
