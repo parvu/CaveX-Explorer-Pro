@@ -35,6 +35,7 @@ import math
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
+from std_msgs.msg import String
 
 from gz.transport13 import Node as GzNode
 from gz.msgs10.entity_wrench_pb2 import EntityWrench
@@ -166,6 +167,16 @@ class BoatBuoyancyControl(Node):
     def __init__(self, gz_pub):
         super().__init__('boat_buoyancy_control')
         self.gz_pub = gz_pub
+        # Locomotion mode gate. Buoyancy is for water: 'retracting' (tracks
+        # lifting, still afloat), 'props', 'deploying' (tracks lowering near
+        # shore). In 'tracks' the vehicle is driving on land under
+        # skid_steer_control -- keep buoyancy OFF or the two fight over
+        # /world/.../wrench and the hull pitches / crabs the moment it
+        # climbs out of the water (real bug, 2026-08-29). skid_steer and
+        # boat_thruster already gate on this same topic; this node was the
+        # odd one out, using a raw x>5 check that stays true on the shore.
+        self._mode = 'tracks'
+        self.create_subscription(String, '/cavex/locomotion_mode', self._mode_cb, 10)
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
         self._prev = None  # (t, x, y, z, roll, pitch, yaw)
         self._z_i = 0.0    # bounded Z-error integral (see KI / KI_CLAMP)
@@ -183,6 +194,9 @@ class BoatBuoyancyControl(Node):
             f"x > {WATER_BOUNDARY_X} (target float Z={TARGET_FLOAT_Z:.2f}, "
             f"P+I+D lift + drag, 250Hz re-publish).")
 
+    def _mode_cb(self, msg: String):
+        self._mode = msg.data
+
     def _republish(self):
         for w in self._wrenches:
             self.gz_pub.publish(w)
@@ -196,7 +210,7 @@ class BoatBuoyancyControl(Node):
         roll, pitch = roll_pitch_from_quat(q.x, q.y, q.z, q.w)
         yaw = yaw_from_quat(q.x, q.y, q.z, q.w)
 
-        if x <= WATER_BOUNDARY_X:
+        if self._mode == 'tracks' or x <= WATER_BOUNDARY_X:
             self._prev = None
             self._z_i = 0.0
             # Go SILENT on dry land, don't publish a zero wrench. The topic
