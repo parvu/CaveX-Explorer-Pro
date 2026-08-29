@@ -85,6 +85,13 @@ TAU_LAT_TURN = 1.20    # s  (relaxed while a turn is commanded, so the
 TAU_YAW = 0.35         # s
 W_TURN_RELAX = 0.4     # rad/s of |cmd_w| over which TAU_LAT -> TAU_LAT_TURN
 
+# Heading hold: the yaw servo only regulates yaw RATE, so a drift slower
+# than the odom noise floor is invisible and the heading wanders (seen:
+# ~180 deg over a couple minutes idle). When no turn is commanded, capture
+# the heading and spring back to it. Released the moment |cmd_w| rises.
+YAW_HOLD_KP = 500.0    # N*m per rad of heading error
+CMD_W_HOLD = 0.05      # rad/s -- below this, hold heading; above, rate servo
+
 # --- target clamps ---
 # The spd+ button (manual_gui_bridge) scales the command up to 2.4 m/s;
 # on the rugged cave-mesh floor that speed launches the vehicle off floor
@@ -158,6 +165,7 @@ class SkidSteerControl(Node):
         self._prev = None                       # (t, x, y, roll, pitch, yaw)
         self._vx = self._vy = self._wz = 0.0    # filtered world vx/vy, yaw rate
         self._pitch_slow = 0.0                   # heavily LP'd pitch for slope FF
+        self._yaw_hold = None                    # captured heading when not turning
         self.create_subscription(String, '/cavex/locomotion_mode', self._mode_cb, 10)
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
         self.create_timer(1.0 / 250.0, self._republish)
@@ -192,6 +200,7 @@ class SkidSteerControl(Node):
             self._prev = None
             self._vx = self._vy = self._wz = 0.0
             self._pitch_slow = 0.0
+            self._yaw_hold = None
             self._wrenches = ()
             return
 
@@ -238,9 +247,15 @@ class SkidSteerControl(Node):
                  + MASS / tau_lat * e_lat)
         f_lat = clamp(f_lat, -FMAX_LAT, FMAX_LAT)
 
-        # --- yaw servo (target = cmd_w) ---
+        # --- yaw servo (target = cmd_w) + heading hold when not turning ---
         e_wz = cmd_w - self._wz
         tz = _ff(e_wz, FF_YAW, FF_DEADBAND_W) + IZZ / TAU_YAW * e_wz
+        if abs(cmd_w) < CMD_W_HOLD:
+            if self._yaw_hold is None:
+                self._yaw_hold = yaw
+            tz += -YAW_HOLD_KP * wrap(yaw - self._yaw_hold)
+        else:
+            self._yaw_hold = None
         tz = clamp(tz, -TMAX_YAW, TMAX_YAW)
 
         # --- upright hold: roll spring + roll/pitch rate damping ---
