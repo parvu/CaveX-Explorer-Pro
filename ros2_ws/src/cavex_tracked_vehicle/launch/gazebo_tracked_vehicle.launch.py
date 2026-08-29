@@ -298,15 +298,29 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
+    # Republishes this vehicle's real ground-truth pose (via gz-transport
+    # directly -- see that file's header) as /odom_ground_truth. Lives here,
+    # not in tracked_vehicle_slam.launch.py, because every control node below
+    # (vehicle_switch, boat_buoyancy, boat_thruster, skid_steer) is driven
+    # entirely by its /odom_ground_truth callback -- without it the vehicle
+    # simply does not respond to cmd_vel (found live 2026-08-28, "not
+    # moving"). The full stack runs this launch too, so it's still exactly
+    # one instance.
+    tracked_vehicle_ground_truth_odom = Node(
+        package='cavex_tracked_vehicle',
+        executable='tracked_vehicle_ground_truth_odom.py',
+        name='tracked_vehicle_ground_truth_odom',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
     # Task 19: watches the tracked vehicle's real ground truth and triggers
     # track retraction on the water-boundary crossing. Real request,
     # 2026-08-26: no longer manages a separate BlueROV2's lock/unlock or
     # tether -- bluerov2 is now a fixed child link of the boat's own model
     # (see model.sdf.tracked's bluerov2_link comment), so there is no
-    # separate ROV entity to release or tether. Needs
-    # tracked_vehicle_ground_truth_odom.py (started by
-    # tracked_vehicle_slam.launch.py, not here) to actually be publishing
-    # /odom_ground_truth for its trigger condition to ever fire.
+    # separate ROV entity to release or tether. Consumes /odom_ground_truth
+    # from tracked_vehicle_ground_truth_odom just above.
     vehicle_switch_node = Node(
         package='cavex_tracked_vehicle',
         executable='vehicle_switch_node.py',
@@ -332,10 +346,9 @@ def generate_launch_description():
 
     # Real request 2026-08-26: replaces cavex_world.world's Buoyancy plugin for this
     # vehicle (left disabled there -- see its own comment) with a manual, region- and
-    # righting-aware lift. Same /odom_ground_truth dependency and caveat as
-    # vehicle_switch_node just above -- idle with zero lift until
-    # tracked_vehicle_ground_truth_odom.py (tracked_vehicle_slam.launch.py) is
-    # actually publishing it, not a crash.
+    # righting-aware lift. Same /odom_ground_truth dependency as
+    # vehicle_switch_node -- idle with zero lift (not a crash) until
+    # tracked_vehicle_ground_truth_odom above is publishing.
     boat_buoyancy_control = Node(
         package='cavex_tracked_vehicle',
         executable='boat_buoyancy_control.py',
@@ -420,6 +433,7 @@ def generate_launch_description():
         spawn_entity,
         gz_bridge,
         track_retract_control,
+        tracked_vehicle_ground_truth_odom,
         vehicle_switch_node,
         manual_gui_bridge,
         boat_buoyancy_control,

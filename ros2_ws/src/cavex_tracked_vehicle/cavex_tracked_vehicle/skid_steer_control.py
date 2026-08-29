@@ -10,14 +10,28 @@ bullet-featherstone (confirmed live 2026-08-28 -- track_cmd_vel stayed
 silent, the vehicle sat still). The world switched to bullet-featherstone
 for real mesh collision + RTF; this node is the trade-off fix.
 
-It is a plain body-frame speed / yaw-rate controller: reads the shared
+It is a body-frame speed / yaw-rate controller: reads the shared
 /model/cavex_tracked_blueboat/cmd_vel (gz-transport Twist, same topic
 manual_gui_bridge.py / cmd_vel_gz_bridge.py publish and
 boat_thruster_control.py also taps) and drives base_link with a
-force + yaw torque via /world/cavex_world/wrench, only while
+force + torque via /world/cavex_world/wrench, only while
 /cavex/locomotion_mode is 'tracks' or 'retracting' (mirrors
 boat_thruster_control.py's own ('props','deploying') gate, so exactly one
 of the two ever drives at a time).
+
+Stability (real bug fixed 2026-08-28): the first version applied the drive
+force at base_link's ORIGIN, which sits ~0.17m above the CoG and ~0.45m
+above the ground-contact plane. Every accel/decel force then made a
+pitch couple against the ground reaction -> braking dropped the nose,
+forward-after-a-stop flipped the vehicle. It also had no lateral-velocity
+control, so a turn just crabbed sideways on the (deliberately near-zero)
+track/hull friction. Fixes, mirroring boat_buoyancy_control.py's own
+approach:
+  - traction forces are applied at the contact plane (force_offset.z =
+    -CONTACT_Z) so a horizontal force makes ~no pitch couple;
+  - a lateral-velocity damping force emulates track across-axis grip;
+  - a pitch/roll righting P-torque + rate damping keeps it upright on
+    land (buoyancy provides this in water; land had nothing).
 
 Wrench mechanics match boat_buoyancy_control.py: the plain /world/.../wrench
 topic applies a message for ONE physics step, so the control tick only
@@ -39,10 +53,47 @@ from gz.msgs10.entity_pb2 import Entity
 
 ACTIVE_MODES = ('tracks', 'retracting')
 
-KP_V = 800.0        # N per (m/s) of forward-speed error
-KP_W = 130.0        # N*m per (rad/s) of yaw-rate error
-MAX_FORCE_N = 950.0
-MAX_TORQUE_NM = 180.0
+# Forward: P on speed error. Softened from 800 -- 800 made a stop a ~560N
+# reverse slam.
+KP_V = 450.0            # N per (m/s) of forward-speed error
+MAX_FORCE_N = 700.0     # forward force clamp
+
+# Lateral: damp the body-across velocity so straight driving doesn't crab
+# on the (near-zero by design) track friction. FADED OUT as a turn is
+# commanded -- a skid-steer pivot legitimately swings the body's fore/aft
+# ends sideways, and a full-strength lateral force then acts as a yaw brake
+# (measured live 2026-08-28: ~170 N during a pure turn, yaw stuck ~0.4 vs
+# 1.25 rad/s). Zero lateral damping once |cmd_w| >= W_LAT_CUTOFF.
+K_LAT = 550.0           # N per (m/s) of body-lateral velocity (straight only)
+MAX_LAT_N = 350.0
+W_LAT_CUTOFF = 0.6      # rad/s of commanded yaw at which lateral damping is fully off
+
+# Yaw: feedforward + P-on-rate trim. Two 0.6m track boxes 0.7m apart make
+# pivot resistance high and STIFF (stiction-like, not viscous) -- measured
+# live 2026-08-28 pivoting in place: ~970 N*m gave 0.66 rad/s but ~1250
+# N*m gave 1.78 (a ~1000 N*m breakaway threshold, steep above it). FF_YAW
+# is sized to clear that threshold decisively for a full turn command;
+# a real pivot then runs a bit faster than commanded, which a manual
+# driver modulates. It's a drag calibration -- re-measure and retune if
+# track mu, box length/spacing or vehicle mass change. KP_W trims.
+FF_YAW = 1100.0
+KP_W = 380.0           # N*m per (rad/s) of yaw-rate error
+MAX_TORQUE_NM = 1900.0
+
+# Keep it upright on land (mirror of boat_buoyancy_control.py LEVEL_KP /
+# ANGULAR_DAMPING). Only acts on small tilts -- a deliberate big flip
+# isn't fought.
+LEVEL_KP = 700.0        # N*m per rad of roll/pitch
+LEVEL_KD = 120.0        # N*m per (rad/s) of roll/pitch rate
+LEVEL_MAX = 600.0       # righting torque clamp per axis
+LEVEL_DEADBAND = 0.9    # rad (~52deg); past this the vehicle is on its side/back, stop fighting
+
+# Apply traction forces this far below base_link's origin -- the track
+# contact plane. base_link rests ~0.43m above the floor on the tracks;
+# CoG is 0.168m below origin, so this is ~0.28m below CoG -> a horizontal
+# force gives a tiny, stable nose-up on accel / nose-down on brake, like a
+# real vehicle, instead of the destabilising couple the origin gave.
+CONTACT_Z = -0.45
 
 LINK = 'cavex_tracked_blueboat::base_link'
 
@@ -50,12 +101,20 @@ _lock = threading.Lock()
 _state = {"mode": "tracks", "cmd_v": 0.0, "cmd_w": 0.0}
 
 
-def yaw_from_quat(x, y, z, w):
-    return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+def rpy_from_quat(x, y, z, w):
+    roll = math.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
+    sinp = max(-1.0, min(1.0, 2.0 * (w * y - z * x)))
+    pitch = math.asin(sinp)
+    yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+    return roll, pitch, yaw
 
 
 def wrap(a):
     return (a + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def clamp(v, lo, hi):
+    return max(lo, min(hi, v))
 
 
 def _cmd_vel_cb(msg: Twist):
@@ -69,12 +128,13 @@ class SkidSteerControl(Node):
         super().__init__('skid_steer_control')
         self.gz_pub = gz_pub
         self._wrench = None
-        self._prev = None  # (t, x, y, yaw)
+        self._prev = None  # (t, x, y, roll, pitch, yaw)
         self.create_subscription(String, '/cavex/locomotion_mode', self._mode_cb, 10)
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
         self.create_timer(1.0 / 250.0, self._republish)
         self.get_logger().info(
-            f"skid_steer_control ready: cmd_vel -> base_link force/torque "
+            f"skid_steer_control ready: cmd_vel -> base_link wrench "
+            f"(contact-plane force, lateral damping, upright hold) "
             f"only while /cavex/locomotion_mode in {ACTIVE_MODES}.")
 
     def _mode_cb(self, msg: String):
@@ -90,7 +150,7 @@ class SkidSteerControl(Node):
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
         q = msg.pose.pose.orientation
-        yaw = yaw_from_quat(q.x, q.y, q.z, q.w)
+        roll, pitch, yaw = rpy_from_quat(q.x, q.y, q.z, q.w)
 
         with _lock:
             mode = _state["mode"]
@@ -98,30 +158,56 @@ class SkidSteerControl(Node):
 
         if mode not in ACTIVE_MODES:
             self._prev = None
-            self._set_wrench(0.0, 0.0, 0.0)
+            # Go SILENT, don't publish a zero wrench -- the /world/.../wrench
+            # topic is non-persistent (one msg = one step) and shared with
+            # boat_buoyancy_control; a zero stream here would land on ~half
+            # the steps and halve the buoyancy node's real lift/righting.
+            self._wrench = None
             return
 
-        vx = vy = yaw_rate = 0.0
+        vx = vy = roll_rate = pitch_rate = yaw_rate = 0.0
         if self._prev is not None:
             dt = t - self._prev[0]
             if dt > 1e-3:
                 vx = (x - self._prev[1]) / dt
                 vy = (y - self._prev[2]) / dt
-                yaw_rate = wrap(yaw - self._prev[3]) / dt
-        self._prev = (t, x, y, yaw)
+                roll_rate = wrap(roll - self._prev[3]) / dt
+                pitch_rate = wrap(pitch - self._prev[4]) / dt
+                yaw_rate = wrap(yaw - self._prev[5]) / dt
+        self._prev = (t, x, y, roll, pitch, yaw)
 
-        fwd = vx * math.cos(yaw) + vy * math.sin(yaw)   # current forward speed
-        f_body = max(-MAX_FORCE_N, min(MAX_FORCE_N, KP_V * (cmd_v - fwd)))
-        tz = max(-MAX_TORQUE_NM, min(MAX_TORQUE_NM, KP_W * (cmd_w - yaw_rate)))
+        c, s = math.cos(yaw), math.sin(yaw)
+        fwd = vx * c + vy * s          # body forward speed
+        lat = -vx * s + vy * c         # body lateral speed (+left)
 
-        self._set_wrench(f_body * math.cos(yaw), f_body * math.sin(yaw), tz)
+        f_fwd = clamp(KP_V * (cmd_v - fwd), -MAX_FORCE_N, MAX_FORCE_N)
+        lat_fade = max(0.0, 1.0 - abs(cmd_w) / W_LAT_CUTOFF)
+        f_lat = lat_fade * clamp(-K_LAT * lat, -MAX_LAT_N, MAX_LAT_N)
+        # body (fwd, lat) -> world
+        fx = f_fwd * c - f_lat * s
+        fy = f_fwd * s + f_lat * c
 
-    def _set_wrench(self, fx, fy, tz):
+        tz = clamp(FF_YAW * cmd_w + KP_W * (cmd_w - yaw_rate),
+                   -MAX_TORQUE_NM, MAX_TORQUE_NM)
+
+        # upright hold -- skip once well past level (vehicle already on its side)
+        if abs(roll) < LEVEL_DEADBAND and abs(pitch) < LEVEL_DEADBAND:
+            tx = clamp(-LEVEL_KP * roll - LEVEL_KD * roll_rate, -LEVEL_MAX, LEVEL_MAX)
+            ty = clamp(-LEVEL_KP * pitch - LEVEL_KD * pitch_rate, -LEVEL_MAX, LEVEL_MAX)
+        else:
+            tx = ty = 0.0
+
+        self._set_wrench(fx, fy, tx, ty, tz)
+
+    def _set_wrench(self, fx, fy, tx, ty, tz):
         w = EntityWrench()
         w.entity.name = LINK
         w.entity.type = Entity.LINK
         w.wrench.force.x = fx
         w.wrench.force.y = fy
+        w.wrench.force_offset.z = CONTACT_Z   # traction acts at the contact plane
+        w.wrench.torque.x = tx
+        w.wrench.torque.y = ty
         w.wrench.torque.z = tz
         self._wrench = w  # applied every step by _republish()
 

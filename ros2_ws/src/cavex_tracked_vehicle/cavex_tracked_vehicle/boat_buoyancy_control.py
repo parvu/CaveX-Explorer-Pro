@@ -189,7 +189,12 @@ class BoatBuoyancyControl(Node):
         if x <= WATER_BOUNDARY_X:
             self._prev = None
             self._z_i = 0.0
-            self._publish_wrench(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+            # Go SILENT on dry land, don't publish a zero wrench. The topic
+            # is non-persistent (each msg = one physics step), so skid_steer
+            # and this node share it -- a 250Hz stream of zeros here lands on
+            # ~half the steps and halves skid_steer's real force/torque
+            # (measured live 2026-08-28: yaw stuck at ~0.36 vs 1.25 rad/s).
+            self._wrench = None
             return
 
         vx = vy = vz = roll_rate = pitch_rate = yaw_rate = 0.0
