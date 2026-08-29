@@ -68,7 +68,7 @@ FLOAT_Z_MIN = 5.95
 # Real request 2026-08-27: water east edge trimmed x=70 -> x=40 (see
 # cavex_world.world's water_surface / *_boundary_wall / basin_floor). This
 # box must stay matched to those walls.
-WATER_BOX = (5.0, 40.0, -12.0, 25.0)  # x0, x1, y0, y1
+WATER_BOX = (-15.0, 40.0, -12.0, 25.0)  # x0, x1, y0, y1
 
 
 def _in_water_box(x, y):

@@ -396,6 +396,14 @@
          cave mesh across the x[-10,5] transition (same role as the
          cave_floor_patch hole-fills), top at z=5.2, ~0.8 m below the mesh
          floor so it only catches what drops through a real hole. -->
+    <!-- 2026-08-29: was a low hole-fill (top z 5.2). Raised to the water
+         level (top z 6.0) and widened to x[-12, 12] so it is the CONTINUOUS
+         drive surface across the whole cave<->water transition -- burying
+         the ~0.8 m step where the cave-mesh floor ends and basin_entry_ramp
+         begins (x~5), which a driven vehicle drove off and flipped on. Its
+         east edge (x=12) overlaps basin_entry_ramp's shore end (also z~6.0)
+         so there is no seam; the west edge (x=-12) overlaps cave_floor_patch
+         territory where the mesh floor is ~6.0 anyway. -->
     <model name="cave_entry_patch">
       <static>true</static>
       <pose>-2.5 0 4.7 0 0 0</pose>
@@ -410,6 +418,7 @@
         </visual>
       </link>
     </model>
+
 
     <!-- Second floor patch for the cave_world 2x mesh scale (real request --
          see model.sdf.tracked -- err, models/cave_world/model.sdf's own
@@ -618,13 +627,15 @@
          and vehicle_switch_node.py FLOAT_Z_MIN follow. -->
     <model name="water_surface">
       <static>true</static>
-      <!-- 2026-08-29: lowered 7.0 -> 6.0 to sit at the cave-mesh floor mean.
-           The vehicle now drives level from the cave floor straight onto
-           the water -- no cave_entry_ramp climb, no apex to teeter on. -->
-      <pose>22.5 6.5 6.0 0 0 0</pose>
+      <!-- 2026-08-29: z 7.0->6.0 (cave-floor level); west edge x=5 -> x=-15 so
+           the water reaches the cave mesh (real request) -- the vehicle
+           floats off the cave floor directly, no dry ramp. size_x 35->55,
+           center_x 22.5->12.5. Shallow over the cave floor for x<5, deep
+           basin (floor z=3) for x>5. -->
+      <pose>12.5 6.5 6.0 0 0 0</pose>
       <link name="surface">
         <visual name="water_visual">
-          <geometry><plane><size>35 37</size></plane></geometry>
+          <geometry><plane><size>55 37</size></plane></geometry>
           <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
         </visual>
       </link>
