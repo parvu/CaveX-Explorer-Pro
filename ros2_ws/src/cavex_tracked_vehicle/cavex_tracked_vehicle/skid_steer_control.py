@@ -2,41 +2,37 @@
 """
 skid_steer_control.py
 
-Land locomotion for cavex_tracked_blueboat. Replaces the gz-sim
-TrackedVehicle / TrackController plugin drive: those systems steer by
-setting track-link velocities and relying on anisotropic surface
-friction, a path that works under dartsim but produces NO motion under
-bullet-featherstone (confirmed live 2026-08-28 -- track_cmd_vel stayed
-silent, the vehicle sat still). The world switched to bullet-featherstone
-for real mesh collision + RTF; this node is the trade-off fix.
+Land locomotion for cavex_tracked_blueboat. The gz-sim TrackedVehicle /
+TrackController plugins steer by setting track-link velocities and relying
+on a per-step contact-surface-motion callback that only dartsim implements;
+under bullet-featherstone (this world's engine, for real mesh collision +
+RTF) they produce NO motion. This node is the trade-off replacement.
 
-It is a body-frame speed / yaw-rate controller: reads the shared
-/model/cavex_tracked_blueboat/cmd_vel (gz-transport Twist, same topic
-manual_gui_bridge.py / cmd_vel_gz_bridge.py publish and
-boat_thruster_control.py also taps) and drives base_link with a
-force + torque via /world/cavex_world/wrench, only while
-/cavex/locomotion_mode is 'tracks' or 'retracting' (mirrors
-boat_thruster_control.py's own ('props','deploying') gate, so exactly one
-of the two ever drives at a time).
+It is a BODY-FRAME VELOCITY SERVO on base_link, active only while
+/cavex/locomotion_mode is 'tracks' or 'retracting' (exact complement of
+boat_thruster_control.py's ('props','deploying') gate, so exactly one
+drives at a time). Each odom tick it computes the wrench that drives the
+measured body velocity toward the target:
 
-Stability (real bug fixed 2026-08-28): the first version applied the drive
-force at base_link's ORIGIN, which sits ~0.17m above the CoG and ~0.45m
-above the ground-contact plane. Every accel/decel force then made a
-pitch couple against the ground reaction -> braking dropped the nose,
-forward-after-a-stop flipped the vehicle. It also had no lateral-velocity
-control, so a turn just crabbed sideways on the (deliberately near-zero)
-track/hull friction. Fixes, mirroring boat_buoyancy_control.py's own
-approach:
-  - traction forces are applied at the contact plane (force_offset.z =
-    -CONTACT_Z) so a horizontal force makes ~no pitch couple;
-  - a lateral-velocity damping force emulates track across-axis grip;
-  - a pitch/roll righting P-torque + rate damping keeps it upright on
-    land (buoyancy provides this in water; land had nothing).
+    target: forward = cmd_vel.linear.x,  lateral = 0,  yaw rate = cmd_vel.angular.z
 
-Wrench mechanics match boat_buoyancy_control.py: the plain /world/.../wrench
-topic applies a message for ONE physics step, so the control tick only
-COMPUTES the wrench and a ~physics-rate timer re-publishes it (the
-/persistent topic would ACCUMULATE per message and run away).
+Per axis the wrench is  breakaway_feedforward * sat(err) + inertia/tau * err,
+clamped. The feedforward carries the Coulomb friction (the tracks on the
+floor -- ~mu 0.55, so ~260 N to slide, ~1000 N*m to pivot); the servo term
+trims the residual and sets the response time. Driving LATERAL velocity to
+zero (not just damping it) is the structural anti-crab -- during a turn the
+lateral servo is relaxed so the pivot can swing.
+
+Because it's body-frame, a ramp is handled for free: body-forward on a
+nose-up hull points up-slope, and the forward servo simply pushes harder
+as gravity slows the climb. Roll is actively held level (tip-over guard);
+pitch is only rate-damped so the hull follows terrain.
+
+Wrench mechanics: the plain /world/<world>/wrench topic applies a message
+for exactly ONE physics step (the /persistent topic accumulates and runs
+away), so the odom callback only COMPUTES the wrench and a ~physics-rate
+timer re-publishes it. Forces act through the CoM (force_offset.z) so a
+horizontal drive force makes no pitch couple on any slope.
 """
 import math
 import threading
@@ -52,74 +48,53 @@ from gz.msgs10.entity_wrench_pb2 import EntityWrench
 from gz.msgs10.entity_pb2 import Entity
 
 ACTIVE_MODES = ('tracks', 'retracting')
-
-# Forward: P on speed error. Softened from 800 -- 800 made a stop a ~560N
-# reverse slam.
-KP_V = 900.0            # N per (m/s) of forward-speed error -- high enough
-                       # that a 0.8 m/s command reaches ~0.6 m/s against
-                       # the isotropic track friction (mu 0.35)
-MAX_FORCE_N = 1050.0    # forward force clamp -- headroom for a ramp climb
-
-# Lateral: damp the body-across velocity so the vehicle doesn't crab. This
-# is the PRIMARY anti-sideslip mechanism -- the track collision friction is
-# isotropic (fdir1 doesn't work under bullet-featherstone), so it can't
-# resist lateral sliding more than forward driving. FADED as a turn is
-# commanded (a pivot legitimately swings the body's ends sideways and full
-# damping acts as a yaw brake), but never below LAT_FADE_FLOOR -- fully
-# off, the vehicle skidded into walls while manoeuvring.
-K_LAT = 1000.0          # N per (m/s) of body-lateral velocity
-MAX_LAT_N = 700.0
-W_LAT_CUTOFF = 0.6      # rad/s of commanded yaw over which the fade runs
-LAT_FADE_FLOOR = 0.5    # lateral damping never fades below this fraction
-
-# Yaw: feedforward + P-on-rate trim. Two 0.6m track boxes 0.7m apart make
-# pivot resistance high and STIFF (stiction-like, not viscous) -- measured
-# live 2026-08-28 pivoting in place: ~970 N*m gave 0.66 rad/s but ~1250
-# N*m gave 1.78 (a ~1000 N*m breakaway threshold, steep above it). FF_YAW
-# is sized to clear that threshold decisively for a full turn command;
-# a real pivot then runs a bit faster than commanded, which a manual
-# driver modulates. It's a drag calibration -- re-measure and retune if
-# track mu, box length/spacing or vehicle mass change. KP_W trims.
-FF_YAW = 1300.0        # 1100 -> 1300: track mu 0.25 -> 0.35 raised the
-                      # pivot-resistance breakaway
-KP_W = 300.0          # N*m per (rad/s) of yaw-rate error -- 700 slammed
-                      # the clamp on filtered-rate noise; the stop-brake
-                      # below handles arresting a real coast
-MAX_TORQUE_NM = 2800.0
-
-# Keep it upright on land. ROLL only -- a tracked vehicle is meant to
-# PITCH freely to follow terrain (ramps, obstacles). Holding pitch to
-# level fought the ~22 deg entry ramp: it needed full throttle to climb,
-# rode nose-high, then the stored fight released as an erratic slide once
-# it crested (report 2026-08-29). Pitch now only gets rate damping (stops
-# a flip-fast oscillation), not an angle spring.
-LEVEL_KP = 700.0        # N*m per rad of ROLL angle
-LEVEL_KD = 120.0        # N*m per (rad/s) of roll/pitch rate
-LEVEL_MAX = 600.0       # righting torque clamp per axis
-LEVEL_DEADBAND = 0.9    # rad (~52deg); past this the vehicle is on its side/back, stop fighting
-
-# Slope feed-forward: climbing a pitch of theta needs ~WEIGHT*sin(theta)
-# just to hold station. Add it directly so the speed P-term isn't forced
-# to saturate on the ramp (and so descents get an equal brake instead of
-# running away). WEIGHT ~ full-vehicle mass * g.
-GRAV_FF_N = 490.0
-
-# Apply the drive force THROUGH the CoM (base_link inertial z = -0.168), so
-# a horizontal force makes zero pitch couple regardless of heading or
-# slope. -0.45 (0.28 m below the CoM) was stable on flat ground where the
-# planted tracks countered the couple, but on the entry ramp -- where the
-# tracks bridge the edge and lose ground reaction -- a forward force at
-# that low point pitched the nose down and the slippery bow dug in and
-# tumbled, while reverse (nose-up couple) climbed fine. Zero couple = no
-# forward/reverse asymmetry. (2026-08-29)
-CONTACT_Z = -0.168
-
-# EMA weight for the finite-differenced velocity/rate estimates (0..1;
-# lower = smoother, more lag). ~0.3 kills the force-slamming feedback
-# without adding meaningful control lag at this odom rate.
-VEL_LPF_ALPHA = 0.3
-
 LINK = 'cavex_tracked_blueboat::base_link'
+
+# --- vehicle ---
+MASS = 49.6            # kg, full vehicle (matches boat_buoyancy_control)
+IZZ = 10.0             # kg*m^2, yaw inertia about the CoM (base_link ~6.1
+                       # + davit/helipad/x500 children via parallel axis)
+COM_Z = -0.168         # base_link inertial z -- apply forces here so a
+                       # horizontal force gives zero pitch couple on any
+                       # slope (heading-independent, no fwd/rev asymmetry)
+
+# --- Coulomb friction feedforward (breakaway) ---
+# The track boxes on the floor patch, combined mu ~0.55. Slide force
+# ~ mu * m * g; pivot torque is larger (two 0.6 m boxes 0.7 m apart).
+FF_FWD = 280.0         # N to break the tracks loose fore/aft
+FF_LAT = 320.0         # N sideways (a touch stiffer -- anti-crab)
+FF_YAW = 1050.0        # N*m to break a pivot loose
+# err below which the FF fades linearly to 0. Must sit ABOVE the filtered
+# finite-difference noise floor, or a phantom rate triggers the full FF
+# and kicks a real transient (a ~20 deg uncommanded yaw at drive start).
+FF_DEADBAND_V = 0.12   # m/s
+FF_DEADBAND_W = 0.25   # rad/s
+
+# --- servo (reach target velocity in ~tau seconds) ---
+TAU_FWD = 0.40         # s
+TAU_LAT = 0.25         # s  (driving crab to zero -- fairly quick)
+TAU_LAT_TURN = 1.20    # s  (relaxed while a turn is commanded, so the
+                       #     pivot can swing the body's ends sideways)
+TAU_YAW = 0.35         # s
+W_TURN_RELAX = 0.4     # rad/s of |cmd_w| over which TAU_LAT -> TAU_LAT_TURN
+
+# --- clamps ---
+FMAX_FWD = 950.0       # N
+FMAX_LAT = 800.0       # N
+TMAX_YAW = 1900.0      # N*m
+
+# --- slope feedforward ---
+GRAV_FF_N = 460.0      # ~ m*g; forward assist = GRAV_FF_N*sin(pitch)
+
+# --- upright hold (ROLL only; pitch follows terrain) ---
+ROLL_KP = 700.0        # N*m per rad of roll
+ROLL_KD = 120.0        # N*m per (rad/s) of roll rate
+PITCH_KD = 120.0       # N*m per (rad/s) of pitch rate (no angle spring)
+LEVEL_MAX = 600.0
+LEVEL_DEADBAND = 0.9   # rad (~52 deg); past this it's on its side, stop
+
+# --- odom-rate finite-difference filter ---
+VEL_LPF_ALPHA = 0.30   # EMA weight (lower = smoother, more lag)
 
 _lock = threading.Lock()
 _state = {"mode": "tracks", "cmd_v": 0.0, "cmd_w": 0.0}
@@ -152,15 +127,15 @@ class SkidSteerControl(Node):
         super().__init__('skid_steer_control')
         self.gz_pub = gz_pub
         self._wrench = None
-        self._prev = None  # (t, x, y, roll, pitch, yaw)
-        self._vx = self._vy = self._yaw_rate = 0.0  # LPF state
+        self._prev = None                       # (t, x, y, roll, pitch, yaw)
+        self._vx = self._vy = self._wz = 0.0    # filtered world vx/vy, yaw rate
         self.create_subscription(String, '/cavex/locomotion_mode', self._mode_cb, 10)
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
         self.create_timer(1.0 / 250.0, self._republish)
         self.get_logger().info(
-            f"skid_steer_control ready: cmd_vel -> base_link wrench "
-            f"(contact-plane force, lateral damping, upright hold) "
-            f"only while /cavex/locomotion_mode in {ACTIVE_MODES}.")
+            f"skid_steer_control ready: body-frame velocity servo on base_link "
+            f"(fwd = cmd_vel.x, lateral -> 0, yaw = cmd_vel.z) while "
+            f"/cavex/locomotion_mode in {ACTIVE_MODES}.")
 
     def _mode_cb(self, msg: String):
         with _lock:
@@ -182,16 +157,15 @@ class SkidSteerControl(Node):
             cmd_v, cmd_w = _state["cmd_v"], _state["cmd_w"]
 
         if mode not in ACTIVE_MODES:
+            # Go silent (don't stream zero wrenches -- the topic is
+            # non-persistent and shared with boat_buoyancy_control).
             self._prev = None
-            self._vx = self._vy = self._yaw_rate = 0.0
-            # Go SILENT, don't publish a zero wrench -- the /world/.../wrench
-            # topic is non-persistent (one msg = one step) and shared with
-            # boat_buoyancy_control; a zero stream here would land on ~half
-            # the steps and halve the buoyancy node's real lift/righting.
+            self._vx = self._vy = self._wz = 0.0
             self._wrench = None
             return
 
-        rvx = rvy = roll_rate = pitch_rate = ryaw_rate = 0.0
+        # --- measured velocities: finite-difference + EMA (odom is noisy) ---
+        rvx = rvy = roll_rate = pitch_rate = rwz = 0.0
         if self._prev is not None:
             dt = t - self._prev[0]
             if dt > 1e-3:
@@ -199,49 +173,45 @@ class SkidSteerControl(Node):
                 rvy = (y - self._prev[2]) / dt
                 roll_rate = wrap(roll - self._prev[3]) / dt
                 pitch_rate = wrap(pitch - self._prev[4]) / dt
-                ryaw_rate = wrap(yaw - self._prev[5]) / dt
+                rwz = wrap(yaw - self._prev[5]) / dt
         self._prev = (t, x, y, roll, pitch, yaw)
-
-        # Low-pass the finite-differenced rates. Raw, they're noisy enough
-        # (odom is ~10-50 Hz, position/quat jitter) that KP_W and the
-        # stop-brake slammed +-2800 N*m at the noise, which actually spun
-        # the hull -> feedback loop -> "erratic" land drive (2026-08-29).
         a = VEL_LPF_ALPHA
-        vx = self._vx = a * rvx + (1 - a) * self._vx
-        vy = self._vy = a * rvy + (1 - a) * self._vy
-        yaw_rate = self._yaw_rate = a * ryaw_rate + (1 - a) * self._yaw_rate
+        self._vx = a * rvx + (1 - a) * self._vx
+        self._vy = a * rvy + (1 - a) * self._vy
+        self._wz = a * rwz + (1 - a) * self._wz
 
         c, s = math.cos(yaw), math.sin(yaw)
-        fwd = vx * c + vy * s          # body forward speed
-        lat = -vx * s + vy * c         # body lateral speed (+left)
+        fwd = self._vx * c + self._vy * s      # body forward speed
+        lat = -self._vx * s + self._vy * c     # body lateral speed (+left)
 
-        # pitch > 0 = nose up = climbing -> forward assist; < 0 = descending
-        # -> brake. Keeps the P-term off its rails on the entry ramp.
-        grav_ff = GRAV_FF_N * math.sin(pitch)
-        f_fwd = clamp(KP_V * (cmd_v - fwd) + grav_ff, -MAX_FORCE_N, MAX_FORCE_N)
-        lat_fade = max(LAT_FADE_FLOOR, 1.0 - abs(cmd_w) / W_LAT_CUTOFF)
-        f_lat = lat_fade * clamp(-K_LAT * lat, -MAX_LAT_N, MAX_LAT_N)
+        # --- forward servo (target = cmd_v) ---
+        e_fwd = cmd_v - fwd
+        f_fwd = (_ff(e_fwd, FF_FWD, FF_DEADBAND_V)
+                 + MASS / TAU_FWD * e_fwd
+                 + GRAV_FF_N * math.sin(pitch))
+        f_fwd = clamp(f_fwd, -FMAX_FWD, FMAX_FWD)
+
+        # --- lateral servo (target = 0; relaxed while turning) ---
+        tau_lat = TAU_LAT + (TAU_LAT_TURN - TAU_LAT) * min(1.0, abs(cmd_w) / W_TURN_RELAX)
+        turn_frac = min(1.0, abs(cmd_w) / W_TURN_RELAX)
+        e_lat = 0.0 - lat
+        f_lat = ((1.0 - 0.7 * turn_frac) * _ff(e_lat, FF_LAT, FF_DEADBAND_V)
+                 + MASS / tau_lat * e_lat)
+        f_lat = clamp(f_lat, -FMAX_LAT, FMAX_LAT)
+
         # body (fwd, lat) -> world
         fx = f_fwd * c - f_lat * s
         fy = f_fwd * s + f_lat * c
 
-        tz = FF_YAW * cmd_w + KP_W * (cmd_w - yaw_rate)
-        # Stop-brake: releasing a turn leaves the FF term at 0, so a fast
-        # pivot coasts past the stop. Only engage for a REAL residual spin
-        # (> 0.4 rad/s on the filtered rate -- below that it's noise), and
-        # scale it in gently so it doesn't slam the clamp.
-        if abs(cmd_w) < 0.1 and abs(yaw_rate) > 0.4:
-            tz -= 0.7 * FF_YAW * clamp((yaw_rate - math.copysign(0.4, yaw_rate)) / 0.6,
-                                       -1.0, 1.0)
-        tz = clamp(tz, -MAX_TORQUE_NM, MAX_TORQUE_NM)
+        # --- yaw servo (target = cmd_w) ---
+        e_wz = cmd_w - self._wz
+        tz = _ff(e_wz, FF_YAW, FF_DEADBAND_W) + IZZ / TAU_YAW * e_wz
+        tz = clamp(tz, -TMAX_YAW, TMAX_YAW)
 
-        # Upright hold -- roll only (angle spring + rate damping). Pitch
-        # gets rate damping alone so the hull can follow ramp/terrain
-        # slope without the controller fighting it. Skip entirely once
-        # well past level (already on its side/back).
+        # --- upright hold: roll spring + roll/pitch rate damping ---
         if abs(roll) < LEVEL_DEADBAND and abs(pitch) < LEVEL_DEADBAND:
-            tx = clamp(-LEVEL_KP * roll - LEVEL_KD * roll_rate, -LEVEL_MAX, LEVEL_MAX)
-            ty = clamp(-LEVEL_KD * pitch_rate, -LEVEL_MAX, LEVEL_MAX)
+            tx = clamp(-ROLL_KP * roll - ROLL_KD * roll_rate, -LEVEL_MAX, LEVEL_MAX)
+            ty = clamp(-PITCH_KD * pitch_rate, -LEVEL_MAX, LEVEL_MAX)
         else:
             tx = ty = 0.0
 
@@ -253,11 +223,20 @@ class SkidSteerControl(Node):
         w.entity.type = Entity.LINK
         w.wrench.force.x = fx
         w.wrench.force.y = fy
-        w.wrench.force_offset.z = CONTACT_Z   # traction acts at the contact plane
+        w.wrench.force_offset.z = COM_Z
         w.wrench.torque.x = tx
         w.wrench.torque.y = ty
         w.wrench.torque.z = tz
         self._wrench = w  # applied every step by _republish()
+
+
+def _ff(err, mag, deadband):
+    """Coulomb-friction feedforward: +-mag in the direction of err, faded
+    linearly to 0 as |err| drops below deadband (no limit-cycle chatter
+    at the target)."""
+    if abs(err) <= 1e-9:
+        return 0.0
+    return mag * clamp(err / deadband, -1.0, 1.0)
 
 
 def main(args=None):
