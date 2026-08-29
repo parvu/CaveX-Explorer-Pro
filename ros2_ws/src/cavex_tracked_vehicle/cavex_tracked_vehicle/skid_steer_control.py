@@ -54,14 +54,16 @@ LINK = 'cavex_tracked_blueboat::base_link'
 MASS = 49.6            # kg, full vehicle (matches boat_buoyancy_control)
 IZZ = 10.0             # kg*m^2, yaw inertia about the CoM (base_link ~6.1
                        # + davit/helipad/x500 children via parallel axis)
-# Apply the drive/lateral force at the TRACK CONTACT PATCH (~0.42 m below
-# base_link origin, the bottom of the deployed track boxes), NOT through
-# the CoM. Through the CoM, the drive force and the ground FRICTION
-# REACTION (which acts down at the contact) form a couple -> fwd nose-dip
-# / rev nose-lift. Collinear at the contact patch -> no couple. The
-# earlier fwd/rev tumble asymmetry at this offset was other bugs since
-# fixed (velocity-servo rewrite, pitch handling, friction normalization).
-COM_Z = -0.42
+# Force application points (base_link frame). The FORWARD drive force acts
+# at the track contact patch (CONTACT_Z, ~0.42 m down) so it and the
+# ground friction reaction are collinear -> no fwd/rev pitch couple. The
+# LATERAL anti-crab force acts through the CoM (COM_X, COM_Z_TRUE) -> no
+# yaw couple (at the contact patch its 0.05 m x-arm from the CoM slowly
+# spun the vehicle at rest, ~50 deg during a settle -- looked like a crab)
+# and no roll couple. Sent as two summed wrench messages.
+COM_X = -0.05
+COM_Z_TRUE = -0.168
+CONTACT_Z = -0.42
 
 # --- Coulomb friction feedforward (breakaway) ---
 # The track boxes on the floor patch, combined mu ~0.55. Slide force
@@ -109,7 +111,7 @@ PITCH_SLOW_ALPHA = 0.03  # EMA weight for the slope estimate (~1 s settle)
 ROLL_KP = 800.0        # N*m per rad of roll
 ROLL_KD = 220.0        # N*m per (rad/s) of roll rate
 # Pitch: RATE DAMPING ONLY, no angle spring. The drive force acts at the
-# contact patch (COM_Z), so driving induces almost no pitch couple
+# contact patch (CONTACT_Z), so driving induces almost no pitch couple
 # (measured +-0.2 deg on flat); gravity + contact settle the hull onto
 # whatever the terrain is (both tracks planted, pitch = ramp angle), and
 # the rate term just kills oscillation. Any angle spring here either
@@ -152,7 +154,7 @@ class SkidSteerControl(Node):
     def __init__(self, gz_pub):
         super().__init__('skid_steer_control')
         self.gz_pub = gz_pub
-        self._wrench = None
+        self._wrenches = ()                      # (drive, lateral) EntityWrench, summed by gz
         self._prev = None                       # (t, x, y, roll, pitch, yaw)
         self._vx = self._vy = self._wz = 0.0    # filtered world vx/vy, yaw rate
         self._pitch_slow = 0.0                   # heavily LP'd pitch for slope FF
@@ -169,8 +171,8 @@ class SkidSteerControl(Node):
             _state["mode"] = msg.data
 
     def _republish(self):
-        if self._wrench is not None:
-            self.gz_pub.publish(self._wrench)
+        for w in self._wrenches:
+            self.gz_pub.publish(w)
 
     def _odom_cb(self, msg: Odometry):
         t = self.get_clock().now().nanoseconds * 1e-9
@@ -190,7 +192,7 @@ class SkidSteerControl(Node):
             self._prev = None
             self._vx = self._vy = self._wz = 0.0
             self._pitch_slow = 0.0
-            self._wrench = None
+            self._wrenches = ()
             return
 
         # --- measured velocities: finite-difference + EMA (odom is noisy) ---
@@ -236,10 +238,6 @@ class SkidSteerControl(Node):
                  + MASS / tau_lat * e_lat)
         f_lat = clamp(f_lat, -FMAX_LAT, FMAX_LAT)
 
-        # body (fwd, lat) -> world
-        fx = f_fwd * c - f_lat * s
-        fy = f_fwd * s + f_lat * c
-
         # --- yaw servo (target = cmd_w) ---
         e_wz = cmd_w - self._wz
         tz = _ff(e_wz, FF_YAW, FF_DEADBAND_W) + IZZ / TAU_YAW * e_wz
@@ -252,19 +250,28 @@ class SkidSteerControl(Node):
         else:
             tx = ty = 0.0
 
-        self._set_wrench(fx, fy, tx, ty, tz)
+        # Two wrench messages (gz sums them). Forward drive force at the
+        # contact patch; lateral force + all torques through the CoM.
+        w_drive = EntityWrench()
+        w_drive.entity.name = LINK
+        w_drive.entity.type = Entity.LINK
+        w_drive.wrench.force.x = f_fwd * c
+        w_drive.wrench.force.y = f_fwd * s
+        w_drive.wrench.force_offset.x = COM_X
+        w_drive.wrench.force_offset.z = CONTACT_Z
+        w_drive.wrench.torque.x = tx
+        w_drive.wrench.torque.y = ty
+        w_drive.wrench.torque.z = tz
 
-    def _set_wrench(self, fx, fy, tx, ty, tz):
-        w = EntityWrench()
-        w.entity.name = LINK
-        w.entity.type = Entity.LINK
-        w.wrench.force.x = fx
-        w.wrench.force.y = fy
-        w.wrench.force_offset.z = COM_Z
-        w.wrench.torque.x = tx
-        w.wrench.torque.y = ty
-        w.wrench.torque.z = tz
-        self._wrench = w  # applied every step by _republish()
+        w_lat = EntityWrench()
+        w_lat.entity.name = LINK
+        w_lat.entity.type = Entity.LINK
+        w_lat.wrench.force.x = -f_lat * s
+        w_lat.wrench.force.y = f_lat * c
+        w_lat.wrench.force_offset.x = COM_X
+        w_lat.wrench.force_offset.z = COM_Z_TRUE
+
+        self._wrenches = (w_drive, w_lat)
 
 
 def _ff(err, mag, deadband):
