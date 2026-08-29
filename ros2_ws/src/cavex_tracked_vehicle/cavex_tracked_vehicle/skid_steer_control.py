@@ -58,15 +58,18 @@ ACTIVE_MODES = ('tracks', 'retracting')
 KP_V = 450.0            # N per (m/s) of forward-speed error
 MAX_FORCE_N = 700.0     # forward force clamp
 
-# Lateral: damp the body-across velocity so straight driving doesn't crab
-# on the (near-zero by design) track friction. FADED OUT as a turn is
-# commanded -- a skid-steer pivot legitimately swings the body's fore/aft
-# ends sideways, and a full-strength lateral force then acts as a yaw brake
-# (measured live 2026-08-28: ~170 N during a pure turn, yaw stuck ~0.4 vs
-# 1.25 rad/s). Zero lateral damping once |cmd_w| >= W_LAT_CUTOFF.
-K_LAT = 550.0           # N per (m/s) of body-lateral velocity (straight only)
-MAX_LAT_N = 350.0
-W_LAT_CUTOFF = 0.6      # rad/s of commanded yaw at which lateral damping is fully off
+# Lateral: damp the body-across velocity so the vehicle doesn't crab on the
+# (near-zero by design) track friction. FADED as a turn is commanded -- a
+# pivot legitimately swings the body's fore/aft ends sideways and full
+# damping there acts as a yaw brake (measured live 2026-08-28) -- but NOT
+# to zero: fully off, the vehicle skidded sideways into walls while
+# manoeuvring (2026-08-29). LAT_FADE_FLOOR keeps ~half the grip through a
+# hard turn; FF_YAW is strong enough to pivot against it.
+K_LAT = 450.0           # N per (m/s) of body-lateral velocity -- back down
+MAX_LAT_N = 350.0       # (from 1100/700): the track collision is now
+W_LAT_CUTOFF = 0.6      # anisotropic (mu2=1.4 across-track), so real
+LAT_FADE_FLOOR = 0.5    # friction does most of the anti-crab work now;
+                        # this just trims residual drift.
 
 # Yaw: feedforward + P-on-rate trim. Two 0.6m track boxes 0.7m apart make
 # pivot resistance high and STIFF (stiction-like, not viscous) -- measured
@@ -77,7 +80,10 @@ W_LAT_CUTOFF = 0.6      # rad/s of commanded yaw at which lateral damping is ful
 # driver modulates. It's a drag calibration -- re-measure and retune if
 # track mu, box length/spacing or vehicle mass change. KP_W trims.
 FF_YAW = 1100.0
-KP_W = 380.0           # N*m per (rad/s) of yaw-rate error
+KP_W = 650.0           # N*m per (rad/s) of yaw-rate error (380 -> 650:
+                      # stiffer braking so releasing a turn doesn't coast
+                      # ~50 deg past; at steady turn the error ~0 so it
+                      # doesn't fight the FF term)
 MAX_TORQUE_NM = 1900.0
 
 # Keep it upright on land (mirror of boat_buoyancy_control.py LEVEL_KP /
@@ -181,14 +187,20 @@ class SkidSteerControl(Node):
         lat = -vx * s + vy * c         # body lateral speed (+left)
 
         f_fwd = clamp(KP_V * (cmd_v - fwd), -MAX_FORCE_N, MAX_FORCE_N)
-        lat_fade = max(0.0, 1.0 - abs(cmd_w) / W_LAT_CUTOFF)
+        lat_fade = max(LAT_FADE_FLOOR, 1.0 - abs(cmd_w) / W_LAT_CUTOFF)
         f_lat = lat_fade * clamp(-K_LAT * lat, -MAX_LAT_N, MAX_LAT_N)
         # body (fwd, lat) -> world
         fx = f_fwd * c - f_lat * s
         fy = f_fwd * s + f_lat * c
 
-        tz = clamp(FF_YAW * cmd_w + KP_W * (cmd_w - yaw_rate),
-                   -MAX_TORQUE_NM, MAX_TORQUE_NM)
+        tz = FF_YAW * cmd_w + KP_W * (cmd_w - yaw_rate)
+        # Stop-brake: releasing a turn leaves the FF term at 0, so a fast
+        # pivot coasted ~55 deg past the stop (2026-08-29). When no turn is
+        # commanded, add an FF-scale counter-torque against any residual
+        # yaw rate to arrest it quickly.
+        if abs(cmd_w) < 0.1 and abs(yaw_rate) > 0.03:
+            tz -= FF_YAW * clamp(yaw_rate / 0.25, -1.0, 1.0)
+        tz = clamp(tz, -MAX_TORQUE_NM, MAX_TORQUE_NM)
 
         # upright hold -- skip once well past level (vehicle already on its side)
         if abs(roll) < LEVEL_DEADBAND and abs(pitch) < LEVEL_DEADBAND:

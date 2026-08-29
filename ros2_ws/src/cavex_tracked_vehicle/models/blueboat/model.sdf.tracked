@@ -520,9 +520,17 @@
              contact solver and jam the pad edge into the floor. -->
         <surface>
           <friction>
+            <!-- 2026-08-29: anisotropic. mu (along fdir1 = track-X =
+                 drive/pivot direction) stays low so skid_steer_control's
+                 forced base_link can still drive and pivot; mu2 (across
+                 the track = body-Y) is high so the vehicle can't crab /
+                 sideslip into walls on land. fdir1 is in the box's local
+                 frame and the box is unrotated wrt base_link, so it
+                 tracks the hull's heading. -->
             <ode>
-              <mu>0.25</mu>
-              <mu2>0.25</mu2>
+              <mu>0.35</mu>
+              <mu2>1.4</mu2>
+              <fdir1>1 0 0</fdir1>
             </ode>
           </friction>
           <contact>
@@ -711,9 +719,17 @@
              contact solver and jam the pad edge into the floor. -->
         <surface>
           <friction>
+            <!-- 2026-08-29: anisotropic. mu (along fdir1 = track-X =
+                 drive/pivot direction) stays low so skid_steer_control's
+                 forced base_link can still drive and pivot; mu2 (across
+                 the track = body-Y) is high so the vehicle can't crab /
+                 sideslip into walls on land. fdir1 is in the box's local
+                 frame and the box is unrotated wrt base_link, so it
+                 tracks the hull's heading. -->
             <ode>
-              <mu>0.25</mu>
-              <mu2>0.25</mu2>
+              <mu>0.35</mu>
+              <mu2>1.4</mu2>
+              <fdir1>1 0 0</fdir1>
             </ode>
           </friction>
           <contact>
