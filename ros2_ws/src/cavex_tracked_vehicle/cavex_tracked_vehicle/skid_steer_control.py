@@ -108,15 +108,14 @@ PITCH_SLOW_ALPHA = 0.03  # EMA weight for the slope estimate (~1 s settle)
 # --- upright hold ---
 ROLL_KP = 800.0        # N*m per rad of roll
 ROLL_KD = 220.0        # N*m per (rad/s) of roll rate
-# Gentle pitch spring toward level. On flat ground it counters the
-# drive-induced nose-dip (fwd) / lift (rev) -- the drive force doesn't
-# land exactly through the full-vehicle CoM. Deliberately weak: on the
-# ~8 deg entry ramp it only pulls ~45 N*m toward level, so the hull still
-# mostly follows the ramp while GRAV_FF + the drive servo climb it.
-PITCH_KP = 200.0       # N*m per rad of pitch -- lowered from 320: a
-                      # stiffer spring rocked the hull against the tracks
-                      # at rest on the ramp (wobble)
-PITCH_KD = 260.0       # N*m per (rad/s) of pitch rate
+# Pitch: RATE DAMPING ONLY, no angle spring. The drive force acts at the
+# contact patch (COM_Z), so driving induces almost no pitch couple
+# (measured +-0.2 deg on flat); gravity + contact settle the hull onto
+# whatever the terrain is (both tracks planted, pitch = ramp angle), and
+# the rate term just kills oscillation. Any angle spring here either
+# teetered the hull off a ramp (toward level) or held it at a wrong pitch
+# (toward the slow estimate).
+PITCH_KD = 300.0       # N*m per (rad/s) of pitch rate
 LEVEL_MAX = 800.0
 LEVEL_DEADBAND = 1.3   # rad (~75 deg); keep fighting further before giving up
 
@@ -249,8 +248,7 @@ class SkidSteerControl(Node):
         # --- upright hold: roll spring + roll/pitch rate damping ---
         if abs(roll) < LEVEL_DEADBAND and abs(pitch) < LEVEL_DEADBAND:
             tx = clamp(-ROLL_KP * roll - ROLL_KD * roll_rate, -LEVEL_MAX, LEVEL_MAX)
-            ty = clamp(-PITCH_KP * pitch - PITCH_KD * pitch_rate,
-                       -LEVEL_MAX, LEVEL_MAX)
+            ty = clamp(-PITCH_KD * pitch_rate, -LEVEL_MAX, LEVEL_MAX)
         else:
             tx = ty = 0.0
 
