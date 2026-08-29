@@ -530,8 +530,8 @@
                  anti-crab job is back on skid_steer_control's own
                  direction-aware lateral-damping force. -->
             <ode>
-              <mu>0.55</mu>
-              <mu2>0.55</mu2>
+              <mu>0.45</mu>
+              <mu2>0.45</mu2>
             </ode>
           </friction>
           <contact>
@@ -730,8 +730,8 @@
                  anti-crab job is back on skid_steer_control's own
                  direction-aware lateral-damping force. -->
             <ode>
-              <mu>0.55</mu>
-              <mu2>0.55</mu2>
+              <mu>0.45</mu>
+              <mu2>0.45</mu2>
             </ode>
           </friction>
           <contact>

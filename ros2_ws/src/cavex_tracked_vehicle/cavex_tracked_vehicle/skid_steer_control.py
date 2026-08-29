@@ -61,7 +61,7 @@ COM_Z = -0.168         # base_link inertial z -- apply forces here so a
 # --- Coulomb friction feedforward (breakaway) ---
 # The track boxes on the floor patch, combined mu ~0.55. Slide force
 # ~ mu * m * g; pivot torque is larger (two 0.6 m boxes 0.7 m apart).
-FF_FWD = 280.0         # N to break the tracks loose fore/aft
+FF_FWD = 360.0         # N to break the tracks loose fore/aft
 FF_LAT = 320.0         # N sideways (a touch stiffer -- anti-crab)
 FF_YAW = 1050.0        # N*m to break a pivot loose
 # err below which the FF fades linearly to 0. Must sit ABOVE the filtered
@@ -71,7 +71,7 @@ FF_DEADBAND_V = 0.12   # m/s
 FF_DEADBAND_W = 0.25   # rad/s
 
 # --- servo (reach target velocity in ~tau seconds) ---
-TAU_FWD = 0.40         # s
+TAU_FWD = 0.30         # s
 TAU_LAT = 0.25         # s  (driving crab to zero -- fairly quick)
 TAU_LAT_TURN = 1.20    # s  (relaxed while a turn is commanded, so the
                        #     pivot can swing the body's ends sideways)
