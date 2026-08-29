@@ -72,11 +72,11 @@ WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 #   water surface z = 6.0 (cavex_world.world water_surface pose)
 #   hull_collision bbox top sits at local z=0 (base_link Z == hull-top Z)
 #   real request 2026-08-28: hull top exactly 6cm proud of the water.
-WATER_SURFACE_Z = 7.0   # cavex_world.world water_surface pose (raised 6.0 -> 7.0 on 2026-08-28)
+WATER_SURFACE_Z = 6.0   # cavex_world.world water_surface (lowered 7.0 -> 6.0 to the cave-floor level, 2026-08-29)
 TARGET_FREEBOARD = 0.12  # 2026-08-29: doubled 0.06 -> 0.12 (real request -- more
                          # deck clearance so drive-induced pitch doesn't dip the
                          # pontoons under)
-TARGET_FLOAT_Z = WATER_SURFACE_Z + TARGET_FREEBOARD   # 7.12
+TARGET_FLOAT_Z = WATER_SURFACE_Z + TARGET_FREEBOARD   # 6.12
 
 # Root cause of the earlier "won't settle / floats too high" was NOT this
 # law: (1) the world gz-sim-buoyancy-system plugin was silently lifting the

@@ -64,7 +64,7 @@ from std_msgs.msg import String
 # real known geometry the shore-distance check below already uses.
 # 2026-08-28: water surface raised 6.0 -> 7.0 (boat_buoyancy_control.py
 # TARGET_FLOAT_Z now 7.06), so this "is it actually floating" gate follows.
-FLOAT_Z_MIN = 6.95
+FLOAT_Z_MIN = 5.95
 # Real request 2026-08-27: water east edge trimmed x=70 -> x=40 (see
 # cavex_world.world's water_surface / *_boundary_wall / basin_floor). This
 # box must stay matched to those walls.
