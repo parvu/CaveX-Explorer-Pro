@@ -94,8 +94,9 @@ TARGET_FLOAT_Z = WATER_SURFACE_Z + TARGET_FREEBOARD   # 7.12
 KZ = 700.0    # N per meter of Z error
 KI = 200.0    # N per (meter*second) of accumulated Z error
 KI_CLAMP = 0.50  # |integral| bound -> KI term bounded to +-100 N
-DZ = 350.0    # N per (m/s) of Z velocity -- ~critical damping
-              # (c_crit = 2*sqrt(KZ*m) ~= 365)
+DZ = 430.0    # N per (m/s) of Z velocity -- a bit over critical
+              # (c_crit = 2*sqrt(KZ*m) ~= 365); 2026-08-29 raised from 350
+              # to stop the ~0.3 m hull dip during a drive burst
 MAX_LIFT_N = 800.0  # headroom over the ~486N hover point, not a rocket
 
 # Real request 2026-08-27: "add water drag". Without it the model has
@@ -109,7 +110,11 @@ MAX_LIFT_N = 800.0  # headroom over the ~486N hover point, not a rocket
 # a real hydrodynamics plugin if this ever needs proper maneuvering fidelity.
 DRAG_LIN_XY = 15.0    # N per (m/s)
 DRAG_QUAD_XY = 47.0   # N per (m/s)^2
-DRAG_YAW = 60.0       # N*m per (rad/s) of yaw rate
+DRAG_YAW = 140.0      # N*m per (rad/s) of yaw rate -- raised 60 -> 140
+                      # 2026-08-29: straight drive was curving off course;
+                      # stiffer yaw-rate damping plus the port thruster
+                      # coefficient-sign fix (model.sdf.tracked) hold it
+                      # straight.
 
 # Real request 2026-08-26: passive righting via Wrench.force_offset alone was
 # a real live tradeoff -- 0.4 kept roll tight (~+-2 deg) but let pitch

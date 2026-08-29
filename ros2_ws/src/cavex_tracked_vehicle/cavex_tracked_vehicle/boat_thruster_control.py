@@ -44,12 +44,13 @@ from gz.msgs10.double_pb2 import Double
 # poses, +-0.295).
 HALF_SEPARATION = 0.295
 
-# 2026-08-29: was 300 -- with MAX 400 and the water drag tuned as it is, a
-# 0.8 m/s command drove the boat at ~2 m/s and the oversized thrust threw a
-# big bow-up pitch on reverse. 130 gives roughly the commanded speed and a
-# much smaller couple.
-THRUST_GAIN_LINEAR = 130.0   # N per (m/s) of commanded linear.x
-THRUST_GAIN_ANGULAR = 80.0   # N per (rad/s) of commanded angular.z, applied
+# 2026-08-29: linear was 300 -> 130 -> 80 (0.8 m/s command was driving the
+# boat ~2 m/s, and fwd/rev felt violent next to turning). angular 80 -> 180
+# to bring turn authority up to parity -- a left/right press (0.5 rad/s
+# cmd) now makes a ~2*180*0.295 = ~106 N*m yaw couple vs ~90 N of forward
+# thrust, roughly matched.
+THRUST_GAIN_LINEAR = 80.0    # N per (m/s) of commanded linear.x
+THRUST_GAIN_ANGULAR = 140.0  # N per (rad/s) of commanded angular.z, applied
                               # differentially (see mix below)
 MAX_THRUST_N = 260.0
 

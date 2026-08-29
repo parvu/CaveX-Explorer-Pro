@@ -1054,7 +1054,14 @@
       filename="gz-sim-thruster-system">
       <namespace>cavex_tracked_blueboat</namespace>
       <joint_name>motor_port_joint</joint_name>
-      <thrust_coefficient>-0.02</thrust_coefficient>
+      <!-- 2026-08-29: was -0.02. The gz Thruster plugin computes
+           angVel = sqrt(|thrust| / (density * thrust_coefficient * D^4));
+           a NEGATIVE coefficient makes the argument negative -> NaN/0
+           thrust on this side, so forward drive ran stbd-only and the
+           boat yawed off course. Both sides now +0.02 (visual prop spin
+           direction is irrelevant here -- yaw comes from
+           boat_thruster_control.py's differential mix). -->
+      <thrust_coefficient>0.02</thrust_coefficient>
       <fluid_density>1025</fluid_density>
       <propeller_diameter>0.112</propeller_diameter>
       <velocity_control>0</velocity_control>
@@ -1349,18 +1356,32 @@
         <geometry><mesh><uri>model://x500/meshes/5010Base.dae</uri></mesh></geometry></visual>
       <visual name="x500_motor_3"><pose>-0.174 -0.174 0.032 0 0 -0.45</pose>
         <geometry><mesh><uri>model://x500/meshes/5010Base.dae</uri></mesh></geometry></visual>
-      <!-- Props sit on their motor bases: same x/y as x500_motor_N, same
-           yaw (-0.45) so the blade root lines up with the motor body, and
-           handedness matches the canonical x500 (models/x500/model.sdf
-           rotor_0..3) -- ccw on the (+,-)/(-,+) diagonal, cw on (+,+)/(-,-). -->
-      <visual name="x500_prop_0"><pose>0.174 0.174 0.06 0 0 -0.45</pose>
-        <geometry><mesh><uri>model://x500/meshes/1345_prop_cw.stl</uri></mesh></geometry></visual>
-      <visual name="x500_prop_1"><pose>-0.174 0.174 0.06 0 0 -0.45</pose>
-        <geometry><mesh><uri>model://x500/meshes/1345_prop_ccw.stl</uri></mesh></geometry></visual>
-      <visual name="x500_prop_2"><pose>0.174 -0.174 0.06 0 0 -0.45</pose>
-        <geometry><mesh><uri>model://x500/meshes/1345_prop_ccw.stl</uri></mesh></geometry></visual>
-      <visual name="x500_prop_3"><pose>-0.174 -0.174 0.06 0 0 -0.45</pose>
-        <geometry><mesh><uri>model://x500/meshes/1345_prop_cw.stl</uri></mesh></geometry></visual>
+      <!-- Motor bells (the rotating top the prop mounts on) + props,
+           copied vert-for-vert from the canonical x500 (models/x500/
+           model.sdf rotor_0..3). The 1345_prop STL's own origin is NOT at
+           the hub: canonical corrects it with visual sub-pose
+           (-0.022, -0.14638, -0.016) + scale 0.84615 relative to a rotor
+           link at (motor_xy, 0.06). Baked in here as an absolute pose per
+           motor since these are plain child-link visuals, not rotor links:
+           prop mesh origin = (mx-0.022, my-0.14638, 0.044), bell at
+           (mx, my, 0.028). Handedness per corner also matches canonical:
+           ccw on the (+,-)/(-,+) diagonal, cw on (+,+)/(-,-). -->
+      <visual name="x500_bell_0"><pose>0.174 0.174 0.028 0 0 0</pose>
+        <geometry><mesh><uri>model://x500/meshes/5010Bell.dae</uri></mesh></geometry></visual>
+      <visual name="x500_bell_1"><pose>-0.174 0.174 0.028 0 0 0</pose>
+        <geometry><mesh><uri>model://x500/meshes/5010Bell.dae</uri></mesh></geometry></visual>
+      <visual name="x500_bell_2"><pose>0.174 -0.174 0.028 0 0 0</pose>
+        <geometry><mesh><uri>model://x500/meshes/5010Bell.dae</uri></mesh></geometry></visual>
+      <visual name="x500_bell_3"><pose>-0.174 -0.174 0.028 0 0 0</pose>
+        <geometry><mesh><uri>model://x500/meshes/5010Bell.dae</uri></mesh></geometry></visual>
+      <visual name="x500_prop_0"><pose>0.152 0.02762 0.044 0 0 0</pose>
+        <geometry><mesh><scale>0.84615 0.84615 0.84615</scale><uri>model://x500/meshes/1345_prop_cw.stl</uri></mesh></geometry></visual>
+      <visual name="x500_prop_1"><pose>-0.196 0.02762 0.044 0 0 0</pose>
+        <geometry><mesh><scale>0.84615 0.84615 0.84615</scale><uri>model://x500/meshes/1345_prop_ccw.stl</uri></mesh></geometry></visual>
+      <visual name="x500_prop_2"><pose>0.152 -0.32038 0.044 0 0 0</pose>
+        <geometry><mesh><scale>0.84615 0.84615 0.84615</scale><uri>model://x500/meshes/1345_prop_ccw.stl</uri></mesh></geometry></visual>
+      <visual name="x500_prop_3"><pose>-0.196 -0.32038 0.044 0 0 0</pose>
+        <geometry><mesh><scale>0.84615 0.84615 0.84615</scale><uri>model://x500/meshes/1345_prop_cw.stl</uri></mesh></geometry></visual>
     </link>
     <joint name="x500_joint" type="fixed">
       <parent>base_link</parent>
