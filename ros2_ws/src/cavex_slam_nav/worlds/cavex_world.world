@@ -367,21 +367,16 @@
     <!-- 2026-08-29: east edge trimmed x=0 -> x=-2 to meet the widened
          water_surface / basin_floor (both extended west to x=-2) and the
          new water_entry_ramp. size_x 40 -> 38, center_x -20 -> -21.
-         2026-08-29 (water-entry fix): RAISED top z 5.2 -> 6.0 (pose z 4.7 -> 5.5) so the dry drive surface is flush (2 cm proud, wins
-         the contact) with the cave-mesh floor AND the water_entry_ramp
-         west edge, both at z=6.0. Was a hole-fill sitting 0.8 m below the
-         mesh; that 0.8 m step is what blocked the vehicle from reaching
-         the ramp. It now IS the primary dry drive surface over x[-40,-1],
-         mesh floor coincident underneath (both z~6.0).
-         2026-08-29 (part 2): east edge x=-2 -> x=-1 so the patch OVERLAPS
-         the west half of water_entry_ramp (x[-2.0,-0.22]). The vehicle
-         rides the flat patch (z=6.0) until x=-1, then rolls off its lip
-         onto the ramp surface ~0.12 m below and descends -- no hard
-         patch/ramp ridge and no near-zero-width seam to catch a track.
-         size_x 38 -> 39, center_x -21 -> -20.5. Top z exactly 6.0 to match the ramp west edge. -->
+         2026-08-29 (part 2): east edge x=-2 -> x=-1 so the patch reaches
+         under the west half of water_entry_ramp (x[-2.0,-0.22]).
+         size_x 38 -> 39, center_x -21 -> -20.5.
+         2026-08-29: pose z was briefly raised to 5.5 (top 6.0, flush with
+         the mesh floor + ramp) as a water-entry fix, then reverted by
+         real request -- back to hole-fill depth (top z=5.2, ~0.8 m below
+         the mesh floor), catching only fall-throughs. -->
     <model name="cave_floor_patch">
       <static>true</static>
-      <pose>-20.5 0 5.5 0 0 0</pose>
+      <pose>-20.5 0 4.7 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry><box><size>39 24 1</size></box></geometry>
