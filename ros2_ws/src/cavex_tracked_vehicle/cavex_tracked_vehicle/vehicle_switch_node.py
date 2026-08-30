@@ -68,7 +68,12 @@ from std_msgs.msg import String
 # (z~5.98) is a dry beach. The vehicle now RESTS HIGHER on land (base_link
 # ~6.36) than it FLOATS (target ~5.77), so the test flips: "buoyant" = has
 # descended into the water, z <= FLOAT_Z_MAX, while inside the water box.
-FLOAT_Z_MAX = 6.20  # float line ~6.10 (surface 5.98 + 0.12); land-rest ~6.36 sits above this
+FLOAT_Z_MAX = 6.28  # float line ~6.07 (surface 5.95 + 0.12); land-rest ~6.36 still above.
+# 2026-08-30: 6.20 -> 6.28. With the thin dry beach (water 5.95) the hull
+# only settles to ~6.25 on the ramp before it can float, so 6.20 kept it
+# crawling on tracks through the shallows instead of handing off to props.
+# Still gated by _in_water_box (x > -0.3) + >=1 m from shore, so the beach
+# itself never trips it.
 # Real request 2026-08-27: water east edge trimmed x=70 -> x=40 (see
 # cavex_world.world's water_surface / *_boundary_wall / basin_floor). This
 # box must stay matched to those walls.

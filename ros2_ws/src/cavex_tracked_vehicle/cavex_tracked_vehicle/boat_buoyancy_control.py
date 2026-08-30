@@ -77,7 +77,7 @@ WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 #   water surface z = 6.0 (cavex_world.world water_surface pose)
 #   hull_collision bbox top sits at local z=0 (base_link Z == hull-top Z)
 #   real request 2026-08-28: hull top exactly 6cm proud of the water.
-WATER_SURFACE_Z = 5.985  # cavex_world.world water_surface = cave-floor level (2026-08-30, +5mm)
+WATER_SURFACE_Z = 5.95  # cavex_world.world water_surface (2026-08-30, Option A thin dry beach: just below the 5.98 cave floor)
 TARGET_FREEBOARD = 0.12  # 2026-08-29: doubled 0.06 -> 0.12 (real request -- more
                          # deck clearance so drive-induced pitch doesn't dip the
                          # pontoons under)

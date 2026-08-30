@@ -516,11 +516,19 @@
            2026-08-29: west edge x=0 -> x=-2 to meet the trimmed
            cave_floor_patch and cover the new water_entry_ramp. size_x
            40->42, center_x 20->19. -->
-      <pose>19 6.5 5.985 0 0 0</pose>  <!-- 2026-08-30: 5.65 -> 5.98 -> 5.985, water surface AT cave-floor level so the vehicle floats off the flat floor directly (no ramp seam to catch on); land-rest ~6.36 still sits above the ~6.11 float line. -->
+      <pose>19 6.5 5.99 0 0 0</pose>  <!-- 2026-08-30: VISUAL plane at 5.99 (just over the 5.98 cave-floor lip) so the shallows read blue, not brown terrain. This model has no <collision>; the physics float line is boat_buoyancy_control.py WATER_SURFACE_Z = 5.95 (thin dry beach x[-4,0.5] for track traction). The ~4 cm gap between the visible surface and the float line is just freeboard. -->
       <link name="surface">
         <visual name="water_visual">
           <geometry><plane><size>42 37</size></plane></geometry>
-          <material><diffuse>0.1 0.3 0.6 0.6</diffuse><ambient>0.1 0.3 0.6 0.6</ambient></material>
+          <!-- 2026-08-30: alpha 0.6 -> 0.95. At 0.6 the brown basin_floor (box,
+               3 m down at z=3.0) showed through the deep water as muddy brown.
+               Near-opaque now so it reads blue everywhere, not just over the
+               shallows where rock backs the plane. -->
+          <material>
+            <diffuse>0.10 0.32 0.62 0.95</diffuse>
+            <ambient>0.06 0.20 0.40 0.95</ambient>
+            <specular>0.15 0.25 0.35 1.0</specular>
+          </material>
         </visual>
       </link>
     </model>

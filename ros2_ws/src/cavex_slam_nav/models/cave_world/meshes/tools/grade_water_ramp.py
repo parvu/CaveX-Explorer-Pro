@@ -24,13 +24,55 @@ END = "# <<< water_grade <<<"
 
 # world-frame ramp: x[X0,X1] y[Y0,Y1]; z(x) = Z_TOP for x<=XG_TOP, then linear
 # down to Z_BOT at x=XG_BOT (flat/submerged past that).
-X0, X1 = -4.0, 12.0
+X0, X1 = -8.0, 12.0
 Y0, Y1 = -14.0, 26.0
 Z_TOP, Z_BOT = 5.98, 5.30
-XG_TOP, XG_BOT = 0.0, 14.0       # flat top x[-4,0] at z~5.96 (flush to cave floor
-                                # 5.98), then ~4 deg slope x[0,14].
+XG_TOP, XG_BOT = 0.0, 14.0       # flat top x[-8,0] at z=5.98 (coplanar with the
+                                # cave floor), then ~4 deg slope x[0,14]. The
+                                # flat top runs well west of the cull seam so
+                                # the ramp<->floor join is flat-on-flat.
 GRID = 0.4   # smaller than the 0.6 m track box so the tracks do not catch on triangle edges
-DROP = 0.02                       # sit the sheet 2 cm under the cave floor so it doesn't z-fight
+DROP = 0.0                        # flat top EXACTLY flush with the cave floor (5.98) -- no step at x=-4
+
+# Option B: cull every near-horizontal floor triangle the ramp overlaps
+# (original cave floor + add_floor_seal.py sheet) so the ramp is the SOLE
+# collision surface through the shore -- no coincident sheets for the box
+# tracks to wedge between. World-frame box; only faces with ALL 3 verts in
+# the z band are dropped, so walls/ceiling are untouched.
+CULL_X = (-7.5, 11.5)   # inside the ramp footprint (X0=-8) so the ramp overhangs
+CULL_Y = (-13.5, 25.5)  # the cull seam and the join is flat-on-flat coplanar
+CULL_Z = (5.50, 6.15)
+
+
+def _to_world(lx, ly, lz):
+    # model.sdf <scale>2 2 2</scale> + include pose 18.783 31.405 5.9826 / rpy 90,0,90
+    return (2.0 * lz + 18.7830, 2.0 * lx + 31.4050, 2.0 * ly + 5.9826)
+
+
+def cull_floor(lines):
+    """Drop original floor/seal faces inside the ramp footprint. Vertices are
+    left in place (orphans are harmless); face indices stay valid."""
+    verts = []  # 1-indexed -> world xyz
+    for ln in lines:
+        if ln.startswith("v "):
+            p = ln.split()
+            verts.append(_to_world(float(p[1]), float(p[2]), float(p[3])))
+    out, dropped = [], 0
+    for ln in lines:
+        if not ln.startswith("f "):
+            out.append(ln)
+            continue
+        idx = [int(t.split("/")[0]) for t in ln.split()[1:]]
+        w = [verts[i - 1] for i in idx]
+        cx = sum(v[0] for v in w) / len(w)
+        cy = sum(v[1] for v in w) / len(w)
+        in_box = (CULL_X[0] <= cx <= CULL_X[1] and CULL_Y[0] <= cy <= CULL_Y[1])
+        flat = all(CULL_Z[0] <= v[2] <= CULL_Z[1] for v in w)
+        if in_box and flat:
+            dropped += 1
+            continue
+        out.append(ln)
+    return out, dropped
 
 
 def ramp_z(x):
@@ -58,6 +100,7 @@ def strip_block(lines):
 
 def bake(path: Path):
     lines = strip_block(path.read_text().splitlines())
+    lines, culled = cull_floor(lines)
     base_v = sum(1 for ln in lines if ln.startswith("v "))
     base_vn = sum(1 for ln in lines if ln.startswith("vn "))
 
@@ -86,7 +129,7 @@ def bake(path: Path):
     out = lines + [BEGIN, "o water_grade"] + vlines \
         + ["vn 0.000000 1.000000 0.000000"] + flines + [END]
     path.write_text("\n".join(out) + "\n")
-    return len(vlines), len(flines)
+    return len(vlines), len(flines), culled
 
 
 def main() -> int:
@@ -95,9 +138,10 @@ def main() -> int:
         if not p.exists():
             print(f"skip (missing): {name}")
             continue
-        nv, nf = bake(p)
-        print(f"{name}: +{nv} verts, +{nf} tris  (ramp world x[{X0},{X1}] "
-              f"y[{Y0},{Y1}], z {Z_TOP}->{Z_BOT} over x[{XG_TOP},{XG_BOT}])")
+        nv, nf, culled = bake(p)
+        print(f"{name}: -{culled} old floor tris, +{nv} verts, +{nf} ramp tris "
+              f"(ramp world x[{X0},{X1}] y[{Y0},{Y1}], z {Z_TOP}->{Z_BOT} "
+              f"over x[{XG_TOP},{XG_BOT}])")
     return 0
 
 
