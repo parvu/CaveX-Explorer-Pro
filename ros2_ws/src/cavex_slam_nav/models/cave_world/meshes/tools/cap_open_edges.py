@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Cap the corridors that end at the TRIMMED cave-mesh limits.
+"""Cap every open corridor mouth / floor gap in the cave mesh.
 
-trim_cave_mesh.py crops the cave to a world box; every corridor it slices
-through is left as an open ring of boundary edges (edges used by one
-triangle only). A vehicle driving out one of those drops into the void
-(seen live: z = -199). This welds a centroid triangle-fan (a vertical
-wall) across each such loop.
+The vendored cave (and the trim that crops it to the play box) leaves
+corridors and floor patches ending in an open ring of boundary edges
+(edges used by one triangle only). A vehicle driving/falling out one of
+those drops into the void (seen live: z = -199). This welds a centroid
+triangle-fan across every such loop -- a vertical wall for a corridor
+mouth, a floor patch for a horizontal gap.
 
-Only loops whose centroid sits within EDGE_TOL of one of the four trim
-faces are capped -- the vendored cave also has ~300 tiny internal
-boundary loops (mesh defects) and deliberate openings that must be left
-alone. RUN trim_cave_mesh.py FIRST, then this, and do not re-trim after.
+Every boundary loop of >= MIN_LOOP edges is capped except the deliberate
+circular basin void. RUN trim_cave_mesh.py FIRST, then this, and do not
+re-trim after.
 
 Baked between `# >>> cave_caps (tools/cap_open_edges.py) >>>` markers into
 cave_world_holed.obj (collision) and cave_world_visual.obj (visual).
@@ -27,19 +27,10 @@ MESH_DIR = Path(__file__).resolve().parent.parent
 BEGIN = "# >>> cave_caps (tools/cap_open_edges.py) >>>"
 END = "# <<< cave_caps <<<"
 
-# must match trim_cave_mesh.py
-TRIM_X = (-130.0, 40.0)
-TRIM_Y = (-60.0, 30.0)
-EDGE_TOL = 5.0                  # cap a loop only if its centroid is this close to a trim face
-MIN_LOOP = 4                    # ignore boundary loops shorter than this
+MIN_LOOP = 4                    # ignore boundary loops shorter than this (mesh noise)
 BASIN_X = (6.0, 36.0)          # world -- the deliberate basin void, never cap
 BASIN_Y = (-12.0, 24.0)
 BASIN_Z = (2.0, 8.0)
-
-
-def near_trim(cx, cy):
-    return min(abs(cx - TRIM_X[0]), abs(cx - TRIM_X[1]),
-              abs(cy - TRIM_Y[0]), abs(cy - TRIM_Y[1])) <= EDGE_TOL
 
 
 def to_world(lx, ly, lz):
@@ -128,9 +119,6 @@ def bake(path: Path):
         cz = sum(w[2] for w in wc) / len(wc)
         if (BASIN_X[0] <= cx <= BASIN_X[1] and BASIN_Y[0] <= cy <= BASIN_Y[1]
                 and BASIN_Z[0] <= cz <= BASIN_Z[1]):
-            skipped += 1
-            continue
-        if not near_trim(cx, cy):          # only cap the trim-plane corridor mouths
             skipped += 1
             continue
         lx = sum(p[0] for p in pts) / len(pts)
