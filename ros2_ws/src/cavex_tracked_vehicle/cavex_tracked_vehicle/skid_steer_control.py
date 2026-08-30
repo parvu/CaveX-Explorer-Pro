@@ -68,6 +68,11 @@ CONTACT_Z = -0.42
 # --- Coulomb friction feedforward (breakaway) ---
 # The track boxes on the floor patch, combined mu ~0.55. Slide force
 # ~ mu * m * g; pivot torque is larger (two 0.6 m boxes 0.7 m apart).
+# 2026-08-30: forward servo was FF + P only -> reached ~50% of a 0.6 m/s
+# command in steady state (FF saturates flat, P alone can't close the gap
+# against track friction). Added an integral term.
+KI_FWD = 320.0         # N per (m/s * s) of accumulated forward-speed error
+IWIND_FWD = 0.8        # |integral| clamp -> KI_FWD term bounded to +-256 N
 FF_FWD = 360.0         # N to break the tracks loose fore/aft
 FF_LAT = 320.0         # N sideways (a touch stiffer -- anti-crab)
 FF_YAW = 1050.0        # N*m to break a pivot loose
@@ -161,9 +166,10 @@ class SkidSteerControl(Node):
     def __init__(self, gz_pub):
         super().__init__('skid_steer_control')
         self.gz_pub = gz_pub
-        self._wrenches = ()                      # (drive, lateral) EntityWrench, summed by gz
+        self._wrenches = ()                      # one combined EntityWrench per cycle
         self._prev = None                       # (t, x, y, roll, pitch, yaw)
         self._vx = self._vy = self._wz = 0.0    # filtered world vx/vy, yaw rate
+        self._v_i = 0.0                          # forward-speed error integral
         self._pitch_slow = 0.0                   # heavily LP'd pitch for slope FF
         self._yaw_hold = None                    # captured heading when not turning
         self.create_subscription(String, '/cavex/locomotion_mode', self._mode_cb, 10)
@@ -200,6 +206,7 @@ class SkidSteerControl(Node):
             self._prev = None
             self._vx = self._vy = self._wz = 0.0
             self._pitch_slow = 0.0
+            self._v_i = 0.0
             self._yaw_hold = None
             self._wrenches = ()
             return
@@ -218,6 +225,7 @@ class SkidSteerControl(Node):
 
         # --- measured velocities: finite-difference + EMA (odom is noisy) ---
         rvx = rvy = roll_rate = pitch_rate = rwz = 0.0
+        dt = 0.0
         if self._prev is not None:
             dt = t - self._prev[0]
             if dt > 1e-3:
@@ -244,12 +252,16 @@ class SkidSteerControl(Node):
             # PARKED: hold against gravity only. The Coulomb FF term reacts
             # hard to any tiny residual velocity, and on a slope that's a
             # stick-slip limit cycle -- the "wobble at stop on the ramp".
+            self._v_i = 0.0
             f_fwd = clamp(grav_hold, -FMAX_FWD, FMAX_FWD)
         else:
             e_fwd = cmd_v - fwd
-            f_fwd = clamp(_ff(e_fwd, FF_FWD, FF_DEADBAND_V)
-                          + MASS / TAU_FWD * e_fwd + grav_hold,
-                          -FMAX_FWD, FMAX_FWD)
+            f_unclamped = (_ff(e_fwd, FF_FWD, FF_DEADBAND_V)
+                           + MASS / TAU_FWD * e_fwd + KI_FWD * self._v_i + grav_hold)
+            f_fwd = clamp(f_unclamped, -FMAX_FWD, FMAX_FWD)
+            # integrate only when not force-saturated (anti-windup)
+            if dt > 0.0 and abs(f_unclamped) < FMAX_FWD:
+                self._v_i = clamp(self._v_i + e_fwd * dt, -IWIND_FWD, IWIND_FWD)
 
         # --- lateral servo (target = 0; relaxed while turning) ---
         tau_lat = TAU_LAT + (TAU_LAT_TURN - TAU_LAT) * min(1.0, abs(cmd_w) / W_TURN_RELAX)
@@ -277,28 +289,35 @@ class SkidSteerControl(Node):
         else:
             tx = ty = 0.0
 
-        # Two wrench messages (gz sums them). Forward drive force at the
-        # contact patch; lateral force + all torques through the CoM.
-        w_drive = EntityWrench()
-        w_drive.entity.name = LINK
-        w_drive.entity.type = Entity.LINK
-        w_drive.wrench.force.x = f_fwd * c
-        w_drive.wrench.force.y = f_fwd * s
-        w_drive.wrench.force_offset.x = COM_X
-        w_drive.wrench.force_offset.z = CONTACT_Z
-        w_drive.wrench.torque.x = tx
-        w_drive.wrench.torque.y = ty
-        w_drive.wrench.torque.z = tz
+        # ONE combined wrench message, applied at the base_link ORIGIN (offset 0).
+        # Two bugs found & fixed 2026-08-29/30 by raw-wrench probing (skid_steer
+        # bypassed, driving on the flat floor seal):
+        #  1. drive + lateral used to be TWO separate /world/.../wrench msgs.
+        #     ApplyLinkWrench's non-persistent topic does not reliably sum
+        #     successive msgs across a 250Hz-pub vs 250Hz-step boundary -- each
+        #     step caught ~one, halving the effective force. -> combine into one.
+        #  2. application height. A forward force applied at or below the CoM
+        #     drives the FRONT of the tracks down into the floor (moment about
+        #     the ground contact line); there is no pitch-ANGLE hold here (rate
+        #     damping only) to cancel it. Measured, same terrain, no torques:
+        #       force at CONTACT_Z (-0.42): 300 N -> 0.04 m/s
+        #       force at COM_Z_TRUE (-0.168): 440 N -> 0.09 m/s (-2.4 deg nose-down)
+        #       force at base_link origin (0):   300 N -> 0.66 m/s (~level)
+        #     -> apply the drive/lateral force at z = 0. The upright-hold
+        #     torques (tx, ty, tz) stay; they act about the CoM regardless.
+        DRIVE_Z = 0.0
+        w = EntityWrench()
+        w.entity.name = LINK
+        w.entity.type = Entity.LINK
+        w.wrench.force.x = f_fwd * c - f_lat * s
+        w.wrench.force.y = f_fwd * s + f_lat * c
+        w.wrench.force_offset.x = COM_X
+        w.wrench.force_offset.z = DRIVE_Z
+        w.wrench.torque.x = tx
+        w.wrench.torque.y = ty
+        w.wrench.torque.z = tz
 
-        w_lat = EntityWrench()
-        w_lat.entity.name = LINK
-        w_lat.entity.type = Entity.LINK
-        w_lat.wrench.force.x = -f_lat * s
-        w_lat.wrench.force.y = f_lat * c
-        w_lat.wrench.force_offset.x = COM_X
-        w_lat.wrench.force_offset.z = COM_Z_TRUE
-
-        self._wrenches = (w_drive, w_lat)
+        self._wrenches = (w,)
 
 
 def _ff(err, mag, deadband):

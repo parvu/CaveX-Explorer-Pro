@@ -88,13 +88,18 @@ def _in_water_box(x, y):
 # surface. 2026-08-28: cave_floor_patch flat top now ends at x=-10;
 # cave_entry_ramp (x[-10,5], z 5.9->3.0) carries the descent into the
 # basin. "Shore" = the ramp's shallow top, x ~ -10..-7 near z=5.9.
+# 2026-08-29: the cave_floor_patch* box MODELS were deleted from
+# cavex_world.world (floor collision is now the cavex_floor_seal sheet baked into
+# cave_world_holed.obj). These AABBs are unchanged and still correct -- just
+# world-frame rectangles marking the drivable dry floor for the shore-distance
+# check. Nothing here ever queried the models by name; the names are region labels.
 SHORE_DISTANCE_M = 1.0
 DRY_BOXES = [
     # name, x0, x1, y0, y1, z0, z1
-    ('cave_floor_patch', -40.0, -10.0, -12.0, 12.0, 4.9, 5.9),
+    ('dry_approach', -40.0, -10.0, -12.0, 12.0, 4.9, 5.9),
     ('cave_entry_ramp_shallow', -10.0, -7.0, -12.0, 12.0, 5.3, 5.9),
-    ('cave_floor_patch_scaled', -120.0, -60.0, -45.9, -16.9, 4.9, 5.9),
-    ('cave_floor_patch_bridge', -62.0, -38.0, -46.0, 12.0, 4.9, 5.9),
+    ('spawn_area', -120.0, -60.0, -45.9, -16.9, 4.9, 5.9),
+    ('spawn_approach_link', -62.0, -38.0, -46.0, 12.0, 4.9, 5.9),
 ]
 
 # Matches track_retract_control.py's own JointTrajectory duration (2s) --
@@ -136,6 +141,15 @@ class VehicleSwitchNode(Node):
         self.mode_pub = self.create_publisher(String, '/cavex/locomotion_mode', 10)
         self.create_subscription(Odometry, '/odom_ground_truth', self._odom_cb, 10)
         self.create_subscription(String, '/cavex/tracks/command', self._track_cmd_cb, 10)
+        # 2026-08-29: _publish_mode used to fire only on state transitions +
+        # once at startup, on a plain (non-latched) publisher -- so
+        # skid_steer / boat_thruster / boat_buoyancy that connect after that
+        # single publish never learn the mode, fall back to their defaults,
+        # and then MULTIPLE of them publish wrenches to the shared
+        # /world/cavex_world/wrench every step, racing (measured: tracked
+        # forward drive stuck at ~20% of commanded). Republish at 5 Hz so a
+        # late/restarted subscriber always picks it up within 0.2 s.
+        self.create_timer(0.2, self._publish_mode)
 
         self.get_logger().info(
             f"vehicle_switch_node ready: tracks -> retracting (buoyant, "

@@ -280,17 +280,17 @@
          completely through, with ZERO mesh vertices found within a 6x6m
          window there -- a genuine hole in the scan, not a measurement error).
          Moved far below (z=-200) so nothing can be mistaken for resting on
-         real cave floor again; see cave_floor_patch below for the actual,
-         real supplementary floor collision. -->
+         real cave floor again; the real supplementary floor collision is now
+         the cavex_floor_seal mesh in models/cave_world/. -->
     <model name="ground_plane">
       <static>true</static>
       <pose>0 0 -200 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry><plane><normal>0 0 1</normal><size>1000 1000</size></plane></geometry>
+          <geometry><plane><normal>0 0 1</normal><size>300 200</size></plane></geometry>
         </collision>
         <visual name="visual">
-          <geometry><plane><normal>0 0 1</normal><size>1000 1000</size></plane></geometry>
+          <geometry><plane><normal>0 0 1</normal><size>300 200</size></plane></geometry>
           <material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material>
         </visual>
       </link>
@@ -321,8 +321,8 @@
          <mesh> geometry (models/cave_world/model.sdf's own collision+visual
          mesh elements) -- see that file for the actual scale. Scaling
          happens around the mesh's local origin, NOT around the vehicle
-         spawn or cave_floor_patch below -- those keep their original
-         absolute positions, so the actual corridor geometry at any given
+         spawn -- that keeps its original
+         absolute position, so the actual corridor geometry at any given
          world position shifts, not just widens in place. Live
          re-verification of spawn/floor alignment against the now-doubled
          mesh is required after this change, same as every other floor/water
@@ -333,64 +333,22 @@
       <pose>18.7830 31.4050 5.9826 1.5708 0.0000 1.5708</pose>
     </include>
 
-    <!-- Supplementary floor collision -- NOT part of the vendored mesh (that
-         stays unmodified). Added because the vendored mesh's own collision
-         has real, confirmed gaps in floor coverage across large areas
-         (see ground_plane's comment above for how this was discovered).
-         CAVE_FLOOR_Z=5.9 was derived directly from the mesh's own visual
-         vertex data (not from any probe-drop test, which the discovery
-         above showed was unreliable): parsing cave_world.obj's raw
-         vertices and transforming them into world frame with the same
-         pose as the cave_world include above, the x range [-37, 65]
-         (the corridor this project actually uses, dry section through the
-         flooded chamber) shows a remarkably consistent real floor height
-         clustered tightly around z=5.5-6.1 across dozens of independent
-         2m x-slices (e.g. x=-37: 5.98; x=27: 5.56 (2324 verts); x=57: 5.90
-         (5228 verts) -- these are genuine, dense mesh regions, not sparse
-         guesses). This patch covers x [-40,70] y [-12,12] at a flat
-         top surface z=5.9 (box center z=5.4, thickness 1m) -- a flat
-         proxy for the real, gently-undulating visual floor in that
-         height cluster, not a perfect match to every bump, but grounded
-         in real mesh data rather than an arbitrary guess. The vehicle
-         spawn, obstacle positions, and water region below were all moved
-         to sit on this patch. x < -40 (the original x=-60 spawn area) is
-         NOT covered -- that area's mesh has real floor-coverage gaps and
-         was abandoned rather than patched further given time already
-         invested; if resuming work there, redo the vertex-density check
-         from this comment before trusting anything in that zone. -->
-    <!-- 2026-08-27: clipped from x[-40,70] to the DRY approach only so the
-         flooded basin has real depth.
-         2026-08-28: flat part ends at x=-10; cave_entry_ramp below carries
-         x[-10,5] down from z=5.9 to the basin floor z=3.0, so a vehicle
-         drives smoothly from dry cave floor into deep water rather than off
-         a ledge. Flat size_x 45 -> 30, center_x -17.5 -> -25. -->
-    <!-- 2026-08-29: east edge trimmed x=0 -> x=-2 to meet the widened
-         water_surface / basin_floor (both extended west to x=-2) and the
-         new water_entry_ramp. size_x 40 -> 38, center_x -20 -> -21.
-         2026-08-29 (part 2): east edge x=-2 -> x=-1 so the patch reaches
-         under the west half of water_entry_ramp (x[-2.0,-0.22]).
-         size_x 38 -> 39, center_x -21 -> -20.5.
-         2026-08-29: pose z was briefly raised to 5.5 (top 6.0, flush with
-         the mesh floor + ramp) as a water-entry fix, then reverted by
-         real request -- back to hole-fill depth (top z=5.2, ~0.8 m below
-         the mesh floor), catching only fall-throughs. -->
-    <model name="cave_floor_patch">
-      <static>true</static>
-      <pose>-20.5 0 4.7 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>39 24 1</size></box></geometry>
-          <surface>
-            <contact><ode><max_vel>2.0</max_vel></ode></contact>
-            <friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction>
-          </surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>39 24 1</size></box></geometry>
-          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
+    <!-- 2026-08-29: cave_floor_patch (and cave_floor_patch_scaled /
+         cave_floor_patch_bridge, further below) REMOVED. Their job --
+         supplementary floor collision over the vendored mesh's real gaps --
+         is now done by the "cavex_floor_seal" triangle sheet baked into
+         models/cave_world/meshes/cave_world_holed.obj (generated by that
+         directory's tools/add_floor_seal.py). The seal is draped a few cm
+         under the real mesh floor across:
+           - drive corridor          world x[-43,68]  y[-13,13]
+           - 2x-scale spawn area     world x[-122,-58] y[-48,-15]  (spawn ~ -88.78,-31.4)
+           - spawn -> approach link  world x[-64,-36]  y[-48,14]
+         The flooded-basin void x[0,32] is left open so the basin keeps its
+         depth. Re-run add_floor_seal.py to retune; `git checkout
+         cave_world_holed.obj` reverts. vehicle_switch_node.py's DRY_BOXES
+         still carries these same world-frame rectangles for its
+         shore-distance state machine -- that logic is coordinate-based, not
+         model-queried, so the model removal does not affect it. -->
 
     <!-- 2026-08-29: entry ramp from the dry cave-mesh floor (z~6.0 at x=-2)
          down INTO the flooded chamber, 7 deg descending toward +x. Replaces
@@ -435,77 +393,15 @@
          floor so it only catches what drops through a real hole. -->
 
 
-    <!-- Second floor patch for the cave_world 2x mesh scale (real request --
-         see model.sdf.tracked -- err, models/cave_world/model.sdf's own
-         comment for the scale itself, and gazebo_tracked_vehicle.launch.py's
-         spawn_entity comment for the full re-derivation). The mesh scale is
-         a global rigid+uniform transform around the cave_world include's own
-         local origin, not around cave_floor_patch above -- so the real
-         corridor (and the vehicle spawn moved to follow it) is now at
-         world x~-88.78 y~-31.4, nowhere near this patch's x[-40,70] y[-12,12]
-         coverage. Precisely computed (not guessed): inverted the SDF pose's
-         rotation+translation to get the documented x=-37 floor point's real
-         LOCAL mesh coordinate, re-applied the same transform with scale=2 ->
-         real floor at world (-92.78, -31.4, ~5.98), i.e. barely different in
-         z from the original ~5.9 (the pose's own z, 5.9826, sits almost
-         exactly at floor height, so points near the floor barely move in z
-         under scaling around it). This patch covers x [-120,-60] y [-46,-17]
-         at top surface z=5.9 (box center z=5.4, matching the original
-         patch's own convention), generously sized around the new spawn/
-         corridor location for initial driving/testing -- not yet extended
-         to cover the whole doubled corridor the way the original patch
-         covers its own x[-40,70] stretch; widen this if testing moves
-         further along the corridor and falls off the edge. -->
-    <model name="cave_floor_patch_scaled">
-      <static>true</static>
-      <pose>-90 -31.4 4.7 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>60 29 1</size></box></geometry>
-          <surface>
-            <contact><ode><max_vel>2.0</max_vel></ode></contact>
-            <friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction>
-          </surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>60 29 1</size></box></geometry>
-          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
-
-    <!-- REAL BUG FOUND AND FIXED: cave_floor_patch_scaled above (x[-120,-60])
-         and cave_floor_patch (x[-40,70]) never actually met -- confirmed
-         live via physics probes dropped at x=-55/-50/-45, y=-25 (the
-         corridor's own y near the new spawn): all three fell straight
-         through to ground_plane's z=-200 safety net, proving there is no
-         real collision at all in x[-60,-40], not just an untested gap as
-         this file's own earlier comment suspected. This patch bridges it,
-         same z=5.4/top=5.9 convention as its neighbors (justified there by
-         real mesh-vertex data spanning both scale regimes). x[-62,-38]
-         overlaps 2m into each neighbor so there's no seam gap at the
-         boundary; y[-46,12] spans the full union of both neighbors' own
-         y-coverage since the real corridor's y-path through this
-         untested stretch isn't independently confirmed -- narrow this
-         once that path is actually driven and verified, rather than
-         trusting this wide a guess indefinitely. -->
-    <model name="cave_floor_patch_bridge">
-      <static>true</static>
-      <pose>-50 -17 4.7 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>24 58 1</size></box></geometry>
-          <surface>
-            <contact><ode><max_vel>2.0</max_vel></ode></contact>
-            <friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction>
-          </surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>24 58 1</size></box></geometry>
-          <material><ambient>0.25 0.22 0.2 1</ambient><diffuse>0.25 0.22 0.2 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
+    <!-- 2026-08-29: cave_floor_patch_scaled (was x[-120,-60] y[-46,-17], the
+         2x-mesh-scale spawn area at world ~-88.78,-31.4) and
+         cave_floor_patch_bridge (was x[-62,-38] y[-46,12], the spawn ->
+         water-approach link -- its y-path was never independently driven, so
+         it was kept deliberately wide) were REMOVED together with
+         cave_floor_patch; see that note above. The cavex_floor_seal mesh
+         sheet in cave_world_holed.obj now covers the same two footprints,
+         draped onto the real mesh floor where one exists and flat (~z=5.9)
+         over the gaps. -->
 
     <!-- Real request 2026-08-28: plain flat-bottom basin (a parallelepiped),
          floor top z=3.0 across the whole x[5,40] y[-12,25] water_surface
@@ -515,33 +411,11 @@
     <!-- 2026-08-29: west edge x=0 -> x=-2 to underlie the widened
          water_surface and the foot of water_entry_ramp. size_x 40 -> 42,
          center_x 20 -> 19. -->
-    <!-- 2026-08-29: shallow entry shelf under and just past the wet foot of
-         water_entry_ramp (foot x~-0.22 z~5.78). Without it the ramp foot
-         overhangs a 2.8 m drop straight to basin_floor (z=3.0): a
-         track-driven vehicle noses over that edge and cartwheels before
-         buoyancy can settle it. Top z=5.5 -- the vehicle rolls off the
-         ramp onto this shelf with a ~0.3 m step, sits in shallow water,
-         and boat_buoyancy_control lifts it to the float height (z=6.12).
-         x[-2,6] y[-13,26]; the deep pool (basin_floor z=3.0) resumes at
-         x=6, underwater, reached only once already floating. -->
-    <model name="water_entry_shelf">
-      <static>true</static>
-      <pose>2 6.5 5.0 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>8 39 1</size></box></geometry>
-          <surface>
-            <contact><ode><max_vel>2.0</max_vel></ode></contact>
-            <friction><ode><mu>0.45</mu><mu2>0.45</mu2></ode></friction>
-          </surface>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>8 39 1</size></box></geometry>
-          <material><ambient>0.13 0.15 0.2 1</ambient><diffuse>0.13 0.15 0.2 1</diffuse></material>
-        </visual>
-      </link>
-    </model>
-
+    <!-- 2026-08-29: water_entry_shelf REMOVED (real request). It was a shallow
+         box at x[-2,6] z top 5.5 bridging the water_entry_ramp foot to
+         basin_floor so a track-driven vehicle wouldn't nose off the ramp lip
+         into the 2.8 m basin drop. If ramp->basin entry cartwheels again,
+         that's the reason -- restore from git history. -->
     <model name="basin_floor">
       <static>true</static>
       <pose>19 6.5 2.5 0 0 0</pose>

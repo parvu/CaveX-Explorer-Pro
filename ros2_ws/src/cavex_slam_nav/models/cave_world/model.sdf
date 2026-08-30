@@ -12,18 +12,17 @@
            works. This is the one deviation from this model's otherwise
            vendored-unmodified status (see README's third-party-assets
            section) -- a real, necessary one, not a stylistic edit. -->
-      <!-- 2026-08-29: box floor patches in cavex_world.world LOWERED to hole-fill
-           depth (top well below the mesh floor) so the tracked vehicle rides
-           the real rugged mesh floor and the two surfaces no longer fight;
-           patches only catch the vehicle over actual gaps in the mesh.
-           Prior note (kept for context): the mesh COLLISION had been The 2x-scaled cave mesh has
-           real structure (wall bulges, floor relief) standing in the drive
-           corridor -- box-on-trimesh contact wedged the tracked vehicle and
-           it rode up mesh features it should pass. Containment for the drive
-           area now comes from the box floor patches + box side/boundary
-           walls + ceilings in cavex_world.world (the dry-section side walls,
-           removed 2026-08-27, are re-added there). The visual mesh stays for
-           the map's look; anything the vehicle can physically reach is a box. -->
+      <!-- 2026-08-29: mesh split into two files, both cropped to the play area
+           (world x[-130,40] y[-60,30] z<=50, isolated tile-fragments removed --
+           meshes/tools/trim_cave_mesh.py):
+             collision = cave_world_holed.obj  -- basin void kept for real depth,
+                         PLUS the draped cavex_floor_seal sheet baked in
+                         (meshes/tools/add_floor_seal.py) to close the vendored
+                         mesh's pervasive floor gaps. One trimesh -> one BVH.
+             visual    = cave_world_visual.obj -- clean crop, no basin hole, no
+                         seal, so the seal is never drawn.
+           This replaces the old cave_floor_patch* boxes and the short-lived
+           standalone cave_floor_seal.obj second-collision. -->
       <collision name="collision">
         <geometry>
           <mesh>
@@ -38,7 +37,7 @@
       <visual name="visual">
         <geometry>
           <mesh>
-            <uri>model://cave_world/meshes/cave_world_holed.obj</uri>
+            <uri>model://cave_world/meshes/cave_world_visual.obj</uri>
             <scale>2 2 2</scale>
           </mesh>
         </geometry>
