@@ -2,7 +2,8 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import EmitEvent, IncludeLaunchDescription, RegisterEventHandler, TimerAction
+from launch.actions import DeclareLaunchArgument, EmitEvent, IncludeLaunchDescription, RegisterEventHandler, TimerAction
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessIO
 from launch.events.process import ShutdownProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -12,6 +13,11 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+    # nav2:=false runs SLAM only (rtabmap + icp_odometry + foxglove) without
+    # the Nav2 bringup, explore_lite, or dead_end_backtrack -- the ~12
+    # lifecycle nodes + 2 costmaps are the bulk of the CPU load and aren't
+    # needed just to build a map.
+    nav2 = LaunchConfiguration('nav2', default='true')
 
     # Ported from a prior project vehicle's working SLAM launch config. That
     # vehicle used frame_id='base_footprint' because its URDF's TF root is
@@ -268,6 +274,7 @@ def generate_launch_description():
             'use_sim_time': 'true',
             'params_file': os.path.join(get_package_share_directory('cavex_tracked_vehicle'), 'config', 'tracked_vehicle_nav2_params.yaml'),
         }.items(),
+        condition=IfCondition(nav2),
     )
 
     # Frontier exploration: drives autonomous /cmd_vel via Nav2's costmap.
@@ -431,6 +438,7 @@ def generate_launch_description():
         name='dead_end_backtrack_node',
         output='screen',
         parameters=[{'use_sim_time': use_sim_time}],
+        condition=IfCondition(nav2),
     )
 
     # Task 12: real, structural cold-start deadlock discovered live -- not a
@@ -602,7 +610,8 @@ def generate_launch_description():
             target_action=bootstrap_nudge_node_action,
             on_stdout=_on_bootstrap_stdout,
             on_stderr=_on_bootstrap_stdout,
-        )
+        ),
+        condition=IfCondition(nav2),
     )
 
     # Task 13: ATE measurement harness. /odom_ground_truth is published by
@@ -650,6 +659,10 @@ def generate_launch_description():
     # )
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'nav2', default_value='true',
+            description='true: full Nav2 + explore_lite. false: SLAM only '
+                        '(rtabmap + icp_odometry + foxglove), much lighter.'),
         lidar_static_tf,
         camera_static_tf,
         camera_optical_static_tf,
