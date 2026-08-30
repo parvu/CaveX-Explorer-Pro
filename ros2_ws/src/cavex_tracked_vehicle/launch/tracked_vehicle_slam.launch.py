@@ -9,6 +9,7 @@ from launch.events.process import ShutdownProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -561,7 +562,11 @@ def generate_launch_description():
         executable='bootstrap_nudge_node.py',
         name='bootstrap_nudge_node',
         output='screen',
-        parameters=[{'use_sim_time': use_sim_time}],
+        # watchdog only with Nav2. Under nav2:=false the reactive_controller
+        # owns recovery; the watchdog's "resume driving on icp loss" fights it
+        # (drives forward into a sealed dead end while it tries to back out).
+        parameters=[{'use_sim_time': use_sim_time,
+                     'watchdog': ParameterValue(nav2, value_type=bool)}],
     )
     bootstrap_nudge = TimerAction(
         period=5.0,

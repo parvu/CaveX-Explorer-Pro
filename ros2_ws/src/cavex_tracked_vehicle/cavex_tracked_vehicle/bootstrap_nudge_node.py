@@ -67,6 +67,14 @@ class BootstrapNudgeNode(Node):
 
     def __init__(self):
         super().__init__('bootstrap_nudge_node')
+        # watchdog:=false -> do the INITIAL bootstrap drive only, then go
+        # passive. For the Tier 2 reactive explorer (nav2:=false) the
+        # reactive_controller owns stuck/lost recovery; the watchdog's
+        # "resume driving on icp loss" fights it -- e.g. it drives the
+        # vehicle forward into a sealed dead end while the reactive
+        # controller is trying to back up and spin.
+        self.declare_parameter('watchdog', True)
+        self._watchdog = self.get_parameter('watchdog').value
         self._initial_bootstrap_done = False
         self._driving = False
         self._lock_start = None   # time.monotonic() start of the current unbroken lock streak
@@ -101,7 +109,7 @@ class BootstrapNudgeNode(Node):
             self._lock_start = None
             if self._lost_start is None:
                 self._lost_start = now
-            elif (not self._driving and self._initial_bootstrap_done
+            elif (self._watchdog and not self._driving and self._initial_bootstrap_done
                   and now - self._lost_start >= LOST_GRACE_S):
                 self.get_logger().warn(
                     'bootstrap_nudge_node: icp_odometry lost tracking again '

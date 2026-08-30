@@ -11,7 +11,9 @@ blacklisted so we don't keep picking the same dead end.
 
 Runs when tracked_vehicle_slam.launch.py is started with nav2:=false.
 """
+import json
 import math
+import os
 
 import numpy as np
 import rclpy
@@ -24,6 +26,15 @@ from visualization_msgs.msg import Marker, MarkerArray
 from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityException, ExtrapolationException
 
 FREE, UNKNOWN, OCC_MIN = 0, -1, 50
+
+# Permanent dead ends: the sealed cave corridor mouths (cap_plate_1..9 in
+# cavex_world.world). The explorer is seeded with these so it never heads
+# for a mouth we already walled off.
+CAP_PLATE_DEAD_ENDS = [
+    (-103.4, -60.2), (-123.4, -34.1), (-130.15, 5.23), (-65.12, -54.51),
+    (-83.49, 5.0), (-62.99, 29.66), (-24.85, 27.26), (-26.17, -58.92),
+    (34.67, -33.98),
+]
 
 
 def find_frontier_clusters(grid, res, ox, oy, inflate, min_cells):
@@ -60,6 +71,8 @@ class FrontierExplorer(Node):
         self.declare_parameter('blacklist_radius', 1.5)
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('map_frame', 'map')
+        self.declare_parameter('dead_end_file',
+                               os.path.expanduser('~/.cavex/dead_ends.json'))
         g = lambda n: self.get_parameter(n).value
         self.inflate = int(g('inflate_cells'))
         self.min_cells = int(g('min_cluster_cells'))
@@ -68,9 +81,14 @@ class FrontierExplorer(Node):
         self.bl_r = float(g('blacklist_radius'))
         self.base_frame = g('base_frame')
         self.map_frame = g('map_frame')
+        self._de_file = g('dead_end_file')
 
         self._grid = None
-        self._blacklist = []          # [(x, y), ...]
+        # persistent dead-end blacklist: seeded with the cap_plate mouths +
+        # whatever a previous run wrote to disk, so a restart doesn't
+        # re-explore known dead ends.
+        self._blacklist = list(CAP_PLATE_DEAD_ENDS)
+        self._load_dead_ends()
         self._done_logged = False
         self._ever_published = False
         self._tf = Buffer()
@@ -81,14 +99,42 @@ class FrontierExplorer(Node):
         self._goal_pub = self.create_publisher(PointStamped, '/explore/goal', 10)
         self._mkr_pub = self.create_publisher(MarkerArray, '/explore/frontiers', 10)
         self.create_timer(float(g('period_s')), self._tick)
-        self.get_logger().info('frontier_explorer_node: Nav2-free frontier search on /map -> /explore/goal')
+        self.get_logger().info(
+            f'frontier_explorer_node: Nav2-free frontier search on /map -> /explore/goal '
+            f'({len(self._blacklist)} dead ends seeded, file {self._de_file})')
 
     def _on_map(self, msg):
         self._grid = msg
 
     def _on_failed(self, msg):
-        self._blacklist.append((msg.point.x, msg.point.y))
-        self.get_logger().info(f'blacklisted unreachable goal ({msg.point.x:.1f}, {msg.point.y:.1f})')
+        p = (msg.point.x, msg.point.y)
+        if any(math.hypot(p[0] - bx, p[1] - by) < self.bl_r for bx, by in self._blacklist):
+            return                       # already covered
+        self._blacklist.append(p)
+        self._save_dead_ends()
+        self.get_logger().info(
+            f'blacklisted unreachable goal ({p[0]:.1f}, {p[1]:.1f}) '
+            f'-- {len(self._blacklist)} dead ends, persisted to {self._de_file}')
+
+    def _load_dead_ends(self):
+        try:
+            with open(self._de_file) as f:
+                for x, y in json.load(f):
+                    if not any(math.hypot(x - bx, y - by) < self.bl_r
+                               for bx, by in self._blacklist):
+                        self._blacklist.append((float(x), float(y)))
+        except (FileNotFoundError, ValueError, TypeError):
+            pass
+
+    def _save_dead_ends(self):
+        try:
+            os.makedirs(os.path.dirname(self._de_file), exist_ok=True)
+            tmp = self._de_file + '.tmp'
+            with open(tmp, 'w') as f:
+                json.dump([[round(x, 2), round(y, 2)] for x, y in self._blacklist], f)
+            os.replace(tmp, self._de_file)
+        except OSError as e:
+            self.get_logger().warn(f'could not persist dead ends: {e}')
 
     def _robot_xy(self):
         try:
@@ -166,6 +212,17 @@ def demo():
     # fully known grid -> no frontier
     g2 = np.zeros((10, 10), dtype=np.int16)
     assert find_frontier_clusters(g2, 1.0, 0.0, 0.0, 1, 1) == [], 'known grid must yield no frontier'
+
+    # dead-end persist/load round-trip (no ROS)
+    import json as _json, tempfile as _tmp, os as _os
+    f = _os.path.join(_tmp.mkdtemp(), 'de.json')
+    bl = list(CAP_PLATE_DEAD_ENDS) + [(12.34, -56.78)]
+    with open(f, 'w') as fh:
+        _json.dump([[round(x, 2), round(y, 2)] for x, y in bl], fh)
+    with open(f) as fh:
+        loaded = [(float(x), float(y)) for x, y in _json.load(fh)]
+    assert (12.34, -56.78) in loaded and len(loaded) == len(bl), 'dead-end file round-trip failed'
+    assert len(CAP_PLATE_DEAD_ENDS) == 9, 'expected 9 cap_plate dead ends'
     print('frontier_explorer_node self-check OK')
 
 
