@@ -100,11 +100,11 @@ class ReactiveController(Node):
         super().__init__('reactive_controller_node')
         p = self.declare_parameters('', [
             ('rate_hz', 10.0), ('max_v', 0.9), ('min_v', 0.18), ('max_w', 0.8), ('k_w', 1.0),
-            ('gap_min_m', 0.8), ('bubble_m', 0.4), ('min_gap_deg', 16.0),
+            ('gap_min_m', 1.6), ('bubble_m', 0.8), ('min_gap_deg', 16.0),
             ('fov_deg', 200.0),   # forward arc the gap search sees (of the 360 deg scan)
             ('min_scan_hits', 4), # fewer real returns than this = lost in open space
             ('steer_lp', 0.35), ('steer_deadband_deg', 7.0), ('steer_cap_deg', 60.0),
-            ('slow_dist_m', 1.2), ('reach_radius_m', 1.0), ('goal_timeout_s', 12.0),
+            ('slow_dist_m', 2.4), ('reach_radius_m', 1.0), ('goal_timeout_s', 12.0),
             ('stuck_dist_m', 0.15), ('stuck_time_s', 8.0),
             ('back_v', 0.4), ('back_time_s', 2.0), ('spin_time_s', 2.5),
             ('base_frame', 'base_link'), ('map_frame', 'map'),
@@ -224,7 +224,7 @@ class ReactiveController(Node):
             s = 0.0
 
         cmd = Twist()
-        if front < 0.6:
+        if front < 1.2:
             cmd.linear.x = 0.0           # wall right ahead -> rotate only
         else:
             turn_scale = max(0.0, 1.0 - abs(s) / cap)

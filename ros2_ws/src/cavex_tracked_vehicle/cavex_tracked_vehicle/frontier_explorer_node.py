@@ -55,7 +55,7 @@ class FrontierExplorer(Node):
     def __init__(self):
         super().__init__('frontier_explorer_node')
         self.declare_parameter('period_s', 1.0)
-        self.declare_parameter('inflate_cells', 3)      # keep goals off walls
+        self.declare_parameter('inflate_cells', 6)      # keep goals off walls (2x)
         self.declare_parameter('min_cluster_cells', 12)
         self.declare_parameter('min_goal_dist_m', 2.0)  # ignore frontiers on top of the robot
         self.declare_parameter('size_gain', 0.15)       # m of "distance" bought per frontier cell
