@@ -149,12 +149,19 @@ def generate_launch_description():
     # See cave_floor_patch_scaled below for the supplementary floor
     # collision added at this new location (the original patch's coverage,
     # x[-40,70] y[-12,12], does not reach here).
+    # 2026-08-30: HOME position moved to (-90, -40). Real request. Solid cave
+    # floor here (mesh-verified z ~= 5.9-6.0, ceiling ~12.8, ~113 vertices
+    # within 6 m -- an open corridor spot), a few m SW of the old (-88.78,
+    # -31.4). z = 5.9 + 0.75 clearance = 6.65, unchanged. The cave mesh is
+    # now trimmed to the play box and every corridor mouth at the trim limit
+    # is capped (tools/trim_cave_mesh.py + tools/cap_open_edges.py), so the
+    # vehicle can no longer drive off the mesh into the void.
     spawn_entity = Node(
         package='ros_gz_sim',
         executable='create',
         arguments=['-world', 'cavex_world', '-file', generated_sdf_file,
                    '-name', VEHICLE_MODEL_NAME,
-                   '-x', '-88.78', '-y', '-31.4', '-z', '6.65'],
+                   '-x', '-90', '-y', '-40', '-z', '6.65'],
         output='screen',
     )
 

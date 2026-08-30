@@ -102,6 +102,7 @@ class ReactiveController(Node):
             ('rate_hz', 10.0), ('max_v', 0.9), ('min_v', 0.18), ('max_w', 0.8), ('k_w', 1.0),
             ('gap_min_m', 0.8), ('bubble_m', 0.4), ('min_gap_deg', 16.0),
             ('fov_deg', 200.0),   # forward arc the gap search sees (of the 360 deg scan)
+            ('min_scan_hits', 4), # fewer real returns than this = lost in open space
             ('steer_lp', 0.35), ('steer_deadband_deg', 7.0), ('steer_cap_deg', 60.0),
             ('slow_dist_m', 1.2), ('reach_radius_m', 1.0), ('goal_timeout_s', 12.0),
             ('stuck_dist_m', 0.15), ('stuck_time_s', 8.0),
@@ -181,6 +182,19 @@ class ReactiveController(Node):
         ranges = np.asarray(s.ranges, dtype=float)
         angles = s.angle_min + np.arange(ranges.size) * s.angle_increment
         r_max = s.range_max if 0.5 < s.range_max < 1e4 else 30.0
+
+        # LOST-IN-THE-VOID guard: no structure anywhere in the whole scan
+        # means we have driven off the mesh / into open space where
+        # icp_odometry cannot track. Do NOT keep driving straight into
+        # nothing -- creep-rotate in place to try to bring a wall back into
+        # view, and let bootstrap_nudge / icp recover.
+        n_hits = int((np.isfinite(ranges) & (ranges > 0.05) & (ranges < 0.95 * r_max)).sum())
+        if n_hits < self.p['min_scan_hits']:
+            c = Twist()
+            c.angular.z = 0.4
+            self._cmd.publish(c)
+            return
+
         # the lidar is 360 deg; follow-the-gap only makes sense on a
         # forward-facing arc, else the "widest gap" can point backwards.
         fov = np.abs(angles) <= math.radians(self.p['fov_deg'] * 0.5)
