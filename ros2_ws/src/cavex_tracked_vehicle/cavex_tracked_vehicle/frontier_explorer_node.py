@@ -27,15 +27,6 @@ from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityExce
 
 FREE, UNKNOWN, OCC_MIN = 0, -1, 50
 
-# Permanent dead ends: the sealed cave corridor mouths (cap_plate_1..9 in
-# cavex_world.world). The explorer is seeded with these so it never heads
-# for a mouth we already walled off.
-CAP_PLATE_DEAD_ENDS = [
-    (-103.4, -60.2), (-123.4, -34.1), (-130.15, 5.23), (-65.12, -54.51),
-    (-83.49, 5.0), (-62.99, 29.66), (-24.85, 27.26), (-26.17, -58.92),
-    (34.67, -33.98),
-]
-
 
 def find_frontier_clusters(grid, res, ox, oy, inflate, min_cells):
     """grid: int8 HxW (-1 unknown, 0 free, 100 occ). Returns list of
@@ -84,10 +75,11 @@ class FrontierExplorer(Node):
         self._de_file = g('dead_end_file')
 
         self._grid = None
-        # persistent dead-end blacklist: seeded with the cap_plate mouths +
-        # whatever a previous run wrote to disk, so a restart doesn't
-        # re-explore known dead ends.
-        self._blacklist = list(CAP_PLATE_DEAD_ENDS)
+        # dead-end blacklist: the explorer discovers dead ends itself (a goal
+        # the controller reports on /explore/goal_failed) and remembers them.
+        # Persisted to disk so a restart keeps whatever it learned; nothing
+        # is pre-seeded.
+        self._blacklist = []
         self._load_dead_ends()
         self._done_logged = False
         self._ever_published = False
@@ -101,7 +93,7 @@ class FrontierExplorer(Node):
         self.create_timer(float(g('period_s')), self._tick)
         self.get_logger().info(
             f'frontier_explorer_node: Nav2-free frontier search on /map -> /explore/goal '
-            f'({len(self._blacklist)} dead ends seeded, file {self._de_file})')
+            f'({len(self._blacklist)} learned dead ends loaded from {self._de_file})')
 
     def _on_map(self, msg):
         self._grid = msg
@@ -216,13 +208,12 @@ def demo():
     # dead-end persist/load round-trip (no ROS)
     import json as _json, tempfile as _tmp, os as _os
     f = _os.path.join(_tmp.mkdtemp(), 'de.json')
-    bl = list(CAP_PLATE_DEAD_ENDS) + [(12.34, -56.78)]
+    bl = [(12.34, -56.78), (-3.0, 4.0)]
     with open(f, 'w') as fh:
         _json.dump([[round(x, 2), round(y, 2)] for x, y in bl], fh)
     with open(f) as fh:
         loaded = [(float(x), float(y)) for x, y in _json.load(fh)]
     assert (12.34, -56.78) in loaded and len(loaded) == len(bl), 'dead-end file round-trip failed'
-    assert len(CAP_PLATE_DEAD_ENDS) == 9, 'expected 9 cap_plate dead ends'
     print('frontier_explorer_node self-check OK')
 
 
