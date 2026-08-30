@@ -82,6 +82,10 @@ until gz model --list 2>/dev/null | grep -q cavex_tracked_blueboat; do sleep 3; 
 
 # Tier 2 SLAM + reactive explorer (reactive nodes start ~25 s in, after the first icp lock)
 ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py nav2:=false &
+
+# web viewer (browser 3D + drive panel) at http://localhost:8080
+( cd web_viewer && python3 control_server.py 8080 & )
+/usr/lib/x86_64-linux-gnu/gz/launch7/gz-launch websocket.gzlaunch &
 ```
 
 Topics: `/explore/goal` (chosen frontier), `/explore/frontiers` (markers),
@@ -89,21 +93,15 @@ Topics: `/explore/goal` (chosen frontier), `/explore/frontiers` (markers),
 `/map`. Each self-checks: `ros2 run cavex_tracked_vehicle
 frontier_explorer_node.py --selfcheck` (and `reactive_controller_node.py`).
 
-Web viewer (browser 3D view + drive controls, at http://localhost:8080) and
-RViz — both optional, start alongside the launches above once Gazebo is up:
+**RViz** — separate, optional (heavy; skip on a loaded box):
 
 ```bash
-cd web_viewer
-python3 control_server.py 8080 &
-/usr/lib/x86_64-linux-gnu/gz/launch7/gz-launch websocket.gzlaunch &
-cd ..
-
 rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz --ros-args -p use_sim_time:=true &
 ```
 
-Foxglove (browser RViz-equivalent 3D view: TF, `/map`, costmap, sensors) —
-the bridge is **not** autostarted (with no client connected it still
-serializes every topic, ~60% of a core). Start it when you open Foxglove:
+**Foxglove bridge** — separate, optional. Not autostarted by any launch
+file: with no client connected it still serializes every topic (~60% of a
+core). Start it only when you open the Foxglove/Flora client:
 
 ```bash
 ros2 run foxglove_bridge foxglove_bridge --ros-args -p use_sim_time:=true -p port:=8765 &
