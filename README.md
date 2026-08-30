@@ -16,8 +16,35 @@ cd ros2_ws
 source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 source install/setup.bash
-source ardupilot_gazebo_env.sh   # ArduPilot SITL env, incl. mavproxy.py on PATH
 ```
+
+### Environment
+
+`gz sim` (both the ROS-launched server and a standalone `gz sim -g` GUI) needs a
+few paths that ROS 2's own launch machinery does **not** inject. Put these in
+`~/.bashrc` once (assumes the repo is at `$HOME/CaveX-Explorer-Pro`):
+
+```bash
+# model:// mesh + world resolution for standalone `gz sim` / `gz service create`
+export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/CaveX-Explorer-Pro/ardupilot_gazebo/build:$GZ_SIM_SYSTEM_PLUGIN_PATH
+export GZ_SIM_RESOURCE_PATH=$HOME/CaveX-Explorer-Pro/ardupilot_gazebo/models:$HOME/CaveX-Explorer-Pro/ardupilot_gazebo/worlds:$GZ_SIM_RESOURCE_PATH
+export GZ_SIM_RESOURCE_PATH=$HOME/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models:$GZ_SIM_RESOURCE_PATH
+export GZ_SIM_RESOURCE_PATH=$HOME/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models:$GZ_SIM_RESOURCE_PATH
+# compiled ManualControl / ActionButtons GUI plugin (must be install/, not src/)
+export GZ_GUI_PLUGIN_PATH=$HOME/CaveX-Explorer-Pro/ros2_ws/install/cavex_tracked_vehicle_gui/lib/cavex_tracked_vehicle_gui:$GZ_GUI_PLUGIN_PATH
+# micro_ros_agent transitive .so lookup (DT_RUNPATH doesn't propagate)
+export LD_LIBRARY_PATH=$HOME/CaveX-Explorer-Pro/ros2_ws/install/micro_ros_msgs/lib:$LD_LIBRARY_PATH
+# mavproxy.py + microxrceddsgen on PATH (ArduPilot SITL launch shells out to them by bare name)
+export PATH=$HOME/.local/bin:$HOME/CaveX-Explorer-Pro/Micro-XRCE-DDS-Gen/scripts:$PATH
+# WSL only: force the real D3D12 GPU for Ogre2 instead of llvmpipe software render
+export GALLIUM_DRIVER=d3d12
+export MESA_LOADER_DRIVER_OVERRIDE=d3d12
+```
+
+An interactive shell picks these up from `~/.bashrc` automatically and every
+child process (`ros2 launch`, `gz sim`, `gz sim -g`) inherits them. On a fresh
+machine or a non-bash shell, export the block above (or add it to that shell's
+rc) before launching anything.
 
 Package quick reference — see `history.txt` (local-only) for full launch
 sequences, driving commands, and verification steps for each:
