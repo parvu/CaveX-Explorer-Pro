@@ -118,7 +118,14 @@ def generate_launch_description():
             # default subscriber QoS is reliable -- same mismatch fix as the
             # reference file.
             'qos': 2,
-            'Icp/PointToPlane': 'true',
+            # 2026-08-30: 2D single-ring lidar. Point-to-plane ICP needs 3D
+            # surface normals from a non-collinear neighbourhood; a single
+            # horizontal ring is collinear, so RTAB-Map reports "Scan
+            # complexity 0.0" and never inits a keyframe (no odom -> no map
+            # frame -> RViz/Nav2 see nothing). Point-to-point + Force3DoF
+            # (a 2D scan can't observe z/roll/pitch) is the 2D-lidar config.
+            'Icp/PointToPlane': 'false',
+            'Reg/Force3DoF': 'true',
             'Icp/VoxelSize': '0.1',
             # Real, live-diagnosed problem (2026-08-27, see bootstrap_nudge_node.py's
             # own module docstring for the full story): once icp_odometry loses
@@ -162,7 +169,7 @@ def generate_launch_description():
             'frame_id': frame_id,
             'qos_scan_cloud': 2,
             'Grid/FromDepth': 'false',
-            'Grid/3D': 'true',
+            'Grid/3D': 'false',   # 2026-08-30: 2D lidar -> 2D occupancy grid
             # Explicit, not relying on RTAB-Map's own default (0 = uncapped,
             # tracks the sensor's own reported max range) -- matches
             # lidar_sensor's own max range in model.sdf.tracked (doubled
@@ -198,7 +205,8 @@ def generate_launch_description():
             # pattern is actually gone, not just that this value looks
             # reasonable on paper.
             'Grid/MaxGroundAngle': '65',
-            'Icp/PointToPlane': 'true',
+            'Icp/PointToPlane': 'false',   # 2026-08-30: 2D single-ring lidar
+            'Reg/Force3DoF': 'true',
             'Icp/VoxelSize': '0.1',
             # Task 11 fix round 1: RTAB-Map's WM stayed at 1 forever despite real,
             # confirmed vehicle travel (15+ m) with healthy icp_odometry ratios
