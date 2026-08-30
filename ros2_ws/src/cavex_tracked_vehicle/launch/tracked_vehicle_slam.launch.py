@@ -549,13 +549,13 @@ def generate_launch_description():
     # web_viewer/index.html) and add a 3D panel (same idiom as RViz's own
     # "Add Display") -- an empty dashboard on first connect is normal, no
     # panel is added by default.
-    foxglove_bridge = Node(
-        package='foxglove_bridge',
-        executable='foxglove_bridge',
-        name='foxglove_bridge',
-        output='screen',
-        parameters=[{'use_sim_time': use_sim_time, 'port': 8765}],
-    )
+    # 2026-08-30: foxglove_bridge is NOT autostarted any more. With no client
+    # connected it still serializes every topic on the graph (~60% of a core,
+    # measured) -- pure waste on a launch that mostly runs headless. Start it
+    # by hand only when actually opening Foxglove:
+    #   ros2 run foxglove_bridge foxglove_bridge --ros-args -p use_sim_time:=true -p port:=8765 &
+    # (also in the README). Can't "kill on idle" cleanly -- once it's dead new
+    # clients can't connect without an inetd-style listener.
 
     bootstrap_nudge_node_action = Node(
         package='cavex_tracked_vehicle',
@@ -696,7 +696,6 @@ def generate_launch_description():
         dead_end_backtrack_node,
         reactive_explorer,
         cmd_vel_gz_bridge,
-        foxglove_bridge,
         bootstrap_nudge,
         ate_evaluator,
     ])

@@ -79,9 +79,8 @@ rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz --r
 ```
 
 Foxglove (browser RViz-equivalent 3D view: TF, `/map`, costmap, sensors) —
-`tracked_vehicle_slam.launch.py` already starts `foxglove_bridge` (port
-8765, the apt `ros-jazzy-foxglove-bridge` package). To run just the bridge
-on its own (e.g. after stopping it, or a SLAM-only stack):
+the bridge is **not** autostarted (with no client connected it still
+serializes every topic, ~60% of a core). Start it when you open Foxglove:
 
 ```bash
 ros2 run foxglove_bridge foxglove_bridge --ros-args -p use_sim_time:=true -p port:=8765 &
