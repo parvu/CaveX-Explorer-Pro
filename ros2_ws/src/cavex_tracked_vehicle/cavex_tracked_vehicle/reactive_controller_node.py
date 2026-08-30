@@ -22,59 +22,87 @@ from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityException, ExtrapolationException
 
 
-def choose_heading(ranges, angles, goal_bearing, gap_min, bubble_m, min_gap_rad, r_max=30.0):
-    """Pick a steer angle. ranges/angles: 1-D arrays. Returns (steer_rad,
-    front_clearance_m). Nearest obstacle is 'bubbled' out; among safe gaps
-    wider than min_gap_rad, take the one whose centre is closest to
-    goal_bearing, else the widest.
+def choose_heading(ranges, angles, goal_bearing, gap_min, bubble_m, min_gap_rad, r_max=30.0,
+                   fwd_cone_deg=20.0, center_k=0.25):
+    """Follow-the-gap with FORWARD PRIORITY + corridor centering.
+    Returns (steer_rad, front_m).
 
-    A no-return beam (inf / nan / <=0) means the ray hit nothing in range --
-    that is maximally OPEN, so it maps to r_max, NOT 0."""
-    r = np.where(np.isfinite(ranges) & (ranges > 0.05), ranges, r_max)
-    r = r.copy()
-    if r.size == 0:
+    1. If straight ahead is clear, drive STRAIGHT (steer 0) plus a small
+       centering term that pushes away from the nearer side wall. The goal
+       bearing does NOT bend the path here -- it only decides which way to
+       turn at a junction/dead end -- otherwise the vehicle drifts toward
+       whichever wall the goal sits behind and ends up hugging it.
+    2. Only when forward is blocked: steer to the WIDEST safe gap (goal
+       bearing a light tie-break).
+
+    A no-return beam (inf / nan / <=0) = ray hit nothing in range = maximally
+    OPEN -> r_max, not 0."""
+    if ranges.size == 0:
         return 0.0, 0.0
-    # bubble: zero a wedge around the closest real return
+    r0 = np.where(np.isfinite(ranges) & (ranges > 0.05), ranges, r_max).astype(float)
+    fcone = np.abs(angles) < math.radians(25)
+    front = float(np.min(r0[fcone])) if fcone.any() else r_max
+
+    # corridor centering: how much closer is the nearer side wall?
+    lmask = (angles > math.radians(40)) & (angles < math.radians(110))
+    rmask = (angles < math.radians(-40)) & (angles > math.radians(-110))
+    lmin = float(np.min(r0[lmask])) if lmask.any() else r_max
+    rmin = float(np.min(r0[rmask])) if rmask.any() else r_max
+    # steer toward the side with MORE room; scale by imbalance, cap small
+    center = center_k * math.tanh((lmin - rmin) / 1.5)   # +ve -> turn left (toward open left)
+
+    r = r0.copy()
     imin = int(np.argmin(r))
     dmin = r[imin]
-    if np.isfinite(dmin) and dmin > 0.05:
-        half = math.atan2(bubble_m, max(dmin, 0.05))
-        r[np.abs(np.angle(np.exp(1j * (angles - angles[imin])))) < half] = 0.0
+    if dmin < r_max:                      # bubble the single closest real obstacle
+        half = min(math.radians(35), math.atan2(bubble_m, max(dmin, 0.05)))
+        dang = np.abs(np.arctan2(np.sin(angles - angles[imin]), np.cos(angles - angles[imin])))
+        r[dang < half] = 0.0
+
     safe = r > gap_min
     if not safe.any():
-        return math.pi, 0.0            # nothing open -> turn around
-    # contiguous safe runs
+        return math.pi, front            # boxed in -> turn around
+
     idx = np.where(safe)[0]
-    splits = np.where(np.diff(idx) > 1)[0] + 1
-    runs = np.split(idx, splits)
-    best, best_key = None, None
+    runs = np.split(idx, np.where(np.diff(idx) > 1)[0] + 1)
+
+    # --- 1. forward priority: straight + centering, goal ignored here ---
+    zi = int(np.argmin(np.abs(angles)))
+    if safe[zi] and front > gap_min:
+        for run in runs:
+            if run[0] <= zi <= run[-1]:
+                lo, hi = float(angles[run[0]]), float(angles[run[-1]])
+                if (hi - lo) >= min_gap_rad:
+                    return float(np.clip(center, lo, hi)), front
+                break
+
+    # --- 2. forward blocked: widest safe gap ---
+    best = None
     for run in runs:
-        a0, a1 = angles[run[0]], angles[run[-1]]
-        width = abs(a1 - a0)
+        a0, a1 = float(angles[run[0]]), float(angles[run[-1]])
+        lo, hi = min(a0, a1), max(a0, a1)
+        width = hi - lo
         if width < min_gap_rad and run.size < 3:
             continue
-        centre = 0.5 * (a0 + a1)
-        key = abs(math.atan2(math.sin(centre - goal_bearing), math.cos(centre - goal_bearing)))
-        if best_key is None or key < best_key:
-            best, best_key = (centre, width), key
+        aim = min(max(goal_bearing, lo), hi) if lo <= goal_bearing <= hi else 0.5 * (a0 + a1)
+        goal_err = abs(math.atan2(math.sin(aim - goal_bearing), math.cos(aim - goal_bearing)))
+        score = width - 0.3 * goal_err
+        if best is None or score > best[0]:
+            best = (score, aim)
     if best is None:
         run = max(runs, key=len)
-        best = (0.5 * (angles[run[0]] + angles[run[-1]]), 0.0)
-    steer = best[0]
-    # if the goal bearing itself sits in a safe gap, prefer it
-    gi = int(np.argmin(np.abs(angles - goal_bearing)))
-    if safe[gi]:
-        steer = goal_bearing
-    front = float(np.min(r[np.abs(angles) < math.radians(25)])) if (np.abs(angles) < math.radians(25)).any() else 0.0
-    return float(steer), front
+        return float(0.5 * (angles[run[0]] + angles[run[-1]])), front
+    return float(best[1]), front
 
 
 class ReactiveController(Node):
     def __init__(self):
         super().__init__('reactive_controller_node')
         p = self.declare_parameters('', [
-            ('rate_hz', 10.0), ('max_v', 0.9), ('min_v', 0.18), ('max_w', 1.2), ('k_w', 1.6),
-            ('gap_min_m', 0.8), ('bubble_m', 0.45), ('min_gap_deg', 16.0),
+            ('rate_hz', 10.0), ('max_v', 0.9), ('min_v', 0.18), ('max_w', 0.8), ('k_w', 1.0),
+            ('gap_min_m', 0.8), ('bubble_m', 0.4), ('min_gap_deg', 16.0),
+            ('fov_deg', 200.0),   # forward arc the gap search sees (of the 360 deg scan)
+            ('steer_lp', 0.35), ('steer_deadband_deg', 7.0), ('steer_cap_deg', 60.0),
             ('slow_dist_m', 1.2), ('reach_radius_m', 1.0), ('goal_timeout_s', 12.0),
             ('stuck_dist_m', 0.15), ('stuck_time_s', 8.0),
             ('back_v', 0.4), ('back_time_s', 2.0), ('spin_time_s', 2.5),
@@ -85,6 +113,7 @@ class ReactiveController(Node):
         self._scan = None
         self._goal = None            # (x, y) in map frame
         self._goal_t = None
+        self._steer = 0.0            # low-passed steer command
         self._last_prog_xy = None
         self._last_prog_t = None
         self._recover_until = 0.0
@@ -152,6 +181,10 @@ class ReactiveController(Node):
         ranges = np.asarray(s.ranges, dtype=float)
         angles = s.angle_min + np.arange(ranges.size) * s.angle_increment
         r_max = s.range_max if 0.5 < s.range_max < 1e4 else 30.0
+        # the lidar is 360 deg; follow-the-gap only makes sense on a
+        # forward-facing arc, else the "widest gap" can point backwards.
+        fov = np.abs(angles) <= math.radians(self.p['fov_deg'] * 0.5)
+        ranges, angles = ranges[fov], angles[fov]
         steer, front = choose_heading(ranges, angles, goal_bearing,
                                       self.p['gap_min_m'], self.p['bubble_m'],
                                       math.radians(self.p['min_gap_deg']), r_max)
@@ -166,15 +199,24 @@ class ReactiveController(Node):
             self._begin_recovery(now, ranges, angles)
             return
 
+        # cap, then low-pass the steer so the heading can't flip side to side
+        # every tick (the raw gap pick chatters between near-equal gaps)
+        cap = math.radians(self.p['steer_cap_deg'])
+        steer = float(np.clip(steer, -cap, cap))
+        a = self.p['steer_lp']
+        self._steer = (1.0 - a) * self._steer + a * steer
+        s = self._steer
+        if abs(s) < math.radians(self.p['steer_deadband_deg']):
+            s = 0.0
+
         cmd = Twist()
-        if abs(steer) > math.pi / 2:
-            # turning around -- rotate in place, no forward drive into the wall
-            cmd.linear.x = 0.0
+        if front < 0.6:
+            cmd.linear.x = 0.0           # wall right ahead -> rotate only
         else:
-            turn_scale = 1.0 - abs(steer) / (math.pi / 2)
-            clear_scale = float(np.clip(front / self.p['slow_dist_m'], 0.0, 1.0)) if front > 0 else 0.5
+            turn_scale = max(0.0, 1.0 - abs(s) / cap)
+            clear_scale = float(np.clip(front / self.p['slow_dist_m'], 0.0, 1.0))
             cmd.linear.x = max(self.p['min_v'], self.p['max_v'] * turn_scale * clear_scale)
-        cmd.angular.z = float(np.clip(self.p['k_w'] * steer, -self.p['max_w'], self.p['max_w']))
+        cmd.angular.z = float(np.clip(self.p['k_w'] * s, -self.p['max_w'], self.p['max_w']))
         self._cmd.publish(cmd)
 
     def _begin_recovery(self, now, ranges, angles):
@@ -229,6 +271,20 @@ def demo():
                                     gap_min=1.2, bubble_m=0.5, min_gap_rad=math.radians(18), r_max=30.0)
     assert abs(steer3) < math.radians(12), f'open (inf) corridor ahead should go straight, got {math.degrees(steer3):.0f}'
     assert front3 > 5.0, f'front clearance in an open corridor should be large, got {front3:.1f}'
+    # corridor open ahead, LEFT wall close, goal to the LEFT -> must NOT drift
+    # toward the goal/wall; centering steers AWAY from the near left wall
+    r4 = np.full(180, 20.0)
+    r4[angles > math.radians(35)] = 0.8                  # close wall on the left
+    steer4, _ = choose_heading(r4, angles, goal_bearing=math.radians(80),
+                               gap_min=1.2, bubble_m=0.4, min_gap_rad=math.radians(18), r_max=30.0)
+    assert steer4 < math.radians(-3), f'near left wall + goal left -> must steer right (away), got {math.degrees(steer4):.0f}'
+    assert steer4 > math.radians(-25), f'centering should be gentle, got {math.degrees(steer4):.0f}'
+    # forward genuinely blocked (wall dead ahead), only a left gap -> steer left
+    r5 = np.full(180, 20.0)
+    r5[np.abs(angles) < math.radians(35)] = 0.5          # wall straight ahead
+    steer5, _ = choose_heading(r5, angles, goal_bearing=0.0,
+                               gap_min=1.2, bubble_m=0.4, min_gap_rad=math.radians(18), r_max=30.0)
+    assert abs(steer5) > math.radians(25), f'forward blocked -> must steer to a side gap, got {math.degrees(steer5):.0f}'
     print('reactive_controller_node self-check OK')
 
 
