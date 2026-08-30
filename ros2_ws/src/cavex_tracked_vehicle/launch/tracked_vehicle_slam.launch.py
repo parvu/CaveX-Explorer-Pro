@@ -3,7 +3,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, EmitEvent, IncludeLaunchDescription, RegisterEventHandler, TimerAction
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessIO
 from launch.events.process import ShutdownProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -151,6 +151,9 @@ def generate_launch_description():
         }],
         remappings=[
             ('scan_cloud', '/lidar/points'),
+            # icp_odometry auto-subscribes 'scan' too and refuses to run both;
+            # the real /scan (LaserScan) is for reactive_controller_node only.
+            ('scan', '_icp_scan_unused'),
         ],
     )
 
@@ -658,11 +661,29 @@ def generate_launch_description():
     #     parameters=[{'use_sim_time': use_sim_time}],
     # )
 
+    # nav2:=false alternative -- Tier 2 reactive explorer, no Nav2/costmaps.
+    # frontier_explorer_node picks goals off /map; reactive_controller_node
+    # follow-the-gaps on /scan -> /cmd_vel. Started after bootstrap_nudge has
+    # had a chance to give icp_odometry its first lock (nudge starts at 5 s).
+    reactive_explorer = TimerAction(
+        period=25.0,
+        actions=[
+            Node(package='cavex_tracked_vehicle', executable='frontier_explorer_node.py',
+                 name='frontier_explorer_node', output='screen',
+                 parameters=[{'use_sim_time': use_sim_time}],
+                 condition=UnlessCondition(nav2)),
+            Node(package='cavex_tracked_vehicle', executable='reactive_controller_node.py',
+                 name='reactive_controller_node', output='screen',
+                 parameters=[{'use_sim_time': use_sim_time}],
+                 condition=UnlessCondition(nav2)),
+        ],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument(
             'nav2', default_value='true',
-            description='true: full Nav2 + explore_lite. false: SLAM only '
-                        '(rtabmap + icp_odometry + foxglove), much lighter.'),
+            description='true: full Nav2 + explore_lite. false: Tier 2 reactive '
+                        'explorer (frontier_explorer + follow-the-gap), no costmaps.'),
         lidar_static_tf,
         camera_static_tf,
         camera_optical_static_tf,
@@ -673,6 +694,7 @@ def generate_launch_description():
         nav2_bringup_launch,
         start_explore_after_nudge,
         dead_end_backtrack_node,
+        reactive_explorer,
         cmd_vel_gz_bridge,
         foxglove_bridge,
         bootstrap_nudge,

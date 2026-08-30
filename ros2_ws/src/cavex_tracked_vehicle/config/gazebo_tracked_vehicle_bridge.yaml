@@ -31,6 +31,15 @@
   gz_type_name: "gz.msgs.PointCloudPacked"
   direction: GZ_TO_ROS
 
+# The gpu_lidar publishes a LaserScan on its base topic (/lidar/points) and the
+# PointCloud2 on the /points subtopic (bridged above). reactive_controller_node
+# (nav2:=false) consumes /scan; RViz/Foxglove show it too.
+- ros_topic_name: "/scan"
+  gz_topic_name: "/lidar/points"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
 # 2026-08-30: the RGBD camera_sensor was removed from model.sdf.tracked
 # (single biggest gz-sim render cost). Its three bridge entries
 # (/camera/color/image_raw, /camera/color/camera_info, /camera/depth/image_raw)

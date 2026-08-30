@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+"""Follow-the-gap reactive controller -- the Nav2-free drive layer.
+
+Subscribes /explore/goal (map frame) and /scan (2D lidar), transforms the goal
+into the body frame, and steers toward the widest safe gap biased to the goal
+bearing. Publishes /cmd_vel. No planner, no costmap, no BT.
+
+Dead-end / stuck handling (folds in dead_end_backtrack_node's job): if the
+vehicle stops making progress toward an active goal, back up, spin toward the
+more open side, then publish /explore/goal_failed so the explorer blacklists it.
+
+Runs when tracked_vehicle_slam.launch.py is started with nav2:=false.
+"""
+import math
+
+import numpy as np
+import rclpy
+from rclpy.node import Node
+
+from geometry_msgs.msg import PointStamped, Twist
+from sensor_msgs.msg import LaserScan
+from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityException, ExtrapolationException
+
+
+def choose_heading(ranges, angles, goal_bearing, gap_min, bubble_m, min_gap_rad):
+    """Pick a steer angle. ranges/angles: 1-D arrays. Returns (steer_rad,
+    front_clearance_m). Nearest obstacle is 'bubbled' out; among safe gaps
+    wider than min_gap_rad, take the one whose centre is closest to
+    goal_bearing, else the widest."""
+    r = np.where(np.isfinite(ranges), ranges, 0.0)
+    r = r.copy()
+    if r.size == 0:
+        return 0.0, 0.0
+    # bubble: zero a wedge around the closest return
+    imin = int(np.argmin(np.where(r > 0.05, r, np.inf)))
+    dmin = r[imin]
+    if np.isfinite(dmin) and dmin > 0.05:
+        half = math.atan2(bubble_m, max(dmin, 0.05))
+        r[np.abs(np.angle(np.exp(1j * (angles - angles[imin])))) < half] = 0.0
+    safe = r > gap_min
+    if not safe.any():
+        return math.pi, 0.0            # nothing open -> turn around
+    # contiguous safe runs
+    idx = np.where(safe)[0]
+    splits = np.where(np.diff(idx) > 1)[0] + 1
+    runs = np.split(idx, splits)
+    best, best_key = None, None
+    for run in runs:
+        a0, a1 = angles[run[0]], angles[run[-1]]
+        width = abs(a1 - a0)
+        if width < min_gap_rad and run.size < 3:
+            continue
+        centre = 0.5 * (a0 + a1)
+        key = abs(math.atan2(math.sin(centre - goal_bearing), math.cos(centre - goal_bearing)))
+        if best_key is None or key < best_key:
+            best, best_key = (centre, width), key
+    if best is None:
+        run = max(runs, key=len)
+        best = (0.5 * (angles[run[0]] + angles[run[-1]]), 0.0)
+    steer = best[0]
+    # if the goal bearing itself sits in a safe gap, prefer it
+    gi = int(np.argmin(np.abs(angles - goal_bearing)))
+    if safe[gi]:
+        steer = goal_bearing
+    front = float(np.min(r[np.abs(angles) < math.radians(25)])) if (np.abs(angles) < math.radians(25)).any() else 0.0
+    return float(steer), front
+
+
+class ReactiveController(Node):
+    def __init__(self):
+        super().__init__('reactive_controller_node')
+        p = self.declare_parameters('', [
+            ('rate_hz', 10.0), ('max_v', 0.9), ('min_v', 0.18), ('max_w', 1.2), ('k_w', 1.6),
+            ('gap_min_m', 0.8), ('bubble_m', 0.45), ('min_gap_deg', 16.0),
+            ('slow_dist_m', 1.2), ('reach_radius_m', 1.0), ('goal_timeout_s', 12.0),
+            ('stuck_dist_m', 0.15), ('stuck_time_s', 8.0),
+            ('back_v', 0.4), ('back_time_s', 2.0), ('spin_time_s', 2.5),
+            ('base_frame', 'base_link'), ('map_frame', 'map'),
+        ])
+        v = {x.name: x.value for x in p}
+        self.p = v
+        self._scan = None
+        self._goal = None            # (x, y) in map frame
+        self._goal_t = None
+        self._last_prog_xy = None
+        self._last_prog_t = None
+        self._recover_until = 0.0
+        self._recover_phase = None
+
+        self._tf = Buffer()
+        TransformListener(self._tf, self)
+        self.create_subscription(LaserScan, '/scan', lambda m: setattr(self, '_scan', m), 10)
+        self.create_subscription(PointStamped, '/explore/goal', self._on_goal, 10)
+        self._cmd = self.create_publisher(Twist, '/cmd_vel', 10)
+        self._failed = self.create_publisher(PointStamped, '/explore/goal_failed', 10)
+        self.create_timer(1.0 / float(v['rate_hz']), self._tick)
+        self.get_logger().info('reactive_controller_node: follow-the-gap on /scan -> /cmd_vel (Nav2-free)')
+
+    def _on_goal(self, msg):
+        self._goal = (msg.point.x, msg.point.y)
+        self._goal_t = self.now()
+        if self._last_prog_xy is None:
+            self._last_prog_xy, self._last_prog_t = None, self.now()
+
+    def now(self):
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def _pose(self):
+        try:
+            t = self._tf.lookup_transform(self.p['map_frame'], self.p['base_frame'], rclpy.time.Time())
+            q = t.transform.rotation
+            yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+            return t.transform.translation.x, t.transform.translation.y, yaw
+        except (LookupException, ConnectivityException, ExtrapolationException):
+            return None
+
+    def _stop(self):
+        self._cmd.publish(Twist())
+
+    def _tick(self):
+        now = self.now()
+        if self._recover_phase:
+            self._run_recovery(now)
+            return
+        if self._goal is None or self._scan is None:
+            self._stop()
+            return
+        if now - self._goal_t > self.p['goal_timeout_s']:
+            self._goal = None
+            self._stop()
+            return
+        pose = self._pose()
+        if pose is None:
+            self._stop()
+            return
+        rx, ry, ryaw = pose
+        gx, gy = self._goal
+        dx, dy = gx - rx, gy - ry
+        dist = math.hypot(dx, dy)
+        if dist < self.p['reach_radius_m']:
+            self.get_logger().info('goal reached')
+            self._goal = None
+            self._stop()
+            return
+        goal_bearing = math.atan2(math.sin(math.atan2(dy, dx) - ryaw),
+                                  math.cos(math.atan2(dy, dx) - ryaw))
+
+        s = self._scan
+        ranges = np.asarray(s.ranges, dtype=float)
+        angles = s.angle_min + np.arange(ranges.size) * s.angle_increment
+        steer, front = choose_heading(ranges, angles, goal_bearing,
+                                      self.p['gap_min_m'], self.p['bubble_m'],
+                                      math.radians(self.p['min_gap_deg']))
+
+        # progress / stuck check
+        if self._last_prog_xy is None:
+            self._last_prog_xy, self._last_prog_t = (rx, ry), now
+        elif math.hypot(rx - self._last_prog_xy[0], ry - self._last_prog_xy[1]) > self.p['stuck_dist_m']:
+            self._last_prog_xy, self._last_prog_t = (rx, ry), now
+        elif now - self._last_prog_t > self.p['stuck_time_s']:
+            self.get_logger().warn('no progress -> recovery back-up + spin')
+            self._begin_recovery(now, ranges, angles)
+            return
+
+        cmd = Twist()
+        if abs(steer) > math.pi / 2:
+            # turning around -- rotate in place, no forward drive into the wall
+            cmd.linear.x = 0.0
+        else:
+            turn_scale = 1.0 - abs(steer) / (math.pi / 2)
+            clear_scale = float(np.clip(front / self.p['slow_dist_m'], 0.0, 1.0)) if front > 0 else 0.5
+            cmd.linear.x = max(self.p['min_v'], self.p['max_v'] * turn_scale * clear_scale)
+        cmd.angular.z = float(np.clip(self.p['k_w'] * steer, -self.p['max_w'], self.p['max_w']))
+        self._cmd.publish(cmd)
+
+    def _begin_recovery(self, now, ranges, angles):
+        left = float(np.nanmean(np.where(angles > 0, ranges, np.nan)))
+        right = float(np.nanmean(np.where(angles < 0, ranges, np.nan)))
+        self._spin_sign = 1.0 if left >= right else -1.0
+        self._recover_phase = 'back'
+        self._recover_until = now + self.p['back_time_s']
+        if self._goal is not None:
+            pf = PointStamped()
+            pf.header.frame_id = self.p['map_frame']
+            pf.header.stamp = self.get_clock().now().to_msg()
+            pf.point.x, pf.point.y = float(self._goal[0]), float(self._goal[1])
+            self._failed.publish(pf)
+        self._goal = None
+
+    def _run_recovery(self, now):
+        cmd = Twist()
+        if self._recover_phase == 'back':
+            cmd.linear.x = -self.p['back_v']
+            if now >= self._recover_until:
+                self._recover_phase = 'spin'
+                self._recover_until = now + self.p['spin_time_s']
+        elif self._recover_phase == 'spin':
+            cmd.angular.z = self._spin_sign * self.p['max_w']
+            if now >= self._recover_until:
+                self._recover_phase = None
+                self._last_prog_xy = None
+        self._cmd.publish(cmd)
+
+
+def demo():
+    """`python3 reactive_controller_node.py --selfcheck`"""
+    # 180-beam scan, everything far except a wall dead ahead; goal is to the left
+    angles = np.linspace(-math.pi / 2, math.pi / 2, 180)
+    ranges = np.full(180, 8.0)
+    ranges[np.abs(angles) < math.radians(20)] = 0.6      # obstacle ahead
+    steer, front = choose_heading(ranges, angles, goal_bearing=math.radians(70),
+                                  gap_min=1.2, bubble_m=0.5, min_gap_rad=math.radians(18))
+    assert steer > math.radians(20), f'should steer left away from the front wall, got {math.degrees(steer):.0f} deg'
+    assert front < 1.0, f'front clearance should reflect the 0.6 m wall, got {front:.2f}'
+    # clear ahead, goal ahead -> go roughly straight
+    ranges2 = np.full(180, 8.0)
+    steer2, _ = choose_heading(ranges2, angles, goal_bearing=0.05,
+                               gap_min=1.2, bubble_m=0.5, min_gap_rad=math.radians(18))
+    assert abs(steer2) < math.radians(15), f'clear path + goal ahead should go straight, got {math.degrees(steer2):.0f}'
+    print('reactive_controller_node self-check OK')
+
+
+def main():
+    import sys
+    if '--selfcheck' in sys.argv:
+        demo()
+        return
+    rclpy.init()
+    node = ReactiveController()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
+
+
+if __name__ == '__main__':
+    main()
