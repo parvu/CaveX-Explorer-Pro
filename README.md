@@ -66,6 +66,29 @@ sleep 15
 ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
 ```
 
+`tracked_vehicle_slam.launch.py` brings up SLAM (`icp_odometry` + `rtabmap`,
+2D-lidar config) plus, by default, the full Nav2 stack + `explore_lite`.
+
+**Tier 2 — `nav2:=false`:** replaces Nav2 + explore_lite with two light
+nodes — `frontier_explorer_node` (frontier clusters off `/map` →
+`/explore/goal`) and `reactive_controller_node` (follow-the-gap on `/scan`
+→ `/cmd_vel`, with stuck→back-up+spin recovery). No costmaps, no BT, no
+lifecycle manager; ~6× the RTF of the full Nav2 stack on a loaded box.
+
+```bash
+# headless server
+ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py &
+until gz model --list 2>/dev/null | grep -q cavex_tracked_blueboat; do sleep 3; done
+
+# Tier 2 SLAM + reactive explorer (reactive nodes start ~25 s in, after the first icp lock)
+ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py nav2:=false &
+```
+
+Topics: `/explore/goal` (chosen frontier), `/explore/frontiers` (markers),
+`/explore/goal_failed` (controller → explorer blacklist), `/cmd_vel`,
+`/map`. Each self-checks: `ros2 run cavex_tracked_vehicle
+frontier_explorer_node.py --selfcheck` (and `reactive_controller_node.py`).
+
 Web viewer (browser 3D view + drive controls, at http://localhost:8080) and
 RViz — both optional, start alongside the launches above once Gazebo is up:
 
