@@ -3,7 +3,7 @@
     "3D!cavex": {
       "cameraState": {
         "perspective": true,
-        "distance": 10.53,
+        "distance": 14.0,
         "phi": 60,
         "thetaOffset": 45,
         "targetOffset": [0, 0, 0],
@@ -21,18 +21,23 @@
         "/map": { "visible": true, "colorMode": "raw", "alpha": 0.7 },
         "/local_costmap/costmap": { "visible": true, "colorMode": "raw", "alpha": 0.7 },
         "/global_costmap/costmap": { "visible": false, "colorMode": "raw", "alpha": 0.7 },
-        "/lidar/points": {
+        "/scan": {
           "visible": true,
-          "colorField": "intensity",
-          "colorMode": "colormap",
-          "colorMap": "rainbow",
-          "pointSize": 2
+          "colorMode": "flat",
+          "flatColor": "#4dd0e1",
+          "pointSize": 4
+        },
+        "/lidar/points": {
+          "visible": false,
+          "colorMode": "flat",
+          "flatColor": "#7e57c2",
+          "pointSize": 3
         },
         "/cloud_obstacles": {
           "visible": true,
-          "colorField": "intensity",
+          "colorField": "z",
           "colorMode": "colormap",
-          "colorMap": "rainbow",
+          "colorMap": "turbo",
           "pointSize": 2
         },
         "/cavex/slam/odom": {
@@ -48,16 +53,24 @@
       "imageMode": {},
       "layers": {}
     },
-    "Image!cavex": {
-      "cameraTopic": "/camera/color/image_raw",
-      "enabledMarkerTopics": [],
-      "mode": "fit",
-      "synchronize": false,
-      "flipHorizontal": false,
-      "flipVertical": false,
-      "rotation": 0,
-      "minValue": 0,
-      "maxValue": 1
+    "Plot!drive": {
+      "paths": [
+        { "value": "/cmd_vel.linear.x", "enabled": true, "timestampMethod": "receiveTime", "label": "cmd fwd (m/s)" },
+        { "value": "/cavex/odom/ground_truth.twist.twist.linear.x", "enabled": true, "timestampMethod": "receiveTime", "label": "actual fwd (m/s)" },
+        { "value": "/cavex/odom/ground_truth.twist.twist.angular.z", "enabled": true, "timestampMethod": "receiveTime", "label": "yaw rate (rad/s)" }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 30
+    },
+    "RawMessages!mode": {
+      "topicPath": "/cavex/locomotion_mode.data"
     }
   },
   "globalVariables": {},
@@ -65,8 +78,13 @@
   "playbackConfig": { "speed": 1 },
   "layout": {
     "first": "3D!cavex",
-    "second": "Image!cavex",
+    "second": {
+      "first": "Plot!drive",
+      "second": "RawMessages!mode",
+      "direction": "column",
+      "splitPercentage": 78
+    },
     "direction": "row",
-    "splitPercentage": 75
+    "splitPercentage": 72
   }
 }

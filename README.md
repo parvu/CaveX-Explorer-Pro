@@ -96,10 +96,12 @@ viewer) — pre-connects to the bridge automatically via the page's own
 link. On first connect the dashboard is empty; either add panels manually
 (same idiom as RViz's own "Add Display"), or import
 `web_viewer/foxglove/tracked_vehicle_mapping.json` (Layouts tab → import,
-or drag the file onto the window) for a layout mirroring
-`tracked_vehicle_mapping.rviz`: 3D panel (TF, `/map`, local costmap, lidar
-points, obstacle cloud, SLAM path, explore frontiers) + camera image
-panel. This is [Flora](https://github.com/flora-suite/flora),
+or drag the file onto the window): 3D panel (TF, `/map`, local costmap,
+`/scan` 2D lidar, obstacle cloud, SLAM path, explore frontiers) + a drive
+plot (commanded vs actual forward speed, yaw rate) + a locomotion-mode
+readout. No camera panel — the RGBD sensor was removed and the lidar is
+2D now (see `models/blueboat/model.sdf.tracked`). This is
+[Flora](https://github.com/flora-suite/flora),
 an actively-maintained open-source fork of Foxglove Studio — not
 `app.foxglove.dev` (requires a Foxglove account now) and not a self-hosted
 build of the frozen last-open-source Foxglove release (protocol/encoding

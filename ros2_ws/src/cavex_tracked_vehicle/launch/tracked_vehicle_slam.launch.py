@@ -141,8 +141,13 @@ def generate_launch_description():
         ],
     )
 
-    # RTAB-Map SLAM node, 3D lidar mode, remapped to this vehicle's real
-    # sensor topics (Task 7).
+    # RTAB-Map SLAM node, lidar-cloud-only mode, remapped to this vehicle's
+    # real sensor topics (Task 7).
+    # 2026-08-30: RGBD camera removed from model.sdf.tracked and the lidar is
+    # 2D now. subscribe_depth/subscribe_rgb dropped to False -- with them True,
+    # RTAB-Map's sync callback waits forever for RGB+depth frames that never
+    # publish and NO map is ever built. scan_cloud (the 360-pt 2D ring on
+    # /lidar/points) is the only input now.
     rtabmap = Node(
         package='rtabmap_slam',
         executable='rtabmap',
@@ -150,13 +155,11 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': use_sim_time,
-            'subscribe_depth': True,
-            'subscribe_rgb': True,
+            'subscribe_depth': False,
+            'subscribe_rgb': False,
             'subscribe_scan': False,
             'subscribe_scan_cloud': True,
             'frame_id': frame_id,
-            'qos_image': 2,
-            'qos_camera_info': 2,
             'qos_scan_cloud': 2,
             'Grid/FromDepth': 'false',
             'Grid/3D': 'true',
@@ -225,9 +228,6 @@ def generate_launch_description():
             'Rtabmap/DetectionRate': '10.0',
         }],
         remappings=[
-            ('rgb/image', '/camera/color/image_raw'),
-            ('rgb/camera_info', '/camera/color/camera_info'),
-            ('depth/image', '/camera/depth/image_raw'),
             ('scan_cloud', '/lidar/points'),
         ],
         arguments=['--delete_db_on_start'],
