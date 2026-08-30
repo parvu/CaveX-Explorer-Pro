@@ -22,17 +22,20 @@ from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityException, ExtrapolationException
 
 
-def choose_heading(ranges, angles, goal_bearing, gap_min, bubble_m, min_gap_rad):
+def choose_heading(ranges, angles, goal_bearing, gap_min, bubble_m, min_gap_rad, r_max=30.0):
     """Pick a steer angle. ranges/angles: 1-D arrays. Returns (steer_rad,
     front_clearance_m). Nearest obstacle is 'bubbled' out; among safe gaps
     wider than min_gap_rad, take the one whose centre is closest to
-    goal_bearing, else the widest."""
-    r = np.where(np.isfinite(ranges), ranges, 0.0)
+    goal_bearing, else the widest.
+
+    A no-return beam (inf / nan / <=0) means the ray hit nothing in range --
+    that is maximally OPEN, so it maps to r_max, NOT 0."""
+    r = np.where(np.isfinite(ranges) & (ranges > 0.05), ranges, r_max)
     r = r.copy()
     if r.size == 0:
         return 0.0, 0.0
-    # bubble: zero a wedge around the closest return
-    imin = int(np.argmin(np.where(r > 0.05, r, np.inf)))
+    # bubble: zero a wedge around the closest real return
+    imin = int(np.argmin(r))
     dmin = r[imin]
     if np.isfinite(dmin) and dmin > 0.05:
         half = math.atan2(bubble_m, max(dmin, 0.05))
@@ -148,9 +151,10 @@ class ReactiveController(Node):
         s = self._scan
         ranges = np.asarray(s.ranges, dtype=float)
         angles = s.angle_min + np.arange(ranges.size) * s.angle_increment
+        r_max = s.range_max if 0.5 < s.range_max < 1e4 else 30.0
         steer, front = choose_heading(ranges, angles, goal_bearing,
                                       self.p['gap_min_m'], self.p['bubble_m'],
-                                      math.radians(self.p['min_gap_deg']))
+                                      math.radians(self.p['min_gap_deg']), r_max)
 
         # progress / stuck check
         if self._last_prog_xy is None:
@@ -217,6 +221,14 @@ def demo():
     steer2, _ = choose_heading(ranges2, angles, goal_bearing=0.05,
                                gap_min=1.2, bubble_m=0.5, min_gap_rad=math.radians(18))
     assert abs(steer2) < math.radians(15), f'clear path + goal ahead should go straight, got {math.degrees(steer2):.0f}'
+    # open corridor ahead reads as inf (no return), walls only to the sides:
+    # must NOT treat the open beams as blocked and veer to a wall
+    r3 = np.full(180, math.inf)
+    r3[np.abs(angles) > math.radians(70)] = 1.0          # side walls near the edges
+    steer3, front3 = choose_heading(r3, angles, goal_bearing=0.0,
+                                    gap_min=1.2, bubble_m=0.5, min_gap_rad=math.radians(18), r_max=30.0)
+    assert abs(steer3) < math.radians(12), f'open (inf) corridor ahead should go straight, got {math.degrees(steer3):.0f}'
+    assert front3 > 5.0, f'front clearance in an open corridor should be large, got {front3:.1f}'
     print('reactive_controller_node self-check OK')
 
 
