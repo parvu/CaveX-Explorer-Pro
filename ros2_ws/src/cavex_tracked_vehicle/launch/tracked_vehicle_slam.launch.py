@@ -231,18 +231,17 @@ def generate_launch_description():
             # disables this skip (always process/consider each frame).
             'RGBD/LinearUpdate': '0.0',
             'RGBD/AngularUpdate': '0.0',
-            # Default Rtabmap/DetectionRate is 1Hz (matches the "Rate=1.00s"
-            # seen live in rtabmap's own log line) -- that's also how often
-            # it publishes the map->odom TF. Lidar/odom messages land between
-            # those publishes, so rviz/costmap TF lookups at those in-between
-            # stamps intermittently hit "frame does not exist" or
-            # extrapolation errors even once SLAM is healthy. Raised to
-            # 10Hz (further raised from an earlier 5Hz fix) -- matches
-            # lidar_sensor's own real update_rate (model.sdf.tracked, also
-            # 10Hz), so RTAB-Map now processes every incoming scan rather
-            # than every other one; 0 (uncapped) was considered but there's
-            # no new data to process faster than the sensor itself produces.
-            'Rtabmap/DetectionRate': '10.0',
+            # RTAB-Map processes a frame (and publishes map->odom) at this
+            # rate. Was 10Hz to match a 10Hz lidar; 2026-08-30 both dropped
+            # (lidar update_rate 10->5, this 10->3) to claw back RTF -- the
+            # map graph doesn't need 10Hz keyframes and the RTAB-Map= per-
+            # frame cost was ~50% of a core. icp_odometry still publishes
+            # odom->base_link at the full scan rate, so the odom TF stays
+            # smooth; only map->odom drops to 3Hz, which "latest" TF lookups
+            # (reactive_controller_node) tolerate fine. Costmap-based lookups
+            # in the full Nav2 path are more sensitive -- bump back toward 5
+            # if they get noisy.
+            'Rtabmap/DetectionRate': '3.0',
         }],
         remappings=[
             ('scan_cloud', '/lidar/points'),

@@ -912,7 +912,11 @@
              rtabmap in the SLAM stack) actually subscribes; a manual
              drive run leaves it idle. -->
         <always_on>0</always_on>
-        <update_rate>10</update_rate>
+        <!-- 2026-08-30: 10 -> 5 Hz. Each tick is a GPU depth render against
+             the 2x cave scene; halving it claws back RTF. 5 Hz is plenty
+             for a slow tracked explorer. tracked_vehicle_slam.launch.py's
+             Rtabmap/DetectionRate dropped 10 -> 3 alongside. -->
+        <update_rate>5</update_rate>
         <topic>lidar/points</topic>
         <gz_frame_id>lidar_link</gz_frame_id>
         <ray>
