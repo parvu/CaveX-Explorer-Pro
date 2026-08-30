@@ -64,7 +64,11 @@ from std_msgs.msg import String
 # real known geometry the shore-distance check below already uses.
 # 2026-08-28: water surface raised 6.0 -> 7.0 (boat_buoyancy_control.py
 # TARGET_FLOAT_Z now 7.06), so this "is it actually floating" gate follows.
-FLOAT_Z_MIN = 5.95
+# 2026-08-30: water surface LOWERED 6.0 -> 5.65 so the cave-floor shore
+# (z~5.98) is a dry beach. The vehicle now RESTS HIGHER on land (base_link
+# ~6.36) than it FLOATS (target ~5.77), so the test flips: "buoyant" = has
+# descended into the water, z <= FLOAT_Z_MAX, while inside the water box.
+FLOAT_Z_MAX = 6.20  # float line ~6.10 (surface 5.98 + 0.12); land-rest ~6.36 sits above this
 # Real request 2026-08-27: water east edge trimmed x=70 -> x=40 (see
 # cavex_world.world's water_surface / *_boundary_wall / basin_floor). This
 # box must stay matched to those walls.
@@ -94,10 +98,16 @@ def _in_water_box(x, y):
 # world-frame rectangles marking the drivable dry floor for the shore-distance
 # check. Nothing here ever queried the models by name; the names are region labels.
 SHORE_DISTANCE_M = 1.0
+# 2026-08-30: the dry cave floor / seal now runs all the way east to the
+# water_entry_ramp top at x=-1 (there is no separate cave_entry_ramp any
+# more), so 'dry_approach' extends to -1, and 'ramp_shore' covers the ramp
+# top + shallows so a boat driving IN from the water trips the props->tracks
+# handoff there instead of only at x=-10 (which it can never float to --
+# the submerged cave-floor lip at z~5.98 stops the hull at ~x=-0.3).
 DRY_BOXES = [
     # name, x0, x1, y0, y1, z0, z1
-    ('dry_approach', -40.0, -10.0, -12.0, 12.0, 4.9, 5.9),
-    ('cave_entry_ramp_shallow', -10.0, -7.0, -12.0, 12.0, 5.3, 5.9),
+    ('dry_approach', -40.0,  0.0, -12.0, 12.0, 4.9, 6.1),
+    ('shore_edge', -1.0, 1.5, -13.0, 13.0, 4.5, 6.3),  # right at the graded-ramp lip; x=4 caused a deploy/retract flip-flop
     ('spawn_area', -120.0, -60.0, -45.9, -16.9, 4.9, 5.9),
     ('spawn_approach_link', -62.0, -38.0, -46.0, 12.0, 4.9, 5.9),
 ]
@@ -153,7 +163,7 @@ class VehicleSwitchNode(Node):
 
         self.get_logger().info(
             f"vehicle_switch_node ready: tracks -> retracting (buoyant, "
-            f"z>={FLOAT_Z_MIN}) -> props ({TRANSITION_DURATION_S}s) -> "
+            f"z<={FLOAT_Z_MAX}) -> props ({TRANSITION_DURATION_S}s) -> "
             f"deploying (<{SHORE_DISTANCE_M}m from shore) -> tracks "
             f"({TRANSITION_DURATION_S}s). Manual Track switch overrides.")
         self._publish_mode()
@@ -195,7 +205,12 @@ class VehicleSwitchNode(Node):
         now = self.get_clock().now()
 
         if self._mode == 'tracks':
-            if z >= FLOAT_Z_MIN and _in_water_box(x, y):
+            # Only retract once actually OUT over water -- not while still within
+            # a track-length of shore, or the machine ping-pongs
+            # tracks<->retracting<->deploying on the grade and the vehicle never
+            # gets sustained track authority to climb out.
+            if (z <= FLOAT_Z_MAX and _in_water_box(x, y)
+                    and _distance_to_shore(x, y, z) >= SHORE_DISTANCE_M):
                 self.get_logger().info(
                     f"Buoyant at z={z:.2f} -- retracting tracks.")
                 self._send_track_cmd('retracted')

@@ -564,9 +564,24 @@
         <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
       </visual>
     </link>
-    <joint name="left_track_fixed" type="fixed">
+    <!-- 2026-08-30: was a fixed joint. Now a vertical (model-Z) sprung +
+         damped prismatic so each track box can travel +-0.06 m to follow
+         cave-floor relief instead of levering the whole hull into a pitch.
+         k ~ half-weight / 0.03 m static sag; damping ~0.7 critical on the
+         per-corner sprung mass. Axis is expressed in the model frame so it
+         stays vertical regardless of the retract-joint angle. -->
+    <joint name="left_track_susp" type="prismatic">
       <parent>left_track_retract_mount</parent>
       <child>left_track</child>
+      <axis>
+        <xyz expressed_in="__model__">0 0 1</xyz>
+        <limit><lower>-0.06</lower><upper>0.06</upper></limit>
+        <dynamics>
+          <spring_stiffness>8000</spring_stiffness>
+          <spring_reference>0</spring_reference>
+          <damping>550</damping>
+        </dynamics>
+      </axis>
     </joint>
 
     <link name="right_track_retract_mount">
@@ -764,9 +779,19 @@
         <material><ambient>0.08 0.08 0.08 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material>
       </visual>
     </link>
-    <joint name="right_track_fixed" type="fixed">
+    <!-- 2026-08-30: sprung + damped prismatic suspension, see left_track_susp. -->
+    <joint name="right_track_susp" type="prismatic">
       <parent>right_track_retract_mount</parent>
       <child>right_track</child>
+      <axis>
+        <xyz expressed_in="__model__">0 0 1</xyz>
+        <limit><lower>-0.06</lower><upper>0.06</upper></limit>
+        <dynamics>
+          <spring_stiffness>8000</spring_stiffness>
+          <spring_reference>0</spring_reference>
+          <damping>550</damping>
+        </dynamics>
+      </axis>
     </joint>
 
     <!-- sensors -->

@@ -106,7 +106,8 @@ CMD_V_MAX = 1.1        # m/s
 CMD_W_MAX = 1.6        # rad/s
 
 # --- force/torque clamps ---
-FMAX_FWD = 800.0       # N  (lowered with CMD_V_MAX -- less to slam with)
+FMAX_FWD = 1400.0      # N  (raised 800 -> 1400 2026-08-30: needed to climb the
+                       # 7 deg water-entry ramp back out; the I-term was saturating)
 FMAX_LAT = 800.0       # N
 TMAX_YAW = 1900.0      # N*m
 

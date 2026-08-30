@@ -77,7 +77,7 @@ WEIGHT_N = VEHICLE_MASS_KG * GRAVITY
 #   water surface z = 6.0 (cavex_world.world water_surface pose)
 #   hull_collision bbox top sits at local z=0 (base_link Z == hull-top Z)
 #   real request 2026-08-28: hull top exactly 6cm proud of the water.
-WATER_SURFACE_Z = 6.0   # cavex_world.world water_surface (lowered 7.0 -> 6.0 to the cave-floor level, 2026-08-29)
+WATER_SURFACE_Z = 5.985  # cavex_world.world water_surface = cave-floor level (2026-08-30, +5mm)
 TARGET_FREEBOARD = 0.12  # 2026-08-29: doubled 0.06 -> 0.12 (real request -- more
                          # deck clearance so drive-induced pitch doesn't dip the
                          # pontoons under)
@@ -116,7 +116,7 @@ MAX_LIFT_N = 800.0  # headroom over the ~486N hover point, not a rocket
 # a real hydrodynamics plugin if this ever needs proper maneuvering fidelity.
 DRAG_LIN_XY = 15.0    # N per (m/s)
 DRAG_QUAD_XY = 47.0   # N per (m/s)^2
-DRAG_YAW = 140.0      # N*m per (rad/s) of yaw rate -- raised 60 -> 140
+DRAG_YAW = 200.0      # N*m per (rad/s) of yaw rate -- 60 -> 140 -> 200 (2026-08-30, calmer in-water yaw decay)
                       # 2026-08-29: straight drive was curving off course;
                       # stiffer yaw-rate damping plus the port thruster
                       # coefficient-sign fix (model.sdf.tracked) hold it
@@ -132,7 +132,9 @@ DRAG_YAW = 140.0      # N*m per (rad/s) of yaw rate -- raised 60 -> 140
 # was actually missing to calm the oscillation without weakening the static
 # righting stiffness.
 BUOY_OFFSET_Z = 0.4
-ANGULAR_DAMPING = 60.0  # N*m per (rad/s) of roll/pitch rate (was 40 --
+ANGULAR_DAMPING = 100.0  # N*m per (rad/s) of roll/pitch rate -- 40 -> 60 -> 100
+                        # (2026-08-30: LEVEL_KP=850 was only ~0.5 critical at 60,
+                        # roll/pitch rang and coupled into yaw wobble). (was 40 --
                        # raised with LEVEL_KP to hold pitch under drive)
 
 # Real request 2026-08-26: "too back heavy" -- live-confirmed a genuine, real

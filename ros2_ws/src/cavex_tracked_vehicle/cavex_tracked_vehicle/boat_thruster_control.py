@@ -50,7 +50,11 @@ HALF_SEPARATION = 0.295
 # cmd) now makes a ~2*180*0.295 = ~106 N*m yaw couple vs ~90 N of forward
 # thrust, roughly matched.
 THRUST_GAIN_LINEAR = 80.0    # N per (m/s) of commanded linear.x
-THRUST_GAIN_ANGULAR = 140.0  # N per (rad/s) of commanded angular.z, applied
+THRUST_GAIN_ANGULAR = 300.0  # N per (rad/s) of commanded angular.z (raised
+                             # 140 -> 300 2026-08-30: the old value could not
+                             # sustain a commanded turn against DRAG_YAW, so
+                             # turns felt sluggish and the operator over-inputs
+                             # -> pilot-induced yaw oscillation). applied
                               # differentially (see mix below)
 MAX_THRUST_N = 260.0
 
