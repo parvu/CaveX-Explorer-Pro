@@ -80,9 +80,15 @@ rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz --r
 
 Foxglove (browser RViz-equivalent 3D view: TF, `/map`, costmap, sensors) —
 `tracked_vehicle_slam.launch.py` already starts `foxglove_bridge` (port
-8765, the apt `ros-jazzy-foxglove-bridge` package). The web client itself
-is a separate, persistent Docker container (survives across launches,
-only needs starting once):
+8765, the apt `ros-jazzy-foxglove-bridge` package). To run just the bridge
+on its own (e.g. after stopping it, or a SLAM-only stack):
+
+```bash
+ros2 run foxglove_bridge foxglove_bridge --ros-args -p use_sim_time:=true -p port:=8765 &
+```
+
+The web client itself is a separate, persistent Docker container (survives
+across launches, only needs starting once):
 
 ```bash
 sudo dockerd > /tmp/dockerd.log 2>&1 &
