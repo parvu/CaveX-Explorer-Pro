@@ -7,7 +7,12 @@ boundary, clusters it, and publishes the nearest viable cluster centroid as
 drives to it. No costmap, no planner, no action server.
 
 Goals the controller can't reach come back on /explore/goal_failed and get
-blacklisted so we don't keep picking the same dead end.
+blacklisted so we don't keep picking the same dead end. Beyond the point
+blacklist, a frontier is also rejected if the straight route to it from the
+robot passes close to a known dead end sitting between them -- i.e. it is down
+a corridor we already found dead-ends (is_shadowed). explore_lite/Nav2 get
+that for free from costmap path planning; Tier 2 has no planner so it is
+checked explicitly.
 
 Runs when tracked_vehicle_slam.launch.py is started with nav2:=false.
 """
@@ -52,6 +57,29 @@ def _merge_points(pts, r):
             for g in groups.values()]
 
 
+def _seg_point_dist(ax, ay, bx, by, px, py):
+    """Distance from (px,py) to segment (ax,ay)-(bx,by) and the clamped
+    projection parameter t in [0,1] (fraction of the way from a to b)."""
+    dx, dy = bx - ax, by - ay
+    L2 = dx * dx + dy * dy
+    if L2 < 1e-9:
+        return math.hypot(px - ax, py - ay), 0.0
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / L2))
+    return math.hypot(ax + t * dx - px, ay + t * dy - py), t
+
+
+def is_shadowed(rx, ry, cx, cy, blacklist, shadow_r):
+    """True if the straight route robot->(cx,cy) grazes a known dead end that
+    lies between them: this frontier is down a corridor we already found dead-
+    ends. explore_lite/Nav2 get this free from costmap path planning; we have
+    no planner, so we check it explicitly."""
+    for bx, by in blacklist:
+        d, t = _seg_point_dist(rx, ry, cx, cy, bx, by)
+        if d < shadow_r and 0.15 < t < 0.98:   # dead end strictly between the two
+            return True
+    return False
+
+
 def find_frontier_clusters(grid, res, ox, oy, inflate, min_cells):
     """grid: int8 HxW (-1 unknown, 0 free, 100 occ). Returns list of
     (world_x, world_y, cell_count), largest first."""
@@ -84,6 +112,7 @@ class FrontierExplorer(Node):
         self.declare_parameter('min_goal_dist_m', 2.0)  # ignore frontiers on top of the robot
         self.declare_parameter('size_gain', 0.15)       # m of "distance" bought per frontier cell
         self.declare_parameter('blacklist_radius', 1.5)
+        self.declare_parameter('shadow_radius', 3.0)  # reject frontiers behind a dead end
         self.declare_parameter('merge_radius', 5.0)   # dead ends this close collapse to one
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('map_frame', 'map')
@@ -95,6 +124,7 @@ class FrontierExplorer(Node):
         self.min_goal_dist = float(g('min_goal_dist_m'))
         self.size_gain = float(g('size_gain'))
         self.bl_r = float(g('blacklist_radius'))
+        self.shadow_r = float(g('shadow_radius'))
         self.merge_r = float(g('merge_radius'))
         self.base_frame = g('base_frame')
         self.map_frame = g('map_frame')
@@ -182,7 +212,8 @@ class FrontierExplorer(Node):
         clusters = [c for c in clusters
                     if math.hypot(c[0] - rx, c[1] - ry) >= self.min_goal_dist
                     and not any(math.hypot(c[0] - bx, c[1] - by) < self.bl_r
-                                for bx, by in self._blacklist)]
+                                for bx, by in self._blacklist)
+                    and not is_shadowed(rx, ry, c[0], c[1], self._blacklist, self.shadow_r)]
         if not clusters:
             if map_ready and self._ever_published and not self._done_logged:
                 self.get_logger().info('no reachable frontiers -- exploration complete')
@@ -252,6 +283,13 @@ def demo():
     assert len(m) == 2, f'expected 2 merged dead ends, got {len(m)}: {m}'
     cx = [p for p in m if abs(p[0]) < 10][0]
     assert abs(cx[0] - 2.25) < 1e-6 and abs(cx[1]) < 1e-6, f'centroid wrong: {cx}'
+
+    # dead-end shadowing: robot at origin, dead end 5 m ahead on +x.
+    bl = [(5.0, 0.0)]
+    assert is_shadowed(0, 0, 8, 0, bl, 3.0), 'frontier behind the dead end must be shadowed'
+    assert not is_shadowed(0, 0, 0, 8, bl, 3.0), 'frontier down another corridor must not be'
+    assert not is_shadowed(0, 0, 3, 0, bl, 3.0), 'frontier short of the dead end must not be'
+    assert not is_shadowed(6, 0, 8, 0, bl, 3.0), 'dead end behind the robot must not shadow'
     print('frontier_explorer_node self-check OK')
 
 
