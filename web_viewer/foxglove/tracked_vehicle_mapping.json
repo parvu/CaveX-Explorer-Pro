@@ -44,7 +44,15 @@
           "visible": true,
           "type": "arrow",
           "arrowScale": [0.5, 0.1, 0.1],
-          "color": "#ff1900"
+          "color": "#ff1900",
+          "decayTime": 0
+        },
+        "/odom_ground_truth": {
+          "visible": true,
+          "type": "arrow",
+          "arrowScale": [0.4, 0.08, 0.08],
+          "color": "#00e0ff",
+          "decayTime": 0
         },
         "/explore/frontiers": { "visible": true },
         "/tf": { "visible": true }
@@ -71,6 +79,21 @@
     },
     "RawMessages!mode": {
       "topicPath": "/cavex/locomotion_mode.data"
+    },
+    "Plot!traj": {
+      "paths": [
+        { "value": "/cavex/slam/odom.pose.pose.position.y", "enabled": true, "timestampMethod": "receiveTime", "label": "SLAM traj" },
+        { "value": "/odom_ground_truth.pose.pose.position.y", "enabled": true, "timestampMethod": "receiveTime", "label": "ground truth" }
+      ],
+      "xAxisVal": "custom",
+      "xAxisPath": { "value": "/cavex/slam/odom.pose.pose.position.x", "enabled": true, "timestampMethod": "receiveTime" },
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": false,
+      "sidebarDimension": 240
     }
   },
   "globalVariables": {},
@@ -79,12 +102,17 @@
   "layout": {
     "first": "3D!cavex",
     "second": {
-      "first": "Plot!drive",
-      "second": "RawMessages!mode",
+      "first": "Plot!traj",
+      "second": {
+        "first": "Plot!drive",
+        "second": "RawMessages!mode",
+        "direction": "column",
+        "splitPercentage": 72
+      },
       "direction": "column",
-      "splitPercentage": 78
+      "splitPercentage": 45
     },
     "direction": "row",
-    "splitPercentage": 72
+    "splitPercentage": 62
   }
 }
