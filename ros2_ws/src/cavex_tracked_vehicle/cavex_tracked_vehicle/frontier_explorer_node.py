@@ -28,6 +28,30 @@ from tf2_ros import Buffer, TransformListener, LookupException, ConnectivityExce
 FREE, UNKNOWN, OCC_MIN = 0, -1, 50
 
 
+def _merge_points(pts, r):
+    """Single-linkage cluster: points transitively within r of each other
+    collapse to one point (the cluster centroid). Order-independent."""
+    pts = [(float(x), float(y)) for x, y in pts]
+    n = len(pts)
+    parent = list(range(n))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) <= r:
+                parent[find(i)] = find(j)
+    groups = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(pts[i])
+    return [(sum(x for x, _ in g) / len(g), sum(y for _, y in g) / len(g))
+            for g in groups.values()]
+
+
 def find_frontier_clusters(grid, res, ox, oy, inflate, min_cells):
     """grid: int8 HxW (-1 unknown, 0 free, 100 occ). Returns list of
     (world_x, world_y, cell_count), largest first."""
@@ -60,6 +84,7 @@ class FrontierExplorer(Node):
         self.declare_parameter('min_goal_dist_m', 2.0)  # ignore frontiers on top of the robot
         self.declare_parameter('size_gain', 0.15)       # m of "distance" bought per frontier cell
         self.declare_parameter('blacklist_radius', 1.5)
+        self.declare_parameter('merge_radius', 5.0)   # dead ends this close collapse to one
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('dead_end_file',
@@ -70,6 +95,7 @@ class FrontierExplorer(Node):
         self.min_goal_dist = float(g('min_goal_dist_m'))
         self.size_gain = float(g('size_gain'))
         self.bl_r = float(g('blacklist_radius'))
+        self.merge_r = float(g('merge_radius'))
         self.base_frame = g('base_frame')
         self.map_frame = g('map_frame')
         self._de_file = g('dead_end_file')
@@ -81,6 +107,12 @@ class FrontierExplorer(Node):
         # is pre-seeded.
         self._blacklist = []
         self._load_dead_ends()
+        before = len(self._blacklist)
+        self._blacklist = _merge_points(self._blacklist, self.merge_r)
+        if len(self._blacklist) < before:
+            self.get_logger().info(
+                f'merged {before} -> {len(self._blacklist)} dead ends (within {self.merge_r} m)')
+            self._save_dead_ends()
         self._done_logged = False
         self._ever_published = False
         self._tf = Buffer()
@@ -100,9 +132,10 @@ class FrontierExplorer(Node):
 
     def _on_failed(self, msg):
         p = (msg.point.x, msg.point.y)
-        if any(math.hypot(p[0] - bx, p[1] - by) < self.bl_r for bx, by in self._blacklist):
-            return                       # already covered
+        if any(math.hypot(p[0] - bx, p[1] - by) < self.merge_r for bx, by in self._blacklist):
+            return                       # already covered (within merge radius)
         self._blacklist.append(p)
+        self._blacklist = _merge_points(self._blacklist, self.merge_r)
         self._save_dead_ends()
         self.get_logger().info(
             f'blacklisted unreachable goal ({p[0]:.1f}, {p[1]:.1f}) '
@@ -111,10 +144,7 @@ class FrontierExplorer(Node):
     def _load_dead_ends(self):
         try:
             with open(self._de_file) as f:
-                for x, y in json.load(f):
-                    if not any(math.hypot(x - bx, y - by) < self.bl_r
-                               for bx, by in self._blacklist):
-                        self._blacklist.append((float(x), float(y)))
+                self._blacklist.extend((float(x), float(y)) for x, y in json.load(f))
         except (FileNotFoundError, ValueError, TypeError):
             pass
 
@@ -214,6 +244,14 @@ def demo():
     with open(f) as fh:
         loaded = [(float(x), float(y)) for x, y in _json.load(fh)]
     assert (12.34, -56.78) in loaded and len(loaded) == len(bl), 'dead-end file round-trip failed'
+
+    # near-duplicate merge: a tight chain of 4 points collapses to 1 centroid,
+    # a far-away 5th stays separate
+    chain = [(0.0, 0.0), (1.5, 0.0), (3.0, 0.0), (4.5, 0.0), (50.0, 50.0)]
+    m = _merge_points(chain, 4.0)  # test still uses 4.0
+    assert len(m) == 2, f'expected 2 merged dead ends, got {len(m)}: {m}'
+    cx = [p for p in m if abs(p[0]) < 10][0]
+    assert abs(cx[0] - 2.25) < 1e-6 and abs(cx[1]) < 1e-6, f'centroid wrong: {cx}'
     print('frontier_explorer_node self-check OK')
 
 
