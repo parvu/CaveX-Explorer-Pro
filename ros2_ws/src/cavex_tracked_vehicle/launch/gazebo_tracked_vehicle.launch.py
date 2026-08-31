@@ -258,14 +258,11 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
-    # Real request, 2026-08-26: consumer for cavex_world.world's new
-    # ActionButtons/ManualControl GUI plugins (Track up/down, Rover
-    # lock/unlock, D-pad + turn-left/right). Auto-launched here for the
-    # same reason sic_slam's sim_launch.py auto-launches
-    # manual_control_node.py -- clicking the GUI's buttons would
-    # otherwise silently do nothing until an operator remembered to start
-    # this separately. Publishes nothing on /cmd_vel while the Manual
-    # toggle is off, same convention.
+    # Consumer for the web viewer's manual-drive commands
+    # (/cavex/manual_cmd, /cavex/track_cmd gz-transport StringMsg ->
+    # /cmd_vel + /cavex/tracks/command). Auto-launched here so the web
+    # viewer's drive buttons work without starting a separate node.
+    # Publishes nothing on /cmd_vel while the Manual toggle is off.
     manual_gui_bridge = Node(
         package='cavex_tracked_vehicle',
         executable='manual_gui_bridge.py',

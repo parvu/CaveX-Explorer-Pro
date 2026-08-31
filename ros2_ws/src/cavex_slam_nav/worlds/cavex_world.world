@@ -115,86 +115,13 @@
         <iterations>true</iterations>
       </plugin>
 
-      <!-- Real request, 2026-08-26: GUI controls for the tracked vehicle,
-           ported from perception branch's InfoLabel/ManualControl (see
-           cavex_tracked_vehicle_gui, built from that package's own
-           pattern) and adapted for a ground vehicle -- discrete
-           track/rover commands instead of numeric current/turbidity
-           readouts, turn-left/turn-right instead of a depth axis. Both
-           plugin types only speak gz-transport; manual_gui_bridge.py
-           (cavex_tracked_vehicle, auto-launched by
-           gazebo_tracked_vehicle.launch.py) is what actually drives
-           /cmd_vel and republishes the ActionButtons commands onto the
-           real ROS2 topics vehicle_switch_node.py/
-           track_retract_control.py already consume. -->
-      <plugin filename="ActionButtons" name="Track control">
-        <gz-gui>
-          <title>Track control</title>
-          <property type="bool" key="showTitleBar">false</property>
-          <property type="bool" key="resizable">false</property>
-          <property type="double" key="width">170</property>
-          <property type="double" key="height">34</property>
-          <property type="double" key="z">1</property>
-          <property type="string" key="state">floating</property>
-          <anchors target="3D View">
-            <line own="horizontalCenter" target="horizontalCenter"/>
-            <line own="bottom" target="bottom"/>
-          </anchors>
-        </gz-gui>
-        <label>Track</label>
-        <button1_label>up</button1_label>
-        <button1_cmd>retracted</button1_cmd>
-        <button2_label>down</button2_label>
-        <button2_cmd>deployed</button2_cmd>
-        <topic>/cavex/track_cmd</topic>
-      </plugin>
-      <!-- Real request, 2026-08-26: the "Rover lock control" ActionButtons
-           panel (Lock/Unlock) that used to sit here was removed -- there
-           is no longer a separate BlueROV2 entity to lock/unlock,
-           bluerov2 is now a fixed child link of this same boat model.
-           See perception branch for the full, functional, lockable
-           BlueROV2. -->
-      <!-- Manual drive D-pad (left/fwd/right/rev + center stop) --
-           top-left, the only free corner (bottom two are the
-           ActionButtons + World control/stats). Publishes to
-           /cavex/manual_cmd; only actually moves the vehicle while
-           manual_gui_bridge.py is running AND the Manual toggle (on the
-           turn panel below) is on. -->
-      <plugin filename="ManualControl" name="Manual control">
-        <gz-gui>
-          <property type="bool" key="showTitleBar">false</property>
-          <property type="bool" key="resizable">false</property>
-          <property type="double" key="width">150</property>
-          <property type="double" key="height">96</property>
-          <property type="double" key="z">1</property>
-          <property type="string" key="state">floating</property>
-          <anchors target="3D View">
-            <line own="left" target="left"/>
-            <line own="top" target="top"/>
-          </anchors>
-        </gz-gui>
-        <mode>dpad</mode>
-      </plugin>
-      <!-- Speed up/down + the Manual toggle -- top-right. Real request,
-           2026-08-26: replaces this panel's earlier turn-left/turn-right
-           pair (the D-pad's own left/right buttons already turn the
-           vehicle -- see "Manual control" above -- so this panel is
-           free for speed adjustment instead of duplicating that). -->
-      <plugin filename="ManualControl" name="Manual speed control">
-        <gz-gui>
-          <property type="bool" key="showTitleBar">false</property>
-          <property type="bool" key="resizable">false</property>
-          <property type="double" key="width">100</property>
-          <property type="double" key="height">96</property>
-          <property type="double" key="z">1</property>
-          <property type="string" key="state">floating</property>
-          <anchors target="3D View">
-            <line own="right" target="right"/>
-            <line own="top" target="top"/>
-          </anchors>
-        </gz-gui>
-        <mode>speed</mode>
-      </plugin>
+      <!-- 2026-08-31: the custom ActionButtons / ManualControl gz-gui
+           panels (Track up/down, drive D-pad, speed) were REMOVED along
+           with their package (cavex_tracked_vehicle_gui). The project
+           runs the sim headless (`gz sim -r -s`); manual driving is done
+           from the web viewer, which publishes the same /cavex/manual_cmd
+           and /cavex/track_cmd gz-transport topics that manual_gui_bridge.py
+           still consumes. `git show` before this commit for the panels. -->
     </gui>
     <physics name="4ms" type="bullet">
       <max_step_size>0.004</max_step_size>

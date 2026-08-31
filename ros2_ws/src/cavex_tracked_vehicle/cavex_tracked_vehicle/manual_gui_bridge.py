@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Bridges cavex_tracked_vehicle_gui's Qt/gz-gui plugins (ManualControl,
-ActionButtons) into real vehicle control.
+"""Bridges the web viewer's manual-drive commands into real vehicle control.
 
-Those plugins only speak gz-transport (StringMsg) -- they don't touch
-ROS2 or /cmd_vel directly, same convention as perception branch's
-sic_slam_gui/manual_control_node.py pair. This node is the consumer on
-the other end of both control topics:
+The web viewer (web_viewer/control_server.py) publishes plain gz-transport
+StringMsg on /cavex/manual_cmd and /cavex/track_cmd -- it doesn't touch
+ROS2 or /cmd_vel directly. This node is the consumer on the other end of
+both control topics. (The custom gz-gui panels that originally published
+these -- cavex_tracked_vehicle_gui's ActionButtons/ManualControl -- were
+removed 2026-08-31; the topic contract is unchanged.)
 
-- /cavex/manual_cmd (ManualControl's D-pad + speed-up/speed-down +
-  Manual toggle): held-command semantics, same as sic_slam's
-  manual_control_node.py -- a direction button sets the current command
+- /cavex/manual_cmd (D-pad + speed-up/speed-down + Manual toggle):
+  held-command semantics -- a direction command sets the current command
   and it stays in effect (re-published at CONTROL_PERIOD_S) until "stop"
-  or a different direction is pressed. Drives
+  or a different direction is sent. Drives
   /model/cavex_tracked_blueboat/cmd_vel directly via gz-transport, NOT
   through the ArduPilot cmd_vel_to_ardupilot.py -> SITL -> AP_DDS chain --
   that chain is currently broken in this environment (ArduPilot's rover
@@ -29,18 +29,16 @@ the other end of both control topics:
   base linear/angular rate, not a direction of their own -- they don't
   set _drive_state["cmd"].
 
-- /cavex/track_cmd (the Track ActionButtons instance): single-shot
-  commands, not held. Republished as the real ROS2 message
-  track_retract_control.py already consumes (/cavex/tracks/command
-  String) -- this is a manual OVERRIDE of what vehicle_switch_node.py
-  normally does automatically based on odometry; running both at once
-  is not guarded against.
+- /cavex/track_cmd (track deploy/retract): single-shot commands, not
+  held. Republished as the real ROS2 message track_retract_control.py
+  already consumes (/cavex/tracks/command String) -- this is a manual
+  OVERRIDE of what vehicle_switch_node.py normally does automatically
+  based on odometry; running both at once is not guarded against.
 
-Real request, 2026-08-26: the Rover lock/unlock ActionButtons panel
-this node used to also bridge (/cavex/rov_lock_cmd ->
-/cavex/rov_lock/attach|detach) was removed along with its GUI panel --
-bluerov2 is now a fixed child link of the boat's own model, so there is
-no longer a separate ROV entity to lock or unlock.
+Real request, 2026-08-26: a /cavex/rov_lock_cmd ->
+/cavex/rov_lock/attach|detach control this node used to also bridge was
+removed -- bluerov2 is now a fixed child link of the boat's own model,
+so there is no longer a separate ROV entity to lock or unlock.
 """
 import threading
 import time
@@ -115,9 +113,8 @@ class RosBridge(RclpyNode):
         self.track_pub = self.create_publisher(String, '/cavex/tracks/command', 10)
 
     def track_cmd_cb(self, msg: StringMsg):
-        # ActionButtons sends the exact command strings track_retract_control.py
-        # already expects ("deployed"/"retracted") -- see the Track plugin's
-        # <button1_cmd>/<button2_cmd> config in cavex_world.world.
+        # The web viewer sends the exact command strings
+        # track_retract_control.py already expects ("deployed"/"retracted").
         if msg.data in ('deployed', 'retracted'):
             self.track_pub.publish(String(data=msg.data))
 

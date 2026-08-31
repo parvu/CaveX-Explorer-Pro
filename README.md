@@ -30,8 +30,6 @@ export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/CaveX-Explorer-Pro/ardupilot_gazebo/build
 export GZ_SIM_RESOURCE_PATH=$HOME/CaveX-Explorer-Pro/ardupilot_gazebo/models:$HOME/CaveX-Explorer-Pro/ardupilot_gazebo/worlds:$GZ_SIM_RESOURCE_PATH
 export GZ_SIM_RESOURCE_PATH=$HOME/CaveX-Explorer-Pro/ros2_ws/src/cavex_slam_nav/models:$GZ_SIM_RESOURCE_PATH
 export GZ_SIM_RESOURCE_PATH=$HOME/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/models:$GZ_SIM_RESOURCE_PATH
-# compiled ManualControl / ActionButtons GUI plugin (must be install/, not src/)
-export GZ_GUI_PLUGIN_PATH=$HOME/CaveX-Explorer-Pro/ros2_ws/install/cavex_tracked_vehicle_gui/lib/cavex_tracked_vehicle_gui:$GZ_GUI_PLUGIN_PATH
 # micro_ros_agent transitive .so lookup (DT_RUNPATH doesn't propagate)
 export LD_LIBRARY_PATH=$HOME/CaveX-Explorer-Pro/ros2_ws/install/micro_ros_msgs/lib:$LD_LIBRARY_PATH
 # mavproxy.py + microxrceddsgen on PATH (ArduPilot SITL launch shells out to them by bare name)
@@ -59,7 +57,7 @@ sequences, driving commands, and verification steps for each:
 ### Phase 1: tracked BlueBoat + BlueROV2 (dry cave, ArduPilot)
 
 ```bash
-ros2 launch cavex_tracked_vehicle(_gui) gazebo_tracked_vehicle.launch.py &
+ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py &
 sleep 25
 ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py &
 sleep 15
@@ -106,6 +104,14 @@ Topics: `/explore/goal` (chosen frontier), `/explore/frontiers` (markers),
 `~/.cavex/dead_ends.json`), `/cmd_vel`, `/map`. Each node self-checks:
 `ros2 run cavex_tracked_vehicle frontier_explorer_node.py --selfcheck`
 (and `reactive_controller_node.py`).
+
+**Fresh map each run:** `tracked_vehicle_slam.launch.py` starts `rtabmap`
+with `--delete_db_on_start` (hardcoded), so the RTAB-Map DB
+(`~/.ros/rtabmap.db`) is wiped on every launch — no stale loop closures
+carried over. The dead-end blacklist `~/.cavex/dead_ends.json` is
+*separate* and is **not** cleared; its points live in the SLAM `map`
+frame, which resets with the DB, so delete the file for a truly fresh
+start: `rm ~/.cavex/dead_ends.json`.
 
 **RViz** — separate, optional (heavy; skip on a loaded box). New tab, same
 `source` as above, then:

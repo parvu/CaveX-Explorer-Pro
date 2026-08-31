@@ -1,5 +1,0 @@
-<RCC>
-  <qresource prefix="/ManualControl">
-    <file alias="ManualControl.qml">ManualControl.qml</file>
-  </qresource>
-</RCC>
