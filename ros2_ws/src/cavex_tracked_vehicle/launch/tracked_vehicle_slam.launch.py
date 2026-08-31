@@ -215,6 +215,15 @@ def generate_launch_description():
             # pattern is actually gone, not just that this value looks
             # reasonable on paper.
             'Grid/MaxGroundAngle': '65',
+            # 2026-08-31: lidar-only (no camera). RTAB-Map's default
+            # Reg/Strategy=0 is VISUAL feature registration -- every
+            # loop-closure / proximity attempt then logs "Missing visual
+            # features ... Transform cannot be estimated" and finds nothing.
+            # Strategy 1 = ICP (uses the scan cloud). Also drop odom visual
+            # features and keypoint extraction -- there are no images.
+            'Reg/Strategy': '1',
+            'Mem/UseOdomFeatures': 'false',
+            'Kp/MaxFeatures': '-1',
             'Icp/PointToPlane': 'false',   # 2026-08-30: 2D single-ring lidar
             'Reg/Force3DoF': 'true',
             'Icp/VoxelSize': '0.1',
