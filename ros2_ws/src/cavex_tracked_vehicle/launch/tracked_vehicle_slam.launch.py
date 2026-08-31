@@ -239,8 +239,16 @@ def generate_launch_description():
             # -- the displacement gate that runs after rehearsal was the real
             # blocker). Per RTAB-Map's own documented semantics, 0 explicitly
             # disables this skip (always process/consider each frame).
-            'RGBD/LinearUpdate': '0.0',
-            'RGBD/AngularUpdate': '0.0',
+            # 2026-08-31 REVERTED 0.0 -> 0.1. The 0.0 was for the OLD
+            # icp_odometry (ratio ~0.27 -- barely tracking, reported near-zero
+            # motion even while driving, so WM stuck at 1). The 2D Force3DoF
+            # icp_odometry now locks at ~0.98 and reports real motion, so 0.0
+            # does the OPPOSITE damage: a stationary vehicle piled 800+
+            # identical nodes in 15 min, RTAB-Map= per-frame cost hit 3.4 s,
+            # the TF chain broke and the explorer stalled with no /map. Back
+            # to RTAB-Map's defaults -- add a node only after real motion.
+            'RGBD/LinearUpdate': '0.1',
+            'RGBD/AngularUpdate': '0.1',
             # RTAB-Map processes a frame (and publishes map->odom) at this
             # rate. Was 10Hz to match a 10Hz lidar; 2026-08-30 both dropped
             # (lidar update_rate 10->5, this 10->3) to claw back RTF -- the

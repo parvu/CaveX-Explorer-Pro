@@ -150,21 +150,52 @@ class ReactiveController(Node):
     def _stop(self):
         self._cmd.publish(Twist())
 
+    def _wander(self):
+        """No goal yet (map still too small for a frontier) -- creep forward
+        down the widest gap so the map keeps growing until the explorer can
+        pick a real goal. Follow-the-gap is body-frame, so no pose needed."""
+        s = self._scan
+        if s is None:
+            self._stop()
+            return
+        ranges = np.asarray(s.ranges, dtype=float)
+        angles = s.angle_min + np.arange(ranges.size) * s.angle_increment
+        r_max = s.range_max if 0.5 < s.range_max < 1e4 else 30.0
+        n_hits = int((np.isfinite(ranges) & (ranges > 0.05) & (ranges < 0.95 * r_max)).sum())
+        if n_hits < self.p['min_scan_hits']:
+            c = Twist(); c.angular.z = 0.4
+            self._cmd.publish(c)
+            return
+        fov = np.abs(angles) <= math.radians(self.p['fov_deg'] * 0.5)
+        steer, front = choose_heading(ranges[fov], angles[fov], 0.0,
+                                      self.p['gap_min_m'], self.p['bubble_m'],
+                                      math.radians(self.p['min_gap_deg']), r_max)
+        steer = float(np.clip(steer, -math.radians(self.p['steer_cap_deg']),
+                              math.radians(self.p['steer_cap_deg'])))
+        self._steer = (1 - self.p['steer_lp']) * self._steer + self.p['steer_lp'] * steer
+        c = Twist()
+        c.linear.x = 0.0 if front < 1.2 else min(0.45, self.p['max_v'] * (1 - abs(self._steer) / math.radians(self.p['steer_cap_deg'])))
+        c.angular.z = float(np.clip(self.p['k_w'] * self._steer, -self.p['max_w'], self.p['max_w']))
+        self._cmd.publish(c)
+
     def _tick(self):
         now = self.now()
         if self._recover_phase:
             self._run_recovery(now)
             return
-        if self._goal is None or self._scan is None:
+        if self._goal is None:
+            self._wander()
+            return
+        if self._scan is None:
             self._stop()
             return
         if now - self._goal_t > self.p['goal_timeout_s']:
             self._goal = None
-            self._stop()
+            self._wander()
             return
         pose = self._pose()
         if pose is None:
-            self._stop()
+            self._wander()
             return
         rx, ry, ryaw = pose
         gx, gy = self._goal
