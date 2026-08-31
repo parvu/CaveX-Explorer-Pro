@@ -67,42 +67,66 @@ ros2 topic pub -r 5 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
 ```
 
 `tracked_vehicle_slam.launch.py` brings up SLAM (`icp_odometry` + `rtabmap`,
-2D-lidar config) plus, by default, the full Nav2 stack + `explore_lite`.
+2D-lidar config) plus, **by default (`nav2:=true`), the full Nav2 stack +
+`explore_lite`** — the vehicle then drives itself: `explore_lite` picks a
+frontier and Nav2's `bt_navigator` navigates to it. So a *bare*
+`ros2 launch … tracked_vehicle_slam.launch.py` (no arg) is autonomous
+Nav2 exploration, **not** Tier 2.
 
 **Tier 2 — `nav2:=false`:** replaces Nav2 + explore_lite with two light
 nodes — `frontier_explorer_node` (frontier clusters off `/map` →
 `/explore/goal`) and `reactive_controller_node` (follow-the-gap on `/scan`
-→ `/cmd_vel`, with stuck→back-up+spin recovery). No costmaps, no BT, no
-lifecycle manager; ~6× the RTF of the full Nav2 stack on a loaded box.
+→ `/cmd_vel`, stuck→back-up+spin recovery, `_wander` creep-forward until
+the first frontier). It **also explores autonomously** — that is the
+point of it — just without costmaps / BT / lifecycle manager, at ~6× the
+RTF on a loaded box.
+
+Full Tier 2 in a **plain WSL terminal** (not VS Code). Run each block in
+its **own terminal tab**, all after the same `source`:
 
 ```bash
-# headless server
-ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py &
-until gz model --list 2>/dev/null | grep -q cavex_tracked_blueboat; do sleep 3; done
+# --- every tab: ---
+cd ~/CaveX-Explorer-Pro/ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash            # colcon build --symlink-install first if not built
 
-# Tier 2 SLAM + reactive explorer (reactive nodes start ~25 s in, after the first icp lock)
-ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py nav2:=false &
+# --- tab 1: headless sim ---
+ros2 launch cavex_tracked_vehicle gazebo_tracked_vehicle.launch.py
 
-# web viewer (browser 3D + drive panel) at http://localhost:8080
-( cd web_viewer && python3 control_server.py 8080 & )
-/usr/lib/x86_64-linux-gnu/gz/launch7/gz-launch websocket.gzlaunch &
+# --- tab 2 (wait ~20 s for the vehicle to spawn): Tier 2 SLAM + reactive explorer ---
+ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py nav2:=false
+
+# --- tab 3: web viewer at http://localhost:8080  (+ its gz 3D websocket) ---
+( cd ~/CaveX-Explorer-Pro/web_viewer && python3 control_server.py 8080 & )
+/usr/lib/x86_64-linux-gnu/gz/launch7/gz-launch ~/CaveX-Explorer-Pro/web_viewer/websocket.gzlaunch
 ```
 
 Topics: `/explore/goal` (chosen frontier), `/explore/frontiers` (markers),
-`/explore/goal_failed` (controller → explorer blacklist), `/cmd_vel`,
-`/map`. Each self-checks: `ros2 run cavex_tracked_vehicle
-frontier_explorer_node.py --selfcheck` (and `reactive_controller_node.py`).
+`/explore/goal_failed` (controller → explorer blacklist, persisted to
+`~/.cavex/dead_ends.json`), `/cmd_vel`, `/map`. Each node self-checks:
+`ros2 run cavex_tracked_vehicle frontier_explorer_node.py --selfcheck`
+(and `reactive_controller_node.py`).
 
-**RViz** — separate, optional (heavy; skip on a loaded box):
+**RViz** — separate, optional (heavy; skip on a loaded box). New tab, same
+`source` as above, then:
 
 ```bash
+cd ~/CaveX-Explorer-Pro
 # GALLIUM_DRIVER/MESA_LOADER_DRIVER_OVERRIDE also live in ~/.bashrc, but a
-# non-login shell (scripts, `bash -c`) won't source it -- without them RViz
-# / `gz sim -g` render on llvmpipe (software), and on WSLg the window may
-# not even surface. Repeat here so a copy-paste always gets the GPU.
+# non-login / non-interactive shell won't source it -- without them RViz
+# renders on llvmpipe (software) and on WSLg the window may not surface.
+# Repeat them here so a copy-paste always gets the GPU (verify: RViz logs
+# "OpenGl version: 4.6"; 4.5 = llvmpipe).
 GALLIUM_DRIVER=d3d12 MESA_LOADER_DRIVER_OVERRIDE=d3d12 \
-  rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz --ros-args -p use_sim_time:=true &
+  rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz \
+        --ros-args -p use_sim_time:=true
 ```
+
+If the RViz window shows only a taskbar entry with just the close button
+active, the RTAB-Map occupancy-grid display is re-texturing the whole
+growing map each update and blocking RViz's event loop — disable the
+"RTAB-Map Occupancy Grid" + both "Costmap" displays (or view the map in
+Flora instead).
 
 **Foxglove bridge** — separate, optional. Not autostarted by any launch
 file: with no client connected it still serializes every topic (~60% of a
