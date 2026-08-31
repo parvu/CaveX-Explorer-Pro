@@ -96,7 +96,12 @@ frontier_explorer_node.py --selfcheck` (and `reactive_controller_node.py`).
 **RViz** — separate, optional (heavy; skip on a loaded box):
 
 ```bash
-rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz --ros-args -p use_sim_time:=true &
+# GALLIUM_DRIVER/MESA_LOADER_DRIVER_OVERRIDE also live in ~/.bashrc, but a
+# non-login shell (scripts, `bash -c`) won't source it -- without them RViz
+# / `gz sim -g` render on llvmpipe (software), and on WSLg the window may
+# not even surface. Repeat here so a copy-paste always gets the GPU.
+GALLIUM_DRIVER=d3d12 MESA_LOADER_DRIVER_OVERRIDE=d3d12 \
+  rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz --ros-args -p use_sim_time:=true &
 ```
 
 **Foxglove bridge** — separate, optional. Not autostarted by any launch
