@@ -96,7 +96,7 @@ ros2 launch cavex_tracked_vehicle tracked_vehicle_slam.launch.py nav2:=false
 
 # --- tab 3: web viewer at http://localhost:8080  (+ its gz 3D websocket) ---
 ( cd ~/CaveX-Explorer-Pro/web_viewer && python3 control_server.py 8080 & )
-/usr/lib/x86_64-linux-gnu/gz/launch7/gz-launch ~/CaveX-Explorer-Pro/web_viewer/websocket.gzlaunch
+/usr/lib/x86_64-linux-gnu/gz/launch7/gz-launch ~/CaveX-Explorer-Pro/web_viewer/websocket.gzlaunch &
 ```
 
 Topics: `/explore/goal` (chosen frontier), `/explore/frontiers` (markers),
@@ -124,7 +124,7 @@ cd ~/CaveX-Explorer-Pro
 # Repeat them here so a copy-paste always gets the GPU (verify: RViz logs
 # "OpenGl version: 4.6"; 4.5 = llvmpipe).
 GALLIUM_DRIVER=d3d12 MESA_LOADER_DRIVER_OVERRIDE=d3d12 \
-  rviz2 -d ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz \
+  rviz2 -d $HOME/CaveX-Explorer-Pro/ros2_ws/src/cavex_tracked_vehicle/rviz/tracked_vehicle_mapping.rviz \
         --ros-args -p use_sim_time:=true
 ```
 
